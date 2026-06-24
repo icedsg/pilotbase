@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   Database, Table2, ChevronRight, ChevronDown,
-  Eye, Server, Loader2, RefreshCw, Trash2, Layers
+  Eye, Server, Loader2, Layers, Box, Key,
 } from 'lucide-react'
 import { useStore } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
@@ -17,12 +17,22 @@ interface TreeNode {
 
 type ConnectionState = Record<string, Record<string, TreeNode>>
 
+const VECTOR_DB_TYPES = new Set(['qdrant', 'chroma', 'weaviate'])
+
 const DB_TYPE_COLORS: Record<string, string> = {
+  // SQL
   postgresql: 'text-blue-400',
-  mysql: 'text-orange-400',
-  mariadb: 'text-orange-400',
-  sqlite: 'text-green-400',
-  mssql: 'text-red-400',
+  mysql:      'text-orange-400',
+  mariadb:    'text-orange-400',
+  sqlite:     'text-green-400',
+  mssql:      'text-red-400',
+  // NoSQL
+  mongodb:    'text-emerald-400',
+  redis:      'text-rose-400',
+  // Vector
+  qdrant:     'text-violet-400',
+  chroma:     'text-fuchsia-400',
+  weaviate:   'text-cyan-400',
 }
 
 export default function ConnectionTree() {
@@ -121,7 +131,10 @@ export default function ConnectionTree() {
                         style={{ paddingLeft: '20px' }}
                       >
                         {node.open ? <ChevronDown size={11} className="flex-shrink-0" /> : <ChevronRight size={11} className="flex-shrink-0" />}
-                        <Database size={12} className="flex-shrink-0 text-yellow-500" />
+                        {VECTOR_DB_TYPES.has(conn.db_type)
+                          ? <Box size={12} className="flex-shrink-0 text-yellow-500" />
+                          : <Database size={12} className="flex-shrink-0 text-yellow-500" />
+                        }
                         <span className="truncate">{db}</span>
                       </div>
 
@@ -136,11 +149,11 @@ export default function ConnectionTree() {
                           ) : (
                             <>
                               {/* Group by type */}
-                              {(['table', 'view'] as const).map((type) => {
+                              {(['table', 'view', 'collection', 'key'] as const).map((type) => {
                                 const items = (node.objects || []).filter((o) => o.type === type)
                                 if (!items.length) return null
-                                const Icon = type === 'table' ? Table2 : Eye
-                                const label = type === 'table' ? 'Tables' : 'Views'
+                                const Icon  = type === 'table' ? Table2 : type === 'view' ? Eye : type === 'collection' ? Box : Key
+                                const label = type === 'table' ? 'Tables' : type === 'view' ? 'Views' : type === 'collection' ? 'Collections' : 'Keys'
                                 return (
                                   <div key={type}>
                                     <div

@@ -21,7 +21,7 @@ export interface DbConnection {
 
 export interface DbObject {
   name: string
-  type: 'table' | 'view'
+  type: 'table' | 'view' | 'collection' | 'key'
 }
 
 export interface ColumnInfo {
@@ -63,13 +63,6 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   timestamp: Date
-}
-
-export type WidgetId = 'connections' | 'ai-chat'
-
-export interface PanelLayout {
-  left: WidgetId[]
-  right: WidgetId[]
 }
 
 export type WsMessageType =

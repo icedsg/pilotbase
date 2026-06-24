@@ -1,39 +1,58 @@
-import { useDroppable } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import ConnectionsWidget from '../widgets/ConnectionsWidget'
-import AIChatWidget from '../widgets/AIChatWidget'
-import type { WidgetId } from '../../types'
-
-const WIDGET_MAP: Record<WidgetId, React.ComponentType> = {
-  'connections': ConnectionsWidget,
-  'ai-chat': AIChatWidget,
-}
+import { useState } from 'react'
+import { Plus, RefreshCw, X } from 'lucide-react'
+import ConnectionTree from '../db/ConnectionTree'
+import ConnectionForm from '../db/ConnectionForm'
+import { useStore } from '../../store'
+import { apiListConnections } from '../../api/client'
+import { useUserSession } from '../../hooks/useUserSession'
 
 interface Props {
-  widgets: WidgetId[]
+  onClose: () => void
 }
 
-export default function LeftPanel({ widgets }: Props) {
-  const { setNodeRef, isOver } = useDroppable({ id: 'left' })
+export default function LeftPanel({ onClose }: Props) {
+  const { userId } = useUserSession()
+  const { setConnections } = useStore()
+  const [showForm, setShowForm] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+
+  const refresh = async () => {
+    if (!userId) return
+    setRefreshing(true)
+    try {
+      const data = await apiListConnections(userId)
+      setConnections(data)
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   return (
-    <div
-      ref={setNodeRef}
-      className={`h-full flex flex-col gap-2 p-2 overflow-y-auto transition-colors ${
-        isOver ? 'bg-accent/5' : ''
-      }`}
-    >
-      <SortableContext items={widgets} strategy={verticalListSortingStrategy}>
-        {widgets.map((id) => {
-          const Widget = WIDGET_MAP[id]
-          return Widget ? <Widget key={id} /> : null
-        })}
-      </SortableContext>
-
-      {widgets.length === 0 && (
-        <div className="flex-1 flex items-center justify-center text-xs text-gray-600 border-2 border-dashed border-surface-50 rounded-lg m-2">
-          Drag widgets here
+    <div className="h-full flex flex-col overflow-hidden border-r border-surface-50">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-surface-50 flex-shrink-0">
+        <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Connections</span>
+        <div className="flex items-center gap-0.5">
+          <button onClick={refresh} className="btn-ghost p-1" title="Refresh">
+            <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+          </button>
+          <button onClick={() => setShowForm(true)} className="btn-ghost p-1" title="Add connection">
+            <Plus size={13} />
+          </button>
+          <button onClick={onClose} className="btn-ghost p-1" title="Close panel">
+            <X size={13} />
+          </button>
         </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        <ConnectionTree />
+      </div>
+
+      {showForm && (
+        <ConnectionForm
+          onClose={() => setShowForm(false)}
+          onSaved={() => { setShowForm(false); refresh() }}
+        />
       )}
     </div>
   )

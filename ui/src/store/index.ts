@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ChatMessage, DbConnection, PanelLayout, QueryResult, UserSession, WidgetId } from '../types'
+import type { ChatMessage, DbConnection, QueryResult, UserSession } from '../types'
 
 interface PilotbaseStore {
   // ── User session ─────────────────────────────────────────────────
@@ -29,11 +29,6 @@ interface PilotbaseStore {
   setChatLoading: (v: boolean) => void
   clearChat: () => void
 
-  // ── Panel layout ─────────────────────────────────────────────────
-  panelLayout: PanelLayout
-  setPanelLayout: (layout: PanelLayout) => void
-  moveWidget: (widget: WidgetId, to: 'left' | 'right') => void
-
   // ── WebSocket ────────────────────────────────────────────────────
   wsConnected: boolean
   setWsConnected: (v: boolean) => void
@@ -43,12 +38,7 @@ interface PilotbaseStore {
   toggleTheme: () => void
 }
 
-const DEFAULT_LAYOUT: PanelLayout = {
-  left: ['connections'],
-  right: ['ai-chat'],
-}
-
-export const useStore = create<PilotbaseStore>((set, get) => ({
+export const useStore = create<PilotbaseStore>((set) => ({
   // Session
   session: null,
   setSession: (session) => set({ session }),
@@ -79,18 +69,6 @@ export const useStore = create<PilotbaseStore>((set, get) => ({
   addChatMessage: (m) => set((s) => ({ chatMessages: [...s.chatMessages, m] })),
   setChatLoading: (chatLoading) => set({ chatLoading }),
   clearChat: () => set({ chatMessages: [] }),
-
-  // Panel layout
-  panelLayout: DEFAULT_LAYOUT,
-  setPanelLayout: (panelLayout) => set({ panelLayout }),
-  moveWidget: (widget, to) =>
-    set((s) => {
-      const left = s.panelLayout.left.filter((w) => w !== widget)
-      const right = s.panelLayout.right.filter((w) => w !== widget)
-      if (to === 'left') left.push(widget)
-      else right.push(widget)
-      return { panelLayout: { left, right } }
-    }),
 
   // WebSocket
   wsConnected: false,
