@@ -1,0 +1,73 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --color-surface: #f1f3f6;
+    --color-surface-50: #d0d5e2;
+    --color-surface-100: #f7f8fa;
+    --color-surface-200: #f1f3f6;
+    --color-surface-300: #e4e7ef;
+  }
+
+  :root.dark {
+    color-scheme: dark;
+    --color-surface: #1a1d23;
+    --color-surface-50: #2a2d35;
+    --color-surface-100: #22252d;
+    --color-surface-200: #1a1d23;
+    --color-surface-300: #13151a;
+  }
+
+  body {
+    @apply bg-surface font-sans text-gray-900 dark:text-gray-100;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-surface-300;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-surface-50 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-400 dark:bg-gray-500;
+  }
+}
+
+@layer components {
+  .panel-resize-handle {
+    @apply w-1 bg-surface-50 hover:bg-accent transition-colors cursor-col-resize flex-shrink-0;
+  }
+
+  .widget-card {
+    @apply bg-surface-100 border border-surface-50 rounded-lg overflow-hidden flex flex-col;
+  }
+
+  .widget-header {
+    @apply flex items-center justify-between px-3 py-2 bg-surface-300 border-b border-surface-50 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider cursor-grab active:cursor-grabbing select-none;
+  }
+
+  .btn-primary {
+    @apply bg-accent hover:bg-accent-hover text-white px-3 py-1.5 rounded text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-surface-50 px-2 py-1 rounded text-sm transition-colors;
+  }
+
+  .tree-item {
+    @apply flex items-center gap-1.5 px-2 py-0.5 rounded text-sm text-gray-600 dark:text-gray-300 hover:bg-surface-50 hover:text-gray-900 dark:hover:text-gray-100 cursor-pointer transition-colors select-none;
+  }
+
+  .tree-item-active {
+    @apply bg-accent/20 text-accent;
+  }
+}
