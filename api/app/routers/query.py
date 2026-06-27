@@ -18,6 +18,7 @@ class QueryRequest(BaseModel):
     query: str
     params: Optional[dict] = None
     limit: int = 1000
+    database: Optional[str] = None
 
 
 @router.post("/execute")
@@ -33,7 +34,7 @@ async def execute_query(
         raise HTTPException(status_code=404, detail="Connection not found.")
 
     try:
-        data = db_service.execute_query(conn, body.query, body.params, body.limit)
+        data = db_service.execute_query(conn, body.query, body.params, body.limit, body.database)
         return data
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -61,9 +62,10 @@ async def run_ddl(
         raise HTTPException(status_code=404, detail="Connection not found.")
 
     action_map = {
-        ("truncate", "table"):        f'TRUNCATE TABLE "{body.object_name}"',
-        ("drop_table", "table"):      f'DROP TABLE IF EXISTS "{body.object_name}"',
-        ("drop_database", "database"):f'DROP DATABASE IF EXISTS "{body.object_name}"',
+        ("truncate", "table"):           f'TRUNCATE TABLE "{body.object_name}"',
+        ("drop_table", "table"):         f'DROP TABLE IF EXISTS "{body.object_name}"',
+        ("drop_view", "view"):           f'DROP VIEW IF EXISTS "{body.object_name}"',
+        ("drop_database", "database"):   f'DROP DATABASE IF EXISTS "{body.object_name}"',
         ("create_database", "database"): f'CREATE DATABASE "{body.object_name}"',
     }
 

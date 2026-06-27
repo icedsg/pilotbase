@@ -43,19 +43,46 @@ export const apiDeleteConnection = (userId: string, connId: string) =>
 export const apiTestConnection = (userId: string, connId: string): Promise<{ success: boolean }> =>
   http.post(`/connections/${connId}/test`, { user_anon_id: userId }).then(r => r.data)
 
+export const apiTestConnectionParams = (
+  userId: string,
+  params: {
+    db_type: string
+    host?: string
+    port?: number
+    database?: string
+    username?: string
+    password?: string
+    ssl_mode?: string
+    extra_params?: string
+  }
+): Promise<{ success: boolean; error: string; databases: string[] }> =>
+  http.post('/connections/test-params', { user_anon_id: userId, ...params }).then(r => r.data)
+
+export const apiAdminCreateDatabase = (userId: string, connId: string, dbName: string): Promise<{ message: string }> =>
+  http.post(`/connections/${connId}/admin/create-database`, { user_anon_id: userId, db_name: dbName }).then(r => r.data)
+
+export const apiAdminCreateUser = (
+  userId: string,
+  connId: string,
+  username: string,
+  password: string,
+  database?: string
+): Promise<{ message: string }> =>
+  http.post(`/connections/${connId}/admin/create-user`, { user_anon_id: userId, username, password, database }).then(r => r.data)
+
 export const apiListDatabases = (userId: string, connId: string): Promise<{ databases: string[] }> =>
   http.get(`/connections/${connId}/databases`, { params: { user_anon_id: userId } }).then(r => r.data)
 
-export const apiListObjects = (userId: string, connId: string, schema?: string): Promise<{ objects: DbObject[] }> =>
-  http.get(`/connections/${connId}/objects`, { params: { user_anon_id: userId, schema } }).then(r => r.data)
+export const apiListObjects = (userId: string, connId: string, database?: string, schema?: string): Promise<{ objects: DbObject[] }> =>
+  http.get(`/connections/${connId}/objects`, { params: { user_anon_id: userId, database, schema } }).then(r => r.data)
 
-export const apiDescribeTable = (userId: string, connId: string, table: string, schema?: string): Promise<TableInfo> =>
-  http.get(`/connections/${connId}/table/${table}`, { params: { user_anon_id: userId, schema } }).then(r => r.data)
+export const apiDescribeTable = (userId: string, connId: string, table: string, schema?: string, database?: string): Promise<TableInfo> =>
+  http.get(`/connections/${connId}/table/${table}`, { params: { user_anon_id: userId, schema, database } }).then(r => r.data)
 
 // ── Query ─────────────────────────────────────────────────────────────────────
 
-export const apiExecuteQuery = (userId: string, connId: string, query: string): Promise<QueryResult> =>
-  http.post('/query/execute', { user_anon_id: userId, connection_id: connId, query }).then(r => r.data)
+export const apiExecuteQuery = (userId: string, connId: string, query: string, database?: string): Promise<QueryResult> =>
+  http.post('/query/execute', { user_anon_id: userId, connection_id: connId, query, database }).then(r => r.data)
 
 export const apiRunDdl = (userId: string, connId: string, action: string, objectName: string, objectType: string) =>
   http.post('/query/ddl', { user_anon_id: userId, connection_id: connId, action, object_name: objectName, object_type: objectType }).then(r => r.data)

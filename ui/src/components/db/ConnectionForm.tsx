@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { X } from 'lucide-react'
-import { apiCreateConnection } from '../../api/client'
+import { X, CheckCircle, XCircle, Loader2 } from 'lucide-react'
+import { apiCreateConnection, apiUpdateConnection, apiTestConnectionParams } from '../../api/client'
 import { useUserSession } from '../../hooks/useUserSession'
+import type { DbConnection } from '../../types'
 
 const DB_TYPES = [
   { value: 'postgresql', label: 'PostgreSQL',  group: 'SQL' },
@@ -28,72 +29,134 @@ const DEFAULT_PORTS: Record<string, number> = {
   weaviate:   8080,
 }
 
-// Vector DBs use an API key instead of username/password
-const API_KEY_TYPES  = new Set(['qdrant', 'weaviate', 'chroma'])
-// Redis: password only, no username; db is a 0–15 index
-const REDIS_TYPES    = new Set(['redis'])
-// File-based — no host/port
-const FILE_TYPES     = new Set(['sqlite'])
+const API_KEY_TYPES = new Set(['qdrant', 'weaviate', 'chroma'])
+const REDIS_TYPES   = new Set(['redis'])
+const FILE_TYPES    = new Set(['sqlite'])
+const CAN_LIST_DBS  = new Set(['postgresql', 'mysql', 'mariadb', 'mongodb'])
+
+type TestStatus = 'idle' | 'testing' | 'ok' | 'error'
+
+const INPUT_CLS = 'w-full bg-surface-300 border border-surface-50 rounded px-3 py-1.5 text-gray-800 dark:text-gray-200 focus:outline-none focus:border-accent'
 
 interface Props {
   onClose: () => void
-  onSaved: () => void
+  onSaved: (conn?: DbConnection) => void
+  connection?: DbConnection
 }
 
-export default function ConnectionForm({ onClose, onSaved }: Props) {
+export default function ConnectionForm({ onClose, onSaved, connection }: Props) {
   const { userId } = useUserSession()
+  const isEdit = !!connection
+
   const [form, setForm] = useState({
-    name:       '',
-    db_type:    'postgresql',
-    host:       'localhost',
-    port:       5432,
-    database:   '',
-    username:   '',
-    password:   '',
-    api_key:    '',   // serialised into extra_params for vector DBs
-    ssl_mode:   '',
+    name:     connection?.name     ?? '',
+    db_type:  connection?.db_type  ?? 'postgresql',
+    host:     connection?.host     ?? 'localhost',
+    port:     connection?.port     ?? 5432,
+    database: connection?.database ?? '',
+    username: connection?.username ?? '',
+    password: '',
+    api_key:  '',
+    ssl_mode: connection?.ssl_mode ?? '',
   })
-  const [saving, setSaving] = useState(false)
-  const [error,  setError]  = useState<string | null>(null)
+  const [saving,      setSaving]      = useState(false)
+  const [saveError,   setSaveError]   = useState<string | null>(null)
+  const [testStatus,  setTestStatus]  = useState<TestStatus>('idle')
+  const [testMessage, setTestMessage] = useState<string | null>(null)
+  const [databases,   setDatabases]   = useState<string[]>([])
 
   const set = (k: string, v: string | number) => setForm(f => ({ ...f, [k]: v }))
 
-  const handleDbTypeChange = (newType: string) => {
-    setForm(f => ({
-      ...f,
-      db_type: newType,
-      port:    DEFAULT_PORTS[newType] ?? f.port,
-    }))
+  const setAndResetTest = (k: string, v: string | number) => {
+    set(k, v)
+    setTestStatus('idle')
+    setTestMessage(null)
+    setDatabases([])
   }
 
-  const isFileBased  = FILE_TYPES.has(form.db_type)
-  const isApiKeyAuth = API_KEY_TYPES.has(form.db_type)
-  const isRedis      = REDIS_TYPES.has(form.db_type)
+  const handleDbTypeChange = (newType: string) => {
+    setForm(f => ({ ...f, db_type: newType, port: DEFAULT_PORTS[newType] ?? f.port }))
+    setTestStatus('idle')
+    setTestMessage(null)
+    setDatabases([])
+  }
 
-  const save = async () => {
-    if (!form.name) { setError('Name is required.'); return }
-    setSaving(true)
-    setError(null)
+  const runTest = async () => {
+    setTestStatus('testing')
+    setTestMessage(null)
     try {
       const extra_params = form.api_key ? JSON.stringify({ api_key: form.api_key }) : undefined
-      const { api_key: _discard, ...rest } = form
-      await apiCreateConnection(userId, { ...rest, extra_params } as any)
-      onSaved()
+      const res = await apiTestConnectionParams(userId, {
+        db_type:      form.db_type,
+        host:         form.host     || undefined,
+        port:         form.port     || undefined,
+        database:     form.database || undefined,
+        username:     form.username || undefined,
+        password:     form.password || undefined,
+        ssl_mode:     form.ssl_mode || undefined,
+        extra_params,
+      })
+      if (res.success) {
+        setTestStatus('ok')
+        setTestMessage('Connection successful!')
+        setDatabases(res.databases)
+      } else {
+        setTestStatus('error')
+        setTestMessage(res.error || 'Connection failed.')
+      }
     } catch (e: any) {
-      setError(e?.response?.data?.detail || 'Failed to save connection.')
+      setTestStatus('error')
+      setTestMessage(e?.response?.data?.detail || 'Failed to connect.')
+    }
+  }
+
+  const save = async () => {
+    if (!form.name) { setSaveError('Name is required.'); return }
+    setSaving(true)
+    setSaveError(null)
+    try {
+      if (isEdit) {
+        const extra_params = form.api_key ? JSON.stringify({ api_key: form.api_key }) : undefined
+        const updated = await apiUpdateConnection(userId, connection!.id, {
+          name:       form.name     || undefined,
+          host:       form.host     || undefined,
+          port:       form.port     || undefined,
+          database:   form.database || undefined,
+          username:   form.username || undefined,
+          password:   form.password || undefined,
+          ssl_mode:   form.ssl_mode || undefined,
+          extra_params,
+        } as any)
+        onSaved({ ...connection!, name: form.name, host: form.host as any, port: form.port as any, database: form.database as any, username: form.username as any, ssl_mode: form.ssl_mode as any })
+      } else {
+        const extra_params = form.api_key ? JSON.stringify({ api_key: form.api_key }) : undefined
+        const { api_key: _discard, ...rest } = form
+        await apiCreateConnection(userId, { ...rest, extra_params } as any)
+        onSaved()
+      }
+    } catch (e: any) {
+      setSaveError(e?.response?.data?.detail || 'Failed to save connection.')
     } finally {
       setSaving(false)
     }
   }
 
-  // Group DB types for the <select>
+  const isFileBased  = FILE_TYPES.has(form.db_type)
+  const isApiKeyAuth = API_KEY_TYPES.has(form.db_type)
+  const isRedis      = REDIS_TYPES.has(form.db_type)
+  const canListDbs   = CAN_LIST_DBS.has(form.db_type)
+  const showDbDropdown = canListDbs && testStatus === 'ok' && databases.length > 0
+  const canSave = isEdit ? true : testStatus === 'ok'
+
   const groups = Array.from(new Set(DB_TYPES.map(d => d.group)))
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
       <div className="bg-surface-100 border border-surface-50 rounded-xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-surface-50">
-          <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Add Connection</h2>
+          <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+            {isEdit ? 'Edit Connection' : 'Add Connection'}
+          </h2>
           <button onClick={onClose} className="btn-ghost p-1"><X size={15} /></button>
         </div>
 
@@ -104,26 +167,31 @@ export default function ConnectionForm({ onClose, onSaved }: Props) {
             <input
               value={form.name}
               onChange={e => set('name', e.target.value)}
-              className="w-full bg-surface-300 border border-surface-50 rounded px-3 py-1.5 text-gray-800 dark:text-gray-200 focus:outline-none focus:border-accent"
+              className={INPUT_CLS}
+              placeholder="My Database"
             />
           </div>
 
           {/* DB Type */}
           <div>
             <label className="block text-xs text-gray-400 mb-1">Database Type</label>
-            <select
-              value={form.db_type}
-              onChange={e => handleDbTypeChange(e.target.value)}
-              className="w-full bg-surface-300 border border-surface-50 rounded px-3 py-1.5 text-gray-800 dark:text-gray-200 focus:outline-none focus:border-accent"
-            >
-              {groups.map(g => (
-                <optgroup key={g} label={g}>
-                  {DB_TYPES.filter(d => d.group === g).map(d => (
-                    <option key={d.value} value={d.value}>{d.label}</option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
+            {isEdit ? (
+              <input value={DB_TYPES.find(d => d.value === form.db_type)?.label ?? form.db_type} disabled className={INPUT_CLS + ' opacity-50 cursor-not-allowed'} />
+            ) : (
+              <select
+                value={form.db_type}
+                onChange={e => handleDbTypeChange(e.target.value)}
+                className={INPUT_CLS}
+              >
+                {groups.map(g => (
+                  <optgroup key={g} label={g}>
+                    {DB_TYPES.filter(d => d.group === g).map(d => (
+                      <option key={d.value} value={d.value}>{d.label}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* SQLite: file path only */}
@@ -132,9 +200,9 @@ export default function ConnectionForm({ onClose, onSaved }: Props) {
               <label className="block text-xs text-gray-400 mb-1">File Path</label>
               <input
                 value={form.database}
-                onChange={e => set('database', e.target.value)}
+                onChange={e => setAndResetTest('database', e.target.value)}
                 placeholder="/path/to/database.db"
-                className="w-full bg-surface-300 border border-surface-50 rounded px-3 py-1.5 text-gray-800 dark:text-gray-200 focus:outline-none focus:border-accent"
+                className={INPUT_CLS}
               />
             </div>
           )}
@@ -146,8 +214,8 @@ export default function ConnectionForm({ onClose, onSaved }: Props) {
                 <label className="block text-xs text-gray-400 mb-1">Host</label>
                 <input
                   value={form.host}
-                  onChange={e => set('host', e.target.value)}
-                  className="w-full bg-surface-300 border border-surface-50 rounded px-3 py-1.5 text-gray-800 dark:text-gray-200 focus:outline-none focus:border-accent"
+                  onChange={e => setAndResetTest('host', e.target.value)}
+                  className={INPUT_CLS}
                 />
               </div>
               <div>
@@ -155,8 +223,8 @@ export default function ConnectionForm({ onClose, onSaved }: Props) {
                 <input
                   type="number"
                   value={form.port}
-                  onChange={e => set('port', parseInt(e.target.value))}
-                  className="w-full bg-surface-300 border border-surface-50 rounded px-3 py-1.5 text-gray-800 dark:text-gray-200 focus:outline-none focus:border-accent"
+                  onChange={e => setAndResetTest('port', parseInt(e.target.value))}
+                  className={INPUT_CLS}
                 />
               </div>
             </div>
@@ -167,25 +235,43 @@ export default function ConnectionForm({ onClose, onSaved }: Props) {
             <div>
               <label className="block text-xs text-gray-400 mb-1">
                 {isRedis ? 'DB Index (0–15)' : isApiKeyAuth ? 'Collection' : 'Database'}
+                {canListDbs && <span className="text-gray-600 ml-1">(optional)</span>}
               </label>
-              <input
-                value={form.database}
-                onChange={e => set('database', e.target.value)}
-                placeholder={isRedis ? '0' : ''}
-                className="w-full bg-surface-300 border border-surface-50 rounded px-3 py-1.5 text-gray-800 dark:text-gray-200 focus:outline-none focus:border-accent"
-              />
+              {showDbDropdown ? (
+                <select
+                  value={form.database}
+                  onChange={e => set('database', e.target.value)}
+                  className={INPUT_CLS}
+                >
+                  <option value="">— no specific database —</option>
+                  {databases.map(db => (
+                    <option key={db} value={db}>{db}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={form.database}
+                  onChange={e => set('database', e.target.value)}
+                  placeholder={
+                    canListDbs ? 'Leave blank — databases listed after test'
+                    : isRedis  ? '0'
+                    : ''
+                  }
+                  className={INPUT_CLS}
+                />
+              )}
             </div>
           )}
 
-          {/* Auth: API key for vector/chroma */}
+          {/* Auth: API key for vector DBs */}
           {isApiKeyAuth && (
             <div>
               <label className="block text-xs text-gray-400 mb-1">API Key</label>
               <input
                 value={form.api_key}
-                onChange={e => set('api_key', e.target.value)}
-                placeholder="optional"
-                className="w-full bg-surface-300 border border-surface-50 rounded px-3 py-1.5 text-gray-800 dark:text-gray-200 focus:outline-none focus:border-accent"
+                onChange={e => setAndResetTest('api_key', e.target.value)}
+                placeholder={isEdit ? 'leave blank to keep current' : 'optional'}
+                className={INPUT_CLS}
               />
             </div>
           )}
@@ -197,8 +283,8 @@ export default function ConnectionForm({ onClose, onSaved }: Props) {
                 <label className="block text-xs text-gray-400 mb-1">Username</label>
                 <input
                   value={form.username}
-                  onChange={e => set('username', e.target.value)}
-                  className="w-full bg-surface-300 border border-surface-50 rounded px-3 py-1.5 text-gray-800 dark:text-gray-200 focus:outline-none focus:border-accent"
+                  onChange={e => setAndResetTest('username', e.target.value)}
+                  className={INPUT_CLS}
                 />
               </div>
               <div>
@@ -206,8 +292,9 @@ export default function ConnectionForm({ onClose, onSaved }: Props) {
                 <input
                   type="password"
                   value={form.password}
-                  onChange={e => set('password', e.target.value)}
-                  className="w-full bg-surface-300 border border-surface-50 rounded px-3 py-1.5 text-gray-800 dark:text-gray-200 focus:outline-none focus:border-accent"
+                  onChange={e => setAndResetTest('password', e.target.value)}
+                  placeholder={isEdit ? 'leave blank to keep current' : ''}
+                  className={INPUT_CLS}
                 />
               </div>
             </div>
@@ -220,20 +307,49 @@ export default function ConnectionForm({ onClose, onSaved }: Props) {
               <input
                 type="password"
                 value={form.password}
-                onChange={e => set('password', e.target.value)}
-                placeholder="optional"
-                className="w-full bg-surface-300 border border-surface-50 rounded px-3 py-1.5 text-gray-800 dark:text-gray-200 focus:outline-none focus:border-accent"
+                onChange={e => setAndResetTest('password', e.target.value)}
+                placeholder={isEdit ? 'leave blank to keep current' : 'optional'}
+                className={INPUT_CLS}
               />
             </div>
           )}
 
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {/* Test status */}
+          {testStatus === 'ok' && testMessage && (
+            <div className="flex items-center gap-2 text-green-400 text-xs py-1">
+              <CheckCircle size={13} className="flex-shrink-0" />
+              <span>{testMessage}</span>
+              {databases.length > 0 && <span className="text-gray-500">· {databases.length} database(s) found</span>}
+            </div>
+          )}
+          {testStatus === 'error' && testMessage && (
+            <div className="flex items-start gap-2 text-red-400 text-xs py-1">
+              <XCircle size={13} className="flex-shrink-0 mt-0.5" />
+              <span className="break-words">{testMessage}</span>
+            </div>
+          )}
+
+          {saveError && <p className="text-xs text-red-400">{saveError}</p>}
         </div>
 
         <div className="flex justify-end gap-2 px-5 py-4 border-t border-surface-50">
           <button onClick={onClose} className="btn-ghost">Cancel</button>
-          <button onClick={save} disabled={saving} className="btn-primary">
-            {saving ? 'Saving…' : 'Save Connection'}
+          <button
+            onClick={runTest}
+            disabled={testStatus === 'testing'}
+            className="btn-ghost"
+          >
+            {testStatus === 'testing'
+              ? <span className="flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" />Testing…</span>
+              : 'Test Connection'}
+          </button>
+          <button
+            onClick={save}
+            disabled={saving || !canSave}
+            className="btn-primary"
+            title={!canSave ? 'Run a successful test first' : undefined}
+          >
+            {saving ? 'Saving…' : isEdit ? 'Save Changes' : 'Save Connection'}
           </button>
         </div>
       </div>

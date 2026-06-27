@@ -4,7 +4,11 @@
 
 ## Features
 
-- **Full DB administration** — browse databases, tables, views; execute queries; create/truncate/drop objects. Supports any SQLAlchemy-compatible database (PostgreSQL, MySQL, SQLite, MSSQL, and more).
+- **Full DB administration** — browse databases, tables, views; execute queries; create/truncate/drop objects. Supports any SQLAlchemy-compatible database (PostgreSQL, MySQL, SQLite, MSSQL, and more) plus MongoDB, Redis, and vector databases (Qdrant, ChromaDB, Weaviate).
+- **Test before save** — every new connection is tested before it can be saved. Errors are shown inline in the connection dialog. For databases that allow connecting without specifying a name (PostgreSQL, MySQL, MongoDB), available databases are listed automatically after a successful test so you can pick one from a dropdown.
+- **Admin operations** — create a new database or a new DB user (with optional privilege grant) directly from the UI using an existing admin connection. Supported for PostgreSQL and MySQL/MariaDB.
+- **Delete connections** — remove a saved connection from the sidebar with a confirmation prompt.
+- **Default connections** — add a `defaultConnections.py` file in the `api/` directory to pre-configure connections that are created automatically on first run and cannot be deleted from the UI (ideal for shared/kiosk deployments).
 - **AI chat agent** — powered by LangGraph and Claude, ask questions about your data and database state in natural language.
 - **Backup tools** — trigger and download backups, callable from the AI agent.
 - **Schema diff & migration** — compare two database schemas and generate migration scripts.

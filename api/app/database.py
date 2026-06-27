@@ -7,13 +7,13 @@ def _make_async_url(url: str) -> str:
     """Convert sync SQLAlchemy URL to its async equivalent for the internal DB."""
     return (
         url.replace("postgresql+psycopg2://", "postgresql+asyncpg://")
-           .replace("postgresql://", "postgresql+asyncpg://")
+        .replace("postgresql://", "postgresql+asyncpg://")
     )
 
 
 engine = create_async_engine(
     _make_async_url(settings.database_url),
-    echo=not settings.is_production,
+    echo=False,
     pool_pre_ping=True,
 )
 

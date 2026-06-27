@@ -17,6 +17,7 @@ export interface DbConnection {
   username: string | null
   ssl_mode: string | null
   created_at: string
+  is_default?: boolean
 }
 
 export interface DbObject {

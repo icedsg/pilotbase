@@ -11,6 +11,7 @@ interface PilotbaseStore {
   activeConnectionId: string | null
   setConnections: (c: DbConnection[]) => void
   addConnection: (c: DbConnection) => void
+  updateConnection: (c: DbConnection) => void
   removeConnection: (id: string) => void
   setActiveConnection: (id: string | null) => void
 
@@ -48,6 +49,8 @@ export const useStore = create<PilotbaseStore>((set) => ({
   activeConnectionId: null,
   setConnections: (connections) => set({ connections }),
   addConnection: (c) => set((s) => ({ connections: [...s.connections, c] })),
+  updateConnection: (c) =>
+    set((s) => ({ connections: s.connections.map((x) => (x.id === c.id ? c : x)) })),
   removeConnection: (id) =>
     set((s) => ({
       connections: s.connections.filter((c) => c.id !== id),

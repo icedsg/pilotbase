@@ -24,7 +24,7 @@ class BaseAdapter(ABC):
     def list_databases(self) -> List[str]: ...
 
     @abstractmethod
-    def list_objects(self, schema: Optional[str] = None) -> List[Dict]: ...
+    def list_objects(self, schema: Optional[str] = None, database: Optional[str] = None) -> List[Dict]: ...
 
     @abstractmethod
     def execute_query(self, query: str, params: Optional[Dict] = None, limit: int = 1000) -> Dict[str, Any]: ...
@@ -51,6 +51,46 @@ class SQLAdapter(BaseAdapter):
         except Exception:
             return False
 
+    def create_database(self, db_name: str) -> None:
+        from sqlalchemy import text
+        if '"' in db_name:
+            raise ValueError("Database name cannot contain double quotes")
+        if self._db_type == "postgresql":
+            with self._engine.connect() as c:
+                c = c.execution_options(isolation_level="AUTOCOMMIT")
+                c.execute(text(f'CREATE DATABASE "{db_name}"'))
+        elif self._db_type in ("mysql", "mariadb"):
+            if "`" in db_name:
+                raise ValueError("Database name cannot contain backticks")
+            with self._engine.begin() as c:
+                c.execute(text(f"CREATE DATABASE `{db_name}`"))
+        else:
+            raise ValueError(f"create_database is not supported for {self._db_type}")
+
+    def create_db_user(self, username: str, password: str, database: Optional[str] = None) -> None:
+        from sqlalchemy import text
+        if self._db_type == "postgresql":
+            if '"' in username:
+                raise ValueError("Username cannot contain double quotes")
+            with self._engine.begin() as c:
+                c.execute(text(f'CREATE USER "{username}" WITH PASSWORD :pw'), {"pw": password})
+                if database:
+                    if '"' in database:
+                        raise ValueError("Database name cannot contain double quotes")
+                    c.execute(text(f'GRANT ALL PRIVILEGES ON DATABASE "{database}" TO "{username}"'))
+        elif self._db_type in ("mysql", "mariadb"):
+            if "'" in username or "\\" in username:
+                raise ValueError("Username cannot contain single quotes or backslashes")
+            with self._engine.begin() as c:
+                c.execute(text(f"CREATE USER '{username}'@'%' IDENTIFIED BY :pw"), {"pw": password})
+                if database:
+                    if "`" in database:
+                        raise ValueError("Database name cannot contain backticks")
+                    c.execute(text(f"GRANT ALL PRIVILEGES ON `{database}`.* TO '{username}'@'%'"))
+                    c.execute(text("FLUSH PRIVILEGES"))
+        else:
+            raise ValueError(f"create_db_user is not supported for {self._db_type}")
+
     def list_databases(self) -> List[str]:
         from sqlalchemy import text
         with self._engine.connect() as c:
@@ -66,31 +106,64 @@ class SQLAdapter(BaseAdapter):
         from sqlalchemy import inspect as sa_inspect
         return sa_inspect(self._engine).get_schema_names()
 
-    def list_objects(self, schema: Optional[str] = None) -> List[Dict]:
-        from sqlalchemy import inspect as sa_inspect
-        inspector = sa_inspect(self._engine)
-        tables = [{"name": t, "type": "table"} for t in inspector.get_table_names(schema=schema)]
-        views  = [{"name": v, "type": "view"}  for v in inspector.get_view_names(schema=schema)]
-        return tables + views
+    def list_objects(self, schema: Optional[str] = None, database: Optional[str] = None) -> List[Dict]:
+        from sqlalchemy import create_engine, inspect as sa_inspect
+        engine = self._engine
+        temp_engine = None
+        try:
+            if database and self._db_type in ("postgresql", "mssql"):
+                temp_engine = create_engine(engine.url.set(database=database), pool_pre_ping=True)
+                engine = temp_engine
+            elif database and self._db_type in ("mysql", "mariadb"):
+                schema = database
+            inspector = sa_inspect(engine)
+            tables = [{"name": t, "type": "table"} for t in inspector.get_table_names(schema=schema)]
+            views  = [{"name": v, "type": "view"}  for v in inspector.get_view_names(schema=schema)]
+            return tables + views
+        finally:
+            if temp_engine:
+                temp_engine.dispose()
 
-    def describe_table(self, table: str, schema: Optional[str] = None) -> Dict[str, Any]:
-        from sqlalchemy import inspect as sa_inspect
-        inspector = sa_inspect(self._engine)
-        return {
-            "columns":      [{"name": c["name"], "type": str(c["type"]), "nullable": c.get("nullable", True), "default": str(c.get("server_default") or "")} for c in inspector.get_columns(table, schema=schema)],
-            "primary_keys": inspector.get_pk_constraint(table, schema=schema).get("constrained_columns", []),
-            "foreign_keys": inspector.get_foreign_keys(table, schema=schema),
-            "indexes":      inspector.get_indexes(table, schema=schema),
-        }
+    def describe_table(self, table: str, schema: Optional[str] = None, database: Optional[str] = None) -> Dict[str, Any]:
+        from sqlalchemy import create_engine, inspect as sa_inspect
+        engine = self._engine
+        temp_engine = None
+        try:
+            if database and self._db_type in ("postgresql", "mssql"):
+                temp_engine = create_engine(engine.url.set(database=database), pool_pre_ping=True)
+                engine = temp_engine
+            elif database and self._db_type in ("mysql", "mariadb"):
+                schema = database
+            inspector = sa_inspect(engine)
+            return {
+                "columns":      [{"name": c["name"], "type": str(c["type"]), "nullable": c.get("nullable", True), "default": str(c.get("server_default") or "")} for c in inspector.get_columns(table, schema=schema)],
+                "primary_keys": inspector.get_pk_constraint(table, schema=schema).get("constrained_columns", []),
+                "foreign_keys": inspector.get_foreign_keys(table, schema=schema),
+                "indexes":      inspector.get_indexes(table, schema=schema),
+            }
+        finally:
+            if temp_engine:
+                temp_engine.dispose()
 
-    def execute_query(self, query: str, params: Optional[Dict] = None, limit: int = 1000) -> Dict[str, Any]:
-        from sqlalchemy import text
-        with self._engine.begin() as c:
-            result = c.execute(text(query), params or {})
-            if result.returns_rows:
-                rows = [dict(row._mapping) for row in result.fetchmany(limit)]
-                return {"rows": rows, "columns": list(result.keys()), "row_count": len(rows), "truncated": len(rows) == limit}
-            return {"rows": [], "columns": [], "row_count": result.rowcount, "affected": result.rowcount}
+    def execute_query(self, query: str, params: Optional[Dict] = None, limit: int = 1000, database: Optional[str] = None) -> Dict[str, Any]:
+        from sqlalchemy import create_engine, text
+        engine = self._engine
+        temp_engine = None
+        try:
+            if database and self._db_type in ("postgresql", "mssql"):
+                temp_engine = create_engine(engine.url.set(database=database), pool_pre_ping=True)
+                engine = temp_engine
+            elif database and self._db_type in ("mysql", "mariadb"):
+                pass  # MySQL uses qualified table names (db.table) in the query itself
+            with engine.begin() as c:
+                result = c.execute(text(query), params or {})
+                if result.returns_rows:
+                    rows = [dict(row._mapping) for row in result.fetchmany(limit)]
+                    return {"rows": rows, "columns": list(result.keys()), "row_count": len(rows), "truncated": len(rows) == limit}
+                return {"rows": [], "columns": [], "row_count": result.rowcount, "affected": result.rowcount}
+        finally:
+            if temp_engine:
+                temp_engine.dispose()
 
     def close(self) -> None:
         self._engine.dispose()
@@ -130,8 +203,8 @@ class MongoAdapter(BaseAdapter):
     def list_databases(self) -> List[str]:
         return self._client.list_database_names()
 
-    def list_objects(self, schema: Optional[str] = None) -> List[Dict]:
-        db_name = schema or self._default_db
+    def list_objects(self, schema: Optional[str] = None, database: Optional[str] = None) -> List[Dict]:
+        db_name = database or schema or self._default_db
         return [{"name": c, "type": "collection"} for c in self._client[db_name].list_collection_names()]
 
     def execute_query(self, query: str, params: Optional[Dict] = None, limit: int = 1000) -> Dict[str, Any]:
@@ -192,7 +265,7 @@ class RedisAdapter(BaseAdapter):
         # Redis logical DBs are 0–15 by default
         return [str(i) for i in range(16)]
 
-    def list_objects(self, schema: Optional[str] = None) -> List[Dict]:
+    def list_objects(self, schema: Optional[str] = None, database: Optional[str] = None) -> List[Dict]:
         keys = self._client.keys("*")
         return [{"name": k, "type": "key"} for k in list(keys)[:500]]
 
@@ -245,7 +318,7 @@ class QdrantAdapter(BaseAdapter):
     def list_databases(self) -> List[str]:
         return ["qdrant"]
 
-    def list_objects(self, schema: Optional[str] = None) -> List[Dict]:
+    def list_objects(self, schema: Optional[str] = None, database: Optional[str] = None) -> List[Dict]:
         return [{"name": c.name, "type": "collection"} for c in self._client.get_collections().collections]
 
     def execute_query(self, query: str, params: Optional[Dict] = None, limit: int = 1000) -> Dict[str, Any]:
@@ -304,7 +377,7 @@ class ChromaAdapter(BaseAdapter):
     def list_databases(self) -> List[str]:
         return ["chroma"]
 
-    def list_objects(self, schema: Optional[str] = None) -> List[Dict]:
+    def list_objects(self, schema: Optional[str] = None, database: Optional[str] = None) -> List[Dict]:
         return [{"name": c.name, "type": "collection"} for c in self._client.list_collections()]
 
     def execute_query(self, query: str, params: Optional[Dict] = None, limit: int = 1000) -> Dict[str, Any]:
@@ -368,7 +441,7 @@ class WeaviateAdapter(BaseAdapter):
     def list_databases(self) -> List[str]:
         return ["weaviate"]
 
-    def list_objects(self, schema: Optional[str] = None) -> List[Dict]:
+    def list_objects(self, schema: Optional[str] = None, database: Optional[str] = None) -> List[Dict]:
         schema_data = self._client.schema.get()
         return [{"name": c["class"], "type": "collection"} for c in schema_data.get("classes", [])]
 
@@ -482,6 +555,55 @@ class DatabaseService:
         except Exception:
             return False
 
+    def test_connection_params(
+        self,
+        db_type: str,
+        host: Optional[str] = None,
+        port: Optional[int] = None,
+        database: Optional[str] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        ssl_mode: Optional[str] = None,
+        extra_params: Optional[str] = None,
+    ) -> tuple:
+        """Test connection with raw params (no saved connection needed).
+        Returns (success: bool, error: str, databases: List[str])."""
+        # For PostgreSQL with no DB specified, use 'postgres' so list_databases works
+        effective_db = database
+        if db_type == "postgresql" and not effective_db:
+            effective_db = "postgres"
+
+        tmp = DbConnection(
+            id="__test_params__",
+            name="__test__",
+            db_type=db_type,
+            host=host,
+            port=port,
+            database=effective_db,
+            username=username,
+            password_encrypted=self.encrypt_password(password) if password else None,
+            ssl_mode=ssl_mode,
+            extra_params=extra_params,
+            created_by="__system__",
+        )
+
+        adapter = None
+        try:
+            adapter = self._make_adapter(tmp)
+            ok = adapter.test_connection()
+            if not ok:
+                return False, "Connection test failed. Check your credentials.", []
+            dbs = adapter.list_databases()
+            return True, "", dbs
+        except Exception as e:
+            return False, str(e), []
+        finally:
+            if adapter:
+                try:
+                    adapter.close()
+                except Exception:
+                    pass
+
     def list_databases(self, conn: DbConnection) -> List[str]:
         return self.get_adapter(conn).list_databases()
 
@@ -491,13 +613,13 @@ class DatabaseService:
             return adapter.list_schemas()
         return []
 
-    def list_objects(self, conn: DbConnection, schema: Optional[str] = None) -> List[Dict]:
-        return self.get_adapter(conn).list_objects(schema)
+    def list_objects(self, conn: DbConnection, schema: Optional[str] = None, database: Optional[str] = None) -> List[Dict]:
+        return self.get_adapter(conn).list_objects(schema, database)
 
-    def describe_table(self, conn: DbConnection, table: str, schema: Optional[str] = None) -> Dict[str, Any]:
+    def describe_table(self, conn: DbConnection, table: str, schema: Optional[str] = None, database: Optional[str] = None) -> Dict[str, Any]:
         adapter = self.get_adapter(conn)
         if isinstance(adapter, SQLAdapter):
-            return adapter.describe_table(table, schema)
+            return adapter.describe_table(table, schema, database)
         return {"error": f"describe_table is not supported for {conn.db_type}"}
 
     def execute_query(
@@ -506,8 +628,21 @@ class DatabaseService:
         query: str,
         params: Optional[Dict] = None,
         limit: int = 1000,
+        database: Optional[str] = None,
     ) -> Dict[str, Any]:
-        return self.get_adapter(conn).execute_query(query, params, limit)
+        return self.get_adapter(conn).execute_query(query, params, limit, database)
+
+    def create_database(self, conn: DbConnection, db_name: str) -> None:
+        adapter = self.get_adapter(conn)
+        if not isinstance(adapter, SQLAdapter):
+            raise ValueError(f"create_database is not supported for {conn.db_type}")
+        adapter.create_database(db_name)
+
+    def create_db_user(self, conn: DbConnection, username: str, password: str, database: Optional[str] = None) -> None:
+        adapter = self.get_adapter(conn)
+        if not isinstance(adapter, SQLAdapter):
+            raise ValueError(f"create_db_user is not supported for {conn.db_type}")
+        adapter.create_db_user(username, password, database)
 
 
 db_service = DatabaseService()
