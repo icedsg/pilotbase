@@ -295,6 +295,20 @@ async def test_connection(
     return {"success": ok}
 
 
+@router.get("/{conn_id}/version")
+async def get_db_version(
+    conn_id: str,
+    user_anon_id: str,
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(DbConnection).where(DbConnection.id == conn_id))
+    conn = result.scalar_one_or_none()
+    if not conn:
+        raise HTTPException(status_code=404, detail="Connection not found.")
+    version = db_service.get_version(conn)
+    return {"version": version}
+
+
 @router.get("/{conn_id}/databases")
 async def list_databases(
     conn_id: str,

@@ -70,6 +70,9 @@ export const apiAdminCreateUser = (
 ): Promise<{ message: string }> =>
   http.post(`/connections/${connId}/admin/create-user`, { user_anon_id: userId, username, password, database }).then(r => r.data)
 
+export const apiGetDbVersion = (userId: string, connId: string): Promise<{ version: string | null }> =>
+  http.get(`/connections/${connId}/version`, { params: { user_anon_id: userId } }).then(r => r.data)
+
 export const apiListDatabases = (userId: string, connId: string): Promise<{ databases: string[] }> =>
   http.get(`/connections/${connId}/databases`, { params: { user_anon_id: userId } }).then(r => r.data)
 
@@ -84,8 +87,8 @@ export const apiDescribeTable = (userId: string, connId: string, table: string, 
 export const apiExecuteQuery = (userId: string, connId: string, query: string, database?: string): Promise<QueryResult> =>
   http.post('/query/execute', { user_anon_id: userId, connection_id: connId, query, database }).then(r => r.data)
 
-export const apiRunDdl = (userId: string, connId: string, action: string, objectName: string, objectType: string) =>
-  http.post('/query/ddl', { user_anon_id: userId, connection_id: connId, action, object_name: objectName, object_type: objectType }).then(r => r.data)
+export const apiRunDdl = (userId: string, connId: string, action: string, objectName: string, objectType: string, database?: string) =>
+  http.post('/query/ddl', { user_anon_id: userId, connection_id: connId, action, object_name: objectName, object_type: objectType, database }).then(r => r.data)
 
 // ── Backup ────────────────────────────────────────────────────────────────────
 

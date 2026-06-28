@@ -157,7 +157,7 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
           <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
             {isEdit ? 'Edit Connection' : 'Add Connection'}
           </h2>
-          <button onClick={onClose} className="btn-ghost p-1"><X size={15} /></button>
+          <button onClick={onClose} className="btn-ghost p-1"><X size={20} /></button>
         </div>
 
         <div className="p-5 space-y-3 text-sm">
@@ -317,14 +317,14 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
           {/* Test status */}
           {testStatus === 'ok' && testMessage && (
             <div className="flex items-center gap-2 text-green-400 text-xs py-1">
-              <CheckCircle size={13} className="flex-shrink-0" />
+              <CheckCircle size={17} className="flex-shrink-0" />
               <span>{testMessage}</span>
               {databases.length > 0 && <span className="text-gray-500">· {databases.length} database(s) found</span>}
             </div>
           )}
           {testStatus === 'error' && testMessage && (
             <div className="flex items-start gap-2 text-red-400 text-xs py-1">
-              <XCircle size={13} className="flex-shrink-0 mt-0.5" />
+              <XCircle size={17} className="flex-shrink-0 mt-0.5" />
               <span className="break-words">{testMessage}</span>
             </div>
           )}
@@ -340,7 +340,7 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
             className="btn-ghost"
           >
             {testStatus === 'testing'
-              ? <span className="flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" />Testing…</span>
+              ? <span className="flex items-center gap-1.5"><Loader2 size={16} className="animate-spin" />Testing…</span>
               : 'Test Connection'}
           </button>
           <button

@@ -15,6 +15,7 @@ export default function LeftPanel({ onClose }: Props) {
   const { setConnections } = useStore()
   const [showForm, setShowForm] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   const refresh = async () => {
     if (!userId) return
@@ -22,6 +23,7 @@ export default function LeftPanel({ onClose }: Props) {
     try {
       const data = await apiListConnections(userId)
       setConnections(data)
+      setRefreshKey(k => k + 1)
     } finally {
       setRefreshing(false)
     }
@@ -33,19 +35,19 @@ export default function LeftPanel({ onClose }: Props) {
         <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Connections</span>
         <div className="flex items-center gap-0.5">
           <button onClick={refresh} className="btn-ghost p-1" title="Refresh">
-            <RefreshCw size={12} className={refreshing ? 'animate-spin' : ''} />
+            <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
           </button>
           <button onClick={() => setShowForm(true)} className="btn-ghost p-1" title="Add connection">
-            <Plus size={13} />
+            <Plus size={17} />
           </button>
           <button onClick={onClose} className="btn-ghost p-1" title="Close panel">
-            <X size={13} />
+            <X size={17} />
           </button>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <ConnectionTree />
+        <ConnectionTree refreshKey={refreshKey} />
       </div>
 
       {showForm && (

@@ -3,22 +3,26 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    font-size: 130%;
+  }
+
   :root {
     color-scheme: light;
-    --color-surface: #f1f3f6;
-    --color-surface-50: #d0d5e2;
-    --color-surface-100: #f7f8fa;
-    --color-surface-200: #f1f3f6;
-    --color-surface-300: #e4e7ef;
+    --color-surface: #f0f4f9;
+    --color-surface-50: #ccd5e4;
+    --color-surface-100: #f6f8fc;
+    --color-surface-200: #f0f4f9;
+    --color-surface-300: #dfe6f0;
   }
 
   :root.dark {
     color-scheme: dark;
-    --color-surface: #1a1d23;
-    --color-surface-50: #2a2d35;
-    --color-surface-100: #22252d;
-    --color-surface-200: #1a1d23;
-    --color-surface-300: #13151a;
+    --color-surface: #0f1624;
+    --color-surface-50: #1d2d42;
+    --color-surface-100: #16202e;
+    --color-surface-200: #0f1624;
+    --color-surface-300: #090e18;
   }
 
   body {
@@ -64,7 +68,7 @@
   }
 
   .tree-item {
-    @apply flex items-center gap-1.5 px-2 py-0.5 rounded text-sm text-gray-600 dark:text-gray-300 hover:bg-surface-50 hover:text-gray-900 dark:hover:text-gray-100 cursor-pointer transition-colors select-none;
+    @apply flex items-center gap-1.5 px-2 py-0.5 rounded text-sm text-gray-600 dark:text-gray-200 hover:bg-white/10 hover:text-gray-900 dark:hover:text-white cursor-pointer transition-colors select-none;
   }
 
   .tree-item-active {
@@ -72,6 +76,6 @@
   }
 
   .ctx-item {
-    @apply flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-400 hover:text-gray-100 hover:bg-surface-50 cursor-pointer transition-colors;
+    @apply flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-600 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer transition-colors;
   }
 }

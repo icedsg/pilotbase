@@ -50,15 +50,15 @@ export default function RightPanel({ onClose }: Props) {
     <div className="h-full flex flex-col overflow-hidden border-l border-surface-50">
       <div className="flex items-center justify-between px-3 py-2 border-b border-surface-50 flex-shrink-0">
         <div className="flex items-center gap-1.5">
-          <Bot size={13} className="text-gray-500" />
+          <Bot size={17} className="text-gray-500" />
           <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">AI Agent</span>
         </div>
         <div className="flex items-center gap-0.5">
           <button onClick={clearChat} className="btn-ghost p-1" title="Clear chat">
-            <Trash2 size={12} />
+            <Trash2 size={16} />
           </button>
           <button onClick={onClose} className="btn-ghost p-1" title="Close panel">
-            <X size={13} />
+            <X size={17} />
           </button>
         </div>
       </div>
@@ -66,7 +66,7 @@ export default function RightPanel({ onClose }: Props) {
       <div className="flex-1 overflow-y-auto p-2 space-y-2 text-xs">
         {chatMessages.length === 0 && (
           <div className="text-center text-gray-600 mt-4 px-4">
-            <Bot size={24} className="mx-auto mb-2 text-gray-700" />
+            <Bot size={31} className="mx-auto mb-2 text-gray-700" />
             <p>Ask me anything about your database.</p>
             <p className="mt-1 text-gray-700">Select a connection first.</p>
           </div>
@@ -81,7 +81,7 @@ export default function RightPanel({ onClose }: Props) {
               }`}
             >
               <p className="whitespace-pre-wrap break-words leading-relaxed">{msg.content}</p>
-              <p className="text-[10px] text-gray-600 mt-1">{msg.timestamp.toLocaleTimeString()}</p>
+              <p className="text-[13px] text-gray-600 mt-1">{msg.timestamp.toLocaleTimeString()}</p>
             </div>
           </div>
         ))}
@@ -112,7 +112,7 @@ export default function RightPanel({ onClose }: Props) {
             disabled={!input.trim() || !activeConnectionId || chatLoading}
             className="btn-primary px-2 py-1.5"
           >
-            <Send size={13} />
+            <Send size={17} />
           </button>
         </div>
       </div>

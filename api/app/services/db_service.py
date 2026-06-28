@@ -32,6 +32,9 @@ class BaseAdapter(ABC):
     @abstractmethod
     def close(self) -> None: ...
 
+    def get_version(self) -> Optional[str]:
+        return None
+
 
 # ── SQL (SQLAlchemy) ──────────────────────────────────────────────────────────
 
@@ -165,6 +168,25 @@ class SQLAdapter(BaseAdapter):
             if temp_engine:
                 temp_engine.dispose()
 
+    def get_version(self) -> Optional[str]:
+        from sqlalchemy import text
+        try:
+            with self._engine.connect() as c:
+                if self._db_type == "postgresql":
+                    row = c.execute(text("SHOW server_version")).fetchone()
+                    return row[0].split()[0] if row else None
+                if self._db_type in ("mysql", "mariadb"):
+                    row = c.execute(text("SELECT VERSION()")).fetchone()
+                    return row[0] if row else None
+                if self._db_type == "sqlite":
+                    row = c.execute(text("SELECT sqlite_version()")).fetchone()
+                    return row[0] if row else None
+                if self._db_type == "mssql":
+                    row = c.execute(text("SELECT SERVERPROPERTY('ProductVersion')")).fetchone()
+                    return str(row[0]) if row else None
+        except Exception:
+            return None
+
     def close(self) -> None:
         self._engine.dispose()
 
@@ -235,6 +257,12 @@ class MongoAdapter(BaseAdapter):
         columns = list(rows[0].keys()) if rows else []
         return {"rows": rows, "columns": columns, "row_count": len(rows), "truncated": len(rows) == limit}
 
+    def get_version(self) -> Optional[str]:
+        try:
+            return self._client.server_info().get("version")
+        except Exception:
+            return None
+
     def close(self) -> None:
         self._client.close()
 
@@ -285,6 +313,12 @@ class RedisAdapter(BaseAdapter):
             rows = [{"key": k, "value": v} for k, v in list(result.items())[:limit]]
             return {"rows": rows, "columns": ["key", "value"], "row_count": len(rows), "truncated": False}
         return {"rows": [{"result": str(result)}], "columns": ["result"], "row_count": 1, "truncated": False}
+
+    def get_version(self) -> Optional[str]:
+        try:
+            return self._client.info("server").get("redis_version")
+        except Exception:
+            return None
 
     def close(self) -> None:
         self._client.close()
@@ -631,6 +665,12 @@ class DatabaseService:
         database: Optional[str] = None,
     ) -> Dict[str, Any]:
         return self.get_adapter(conn).execute_query(query, params, limit, database)
+
+    def get_version(self, conn: DbConnection) -> Optional[str]:
+        try:
+            return self.get_adapter(conn).get_version()
+        except Exception:
+            return None
 
     def create_database(self, conn: DbConnection, db_name: str) -> None:
         adapter = self.get_adapter(conn)

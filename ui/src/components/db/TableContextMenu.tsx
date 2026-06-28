@@ -50,22 +50,22 @@ export default function TableContextMenu({ target, onViewRows, onViewColumns, on
     <div
       ref={ref}
       style={{ position: 'fixed', left, top, zIndex: 9999 }}
-      className="bg-surface-100 border border-surface-50 rounded-lg shadow-2xl py-1 min-w-[190px]"
+      className="bg-surface-100 border border-surface-50 rounded-lg shadow-[0_8px_32px_rgba(0,0,0,0.5)] py-1 min-w-[190px]"
       onContextMenu={(e) => e.preventDefault()}
     >
       <div className="px-3 py-1.5 border-b border-surface-50 mb-1">
-        <div className="text-[10px] text-gray-500 uppercase tracking-wider">{label}</div>
-        <div className="font-mono text-xs text-gray-300 truncate mt-0.5">{target.name}</div>
+        <div className="text-[13px] text-gray-400 dark:text-gray-500 uppercase tracking-wider">{label}</div>
+        <div className="font-mono text-xs text-gray-700 dark:text-gray-300 truncate mt-0.5">{target.name}</div>
       </div>
 
-      <button className="ctx-item" onClick={() => { onViewRows(); onClose() }}>
-        <Rows3 size={12} />
+      <button className="ctx-item hover:text-gray-900 dark:hover:text-white" onClick={() => { onViewRows(); onClose() }}>
+        <Rows3 size={16} />
         <span>View Rows</span>
       </button>
 
       {(isTable || isView) && (
-        <button className="ctx-item" onClick={() => { onViewColumns(); onClose() }}>
-          <Columns3 size={12} />
+        <button className="ctx-item hover:text-gray-900 dark:hover:text-white" onClick={() => { onViewColumns(); onClose() }}>
+          <Columns3 size={16} />
           <span>View Columns</span>
         </button>
       )}
@@ -74,13 +74,13 @@ export default function TableContextMenu({ target, onViewRows, onViewColumns, on
         <>
           <div className="border-t border-surface-50 my-1" />
           {isTable && (
-            <button className="ctx-item hover:text-yellow-400" onClick={() => { onTruncate(); onClose() }}>
-              <Eraser size={12} />
+            <button className="ctx-item hover:text-yellow-600 dark:hover:text-yellow-400" onClick={() => { onTruncate(); onClose() }}>
+              <Eraser size={16} />
               <span>Truncate Table</span>
             </button>
           )}
-          <button className="ctx-item hover:text-red-400" onClick={() => { onDrop(); onClose() }}>
-            <Trash2 size={12} />
+          <button className="ctx-item hover:text-red-600 dark:hover:text-red-400" onClick={() => { onDrop(); onClose() }}>
+            <Trash2 size={16} />
             <span>Drop {label}</span>
           </button>
         </>

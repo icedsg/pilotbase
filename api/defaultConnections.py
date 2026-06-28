@@ -16,7 +16,7 @@ DEFAULT_CONNECTIONS: list[dict] = [
         "port": 5432,
         "database": "postgres",       # optional — leave blank to see all databases
         "username": "postgres",
-        "password": "fire#50Fly",
+        "password": "",
         "ssl_mode": None,
     }
 ]

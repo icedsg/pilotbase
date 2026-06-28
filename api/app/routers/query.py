@@ -46,6 +46,7 @@ class DDLRequest(BaseModel):
     action: str          # truncate | drop_table | drop_database | create_database
     object_name: str
     object_type: str     # table | database
+    database: Optional[str] = None
 
 
 @router.post("/ddl")
@@ -61,12 +62,20 @@ async def run_ddl(
     if not conn:
         raise HTTPException(status_code=404, detail="Connection not found.")
 
+    if conn.db_type in ("mysql", "mariadb"):
+        if body.database and body.object_type != "database":
+            q = f"`{body.database}`.`{body.object_name}`"
+        else:
+            q = f"`{body.object_name}`"
+    else:
+        q = f'"{body.object_name}"'
+
     action_map = {
-        ("truncate", "table"):           f'TRUNCATE TABLE "{body.object_name}"',
-        ("drop_table", "table"):         f'DROP TABLE IF EXISTS "{body.object_name}"',
-        ("drop_view", "view"):           f'DROP VIEW IF EXISTS "{body.object_name}"',
-        ("drop_database", "database"):   f'DROP DATABASE IF EXISTS "{body.object_name}"',
-        ("create_database", "database"): f'CREATE DATABASE "{body.object_name}"',
+        ("truncate", "table"):           f'TRUNCATE TABLE {q}',
+        ("drop_table", "table"):         f'DROP TABLE IF EXISTS {q}',
+        ("drop_view", "view"):           f'DROP VIEW IF EXISTS {q}',
+        ("drop_database", "database"):   f'DROP DATABASE IF EXISTS {q}',
+        ("create_database", "database"): f'CREATE DATABASE {q}',
     }
 
     sql = action_map.get((body.action, body.object_type))

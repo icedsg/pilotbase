@@ -1,32 +1,41 @@
-import { useRef } from 'react'
-import Editor from '@monaco-editor/react'
-import { Play, Loader2, Copy } from 'lucide-react'
+import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
+import Editor, { useMonaco } from '@monaco-editor/react'
 import { useStore } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
-import { apiExecuteQuery } from '../../api/client'
+import { apiExecuteQuery, apiListObjects, apiDescribeTable } from '../../api/client'
 
-export default function QueryEditor() {
+export interface QueryEditorHandle {
+  run: () => void
+}
+
+const QueryEditor = forwardRef<QueryEditorHandle, {}>((_, ref) => {
   const { userId } = useUserSession()
   const {
     activeConnectionId,
+    activeDatabase,
     activeQuery,
     setActiveQuery,
     setQueryResult,
     queryLoading,
     setQueryLoading,
+    setColumnViewContext,
     theme,
+    connections,
   } = useStore()
 
   const editorRef = useRef<any>(null)
+  const completionDisposableRef = useRef<any>(null)
+  const monaco = useMonaco()
 
   const runQuery = async () => {
     const query = editorRef.current?.getValue()?.trim() || activeQuery.trim()
     if (!query || !activeConnectionId || queryLoading) return
 
+    setColumnViewContext(null)
     setQueryLoading(true)
     setQueryResult(null)
     try {
-      const result = await apiExecuteQuery(userId, activeConnectionId, query)
+      const result = await apiExecuteQuery(userId, activeConnectionId, query, activeDatabase || undefined)
       setQueryResult(result)
     } catch (err: any) {
       setQueryResult({
@@ -40,6 +49,89 @@ export default function QueryEditor() {
     }
   }
 
+  useImperativeHandle(ref, () => ({ run: runQuery }))
+
+  useEffect(() => {
+    if (!monaco || !activeConnectionId) return
+
+    const conn = connections.find(c => c.id === activeConnectionId)
+    if (!conn) return
+
+    let cancelled = false
+
+    const registerCompletions = async () => {
+      completionDisposableRef.current?.dispose()
+      completionDisposableRef.current = null
+
+      try {
+        const { objects } = await apiListObjects(userId, activeConnectionId, activeDatabase || undefined)
+        if (cancelled) return
+
+        const tableObjects = objects.filter(
+          o => o.type === 'table' || o.type === 'view' || o.type === 'collection'
+        )
+
+        const tableColumns: Record<string, string[]> = {}
+        await Promise.allSettled(
+          tableObjects.map(async (obj) => {
+            try {
+              const info = await apiDescribeTable(userId, activeConnectionId, obj.name, undefined, activeDatabase || undefined)
+              if (!cancelled) tableColumns[obj.name] = info.columns.map(c => c.name)
+            } catch {}
+          })
+        )
+
+        if (cancelled) return
+
+        completionDisposableRef.current = monaco.languages.registerCompletionItemProvider('sql', {
+          provideCompletionItems: (model: any, position: any) => {
+            const word = model.getWordUntilPosition(position)
+            const range = {
+              startLineNumber: position.lineNumber,
+              endLineNumber: position.lineNumber,
+              startColumn: word.startColumn,
+              endColumn: word.endColumn,
+            }
+
+            const suggestions: any[] = []
+
+            tableObjects.forEach(obj => {
+              suggestions.push({
+                label: obj.name,
+                kind: monaco.languages.CompletionItemKind.Class,
+                detail: obj.type,
+                insertText: obj.name,
+                range,
+              })
+            })
+
+            Object.entries(tableColumns).forEach(([tableName, cols]) => {
+              cols.forEach(col => {
+                suggestions.push({
+                  label: col,
+                  kind: monaco.languages.CompletionItemKind.Field,
+                  detail: tableName,
+                  insertText: col,
+                  range,
+                })
+              })
+            })
+
+            return { suggestions }
+          },
+        })
+      } catch {}
+    }
+
+    registerCompletions()
+
+    return () => {
+      cancelled = true
+      completionDisposableRef.current?.dispose()
+      completionDisposableRef.current = null
+    }
+  }, [monaco, activeConnectionId, activeDatabase, userId])
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault()
@@ -49,32 +141,6 @@ export default function QueryEditor() {
 
   return (
     <div className="h-full flex flex-col bg-surface-200">
-      {/* Toolbar */}
-      <div className="flex items-center gap-2 px-3 py-1.5 bg-surface-300 border-b border-surface-50 flex-shrink-0">
-        <button
-          onClick={runQuery}
-          disabled={!activeConnectionId || queryLoading}
-          className="btn-primary flex items-center gap-1.5"
-        >
-          {queryLoading ? (
-            <Loader2 size={13} className="animate-spin" />
-          ) : (
-            <Play size={13} fill="currentColor" />
-          )}
-          <span>Run</span>
-          <span className="text-[10px] opacity-60 ml-0.5">Ctrl+↵</span>
-        </button>
-
-        <button
-          onClick={() => navigator.clipboard.writeText(activeQuery)}
-          className="btn-ghost flex items-center gap-1"
-          title="Copy query"
-        >
-          <Copy size={12} />
-        </button>
-      </div>
-
-      {/* Monaco Editor */}
       <div className="flex-1" onKeyDown={handleKeyDown}>
         <Editor
           height="100%"
@@ -95,9 +161,13 @@ export default function QueryEditor() {
             automaticLayout: true,
             padding: { top: 8, bottom: 8 },
             suggest: { showKeywords: true },
+            quickSuggestions: true,
           }}
         />
       </div>
     </div>
   )
-}
+})
+
+QueryEditor.displayName = 'QueryEditor'
+export default QueryEditor

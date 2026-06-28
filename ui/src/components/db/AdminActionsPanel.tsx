@@ -81,7 +81,7 @@ export default function AdminActionsPanel({ conn, onClose }: Props) {
           <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
             {conn.name} — Admin
           </h2>
-          <button onClick={onClose} className="btn-ghost p-1"><X size={15} /></button>
+          <button onClick={onClose} className="btn-ghost p-1"><X size={20} /></button>
         </div>
 
         {/* Tabs */}
@@ -105,7 +105,7 @@ export default function AdminActionsPanel({ conn, onClose }: Props) {
               </div>
               {dbMsg && (
                 <div className={`flex items-start gap-2 text-xs ${dbMsg.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
-                  {dbMsg.type === 'success' ? <CheckCircle size={13} className="flex-shrink-0 mt-0.5" /> : <XCircle size={13} className="flex-shrink-0 mt-0.5" />}
+                  {dbMsg.type === 'success' ? <CheckCircle size={17} className="flex-shrink-0 mt-0.5" /> : <XCircle size={17} className="flex-shrink-0 mt-0.5" />}
                   <span>{dbMsg.text}</span>
                 </div>
               )}
@@ -153,7 +153,7 @@ export default function AdminActionsPanel({ conn, onClose }: Props) {
               </div>
               {userMsg && (
                 <div className={`flex items-start gap-2 text-xs ${userMsg.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
-                  {userMsg.type === 'success' ? <CheckCircle size={13} className="flex-shrink-0 mt-0.5" /> : <XCircle size={13} className="flex-shrink-0 mt-0.5" />}
+                  {userMsg.type === 'success' ? <CheckCircle size={17} className="flex-shrink-0 mt-0.5" /> : <XCircle size={17} className="flex-shrink-0 mt-0.5" />}
                   <span>{userMsg.text}</span>
                 </div>
               )}

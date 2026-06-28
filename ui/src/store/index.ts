@@ -1,6 +1,18 @@
 import { create } from 'zustand'
 import type { ChatMessage, DbConnection, QueryResult, UserSession } from '../types'
 
+export interface ColumnViewContext {
+  table: string
+  connId: string
+  db: string | null
+  dbType: string
+}
+
+export interface AlterScriptEntry {
+  ts: string
+  sql: string
+}
+
 interface PilotbaseStore {
   // ── User session ─────────────────────────────────────────────────
   session: UserSession | null
@@ -17,11 +29,20 @@ interface PilotbaseStore {
 
   // ── Query editor ─────────────────────────────────────────────────
   activeQuery: string
+  activeDatabase: string | null
   queryResult: QueryResult | null
   queryLoading: boolean
   setActiveQuery: (q: string) => void
+  setActiveDatabase: (db: string | null) => void
   setQueryResult: (r: QueryResult | null) => void
   setQueryLoading: (v: boolean) => void
+
+  // ── Column view / ALTER TABLE ─────────────────────────────────────
+  columnViewContext: ColumnViewContext | null
+  setColumnViewContext: (ctx: ColumnViewContext | null) => void
+  alterScriptLog: AlterScriptEntry[]
+  appendAlterScript: (sql: string) => void
+  clearAlterScripts: () => void
 
   // ── AI Chat ──────────────────────────────────────────────────────
   chatMessages: ChatMessage[]
@@ -60,11 +81,22 @@ export const useStore = create<PilotbaseStore>((set) => ({
 
   // Query
   activeQuery: '',
+  activeDatabase: null,
   queryResult: null,
   queryLoading: false,
   setActiveQuery: (activeQuery) => set({ activeQuery }),
+  setActiveDatabase: (activeDatabase) => set({ activeDatabase }),
   setQueryResult: (queryResult) => set({ queryResult }),
   setQueryLoading: (queryLoading) => set({ queryLoading }),
+
+  // Column view / ALTER TABLE
+  columnViewContext: null,
+  setColumnViewContext: (columnViewContext) => set({ columnViewContext }),
+  alterScriptLog: [],
+  appendAlterScript: (sql) => set((s) => ({
+    alterScriptLog: [...s.alterScriptLog, { ts: new Date().toLocaleTimeString(), sql }],
+  })),
+  clearAlterScripts: () => set({ alterScriptLog: [] }),
 
   // Chat
   chatMessages: [],

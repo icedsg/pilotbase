@@ -20,18 +20,18 @@ export default function TopBar({ leftOpen, rightOpen, onToggleLeft, onToggleRigh
           className={`btn-ghost p-1.5 rounded ${leftOpen ? 'text-accent' : ''}`}
           title={leftOpen ? 'Close connections panel' : 'Open connections panel'}
         >
-          <PanelLeft size={15} />
+          <PanelLeft size={20} />
         </button>
 
         <Logo size="sm" />
 
         <nav className="hidden md:flex items-center gap-1">
           <button className="btn-ghost flex items-center gap-1.5">
-            <GitMerge size={14} />
+            <GitMerge size={18} />
             <span>Migration</span>
           </button>
           <button className="btn-ghost flex items-center gap-1.5">
-            <Download size={14} />
+            <Download size={18} />
             <span>Backups</span>
           </button>
         </nav>
@@ -39,7 +39,7 @@ export default function TopBar({ leftOpen, rightOpen, onToggleLeft, onToggleRigh
 
       <div className="flex items-center gap-3">
         <button onClick={toggleTheme} className="btn-ghost p-1.5 rounded" title="Toggle theme">
-          {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+          {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
         </button>
 
         <button
@@ -47,7 +47,7 @@ export default function TopBar({ leftOpen, rightOpen, onToggleLeft, onToggleRigh
           className={`btn-ghost p-1.5 rounded ${rightOpen ? 'text-accent' : ''}`}
           title={rightOpen ? 'Close AI agent panel' : 'Open AI agent panel'}
         >
-          <PanelRight size={15} />
+          <PanelRight size={20} />
         </button>
       </div>
     </header>
