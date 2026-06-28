@@ -1,6 +1,9 @@
 import { useEffect, useRef } from 'react'
-import { Rows3, Columns3, Eraser, Trash2 } from 'lucide-react'
+import { Rows3, Columns3, Eraser, Trash2, Layers, FileText, Hash } from 'lucide-react'
 import type { DbObject } from '../../types'
+
+const VECTOR_DB_TYPES = new Set(['qdrant', 'chroma', 'weaviate'])
+const NOSQL_DB_TYPES  = new Set(['mongodb'])
 
 export interface ContextMenuTarget {
   connId: string
@@ -44,7 +47,16 @@ export default function TableContextMenu({ target, onViewRows, onViewColumns, on
 
   const isTable = target.type === 'table'
   const isView = target.type === 'view'
+  const isVectorCollection = target.type === 'collection' && VECTOR_DB_TYPES.has(target.connType)
+  const isNoSQLCollection  = target.type === 'collection' && NOSQL_DB_TYPES.has(target.connType)
+  const isRedisKey = target.type === 'key'
   const label = isTable ? 'Table' : isView ? 'View' : target.type === 'collection' ? 'Collection' : 'Key'
+
+  let viewIcon = <Rows3 size={16} />
+  let viewLabel = 'View Rows'
+  if (isVectorCollection) { viewIcon = <Layers size={16} />; viewLabel = 'View Chunks' }
+  else if (isNoSQLCollection) { viewIcon = <FileText size={16} />; viewLabel = 'View Documents' }
+  else if (isRedisKey) { viewIcon = <Hash size={16} />; viewLabel = 'View Value' }
 
   return (
     <div
@@ -59,8 +71,8 @@ export default function TableContextMenu({ target, onViewRows, onViewColumns, on
       </div>
 
       <button className="ctx-item hover:text-gray-900 dark:hover:text-white" onClick={() => { onViewRows(); onClose() }}>
-        <Rows3 size={16} />
-        <span>View Rows</span>
+        {viewIcon}
+        <span>{viewLabel}</span>
       </button>
 
       {(isTable || isView) && (

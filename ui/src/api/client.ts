@@ -106,6 +106,35 @@ export const apiSchemaDiff = (userId: string, sourceId: string, targetId: string
 export const apiMigrationScript = (userId: string, sourceId: string, targetId: string) =>
   http.post('/migration/script', { user_anon_id: userId, source_connection_id: sourceId, target_connection_id: targetId }).then(r => r.data)
 
+// ── Vector DB chunk management ────────────────────────────────────────────────
+
+export const apiGetVectorSchema = (
+  userId: string, connId: string, collection: string,
+): Promise<{ properties: { name: string; dataType: string[] }[] }> =>
+  http.get('/vector/schema', { params: { user_anon_id: userId, connection_id: connId, collection } }).then(r => r.data)
+
+export const apiDeleteVectorChunk = (
+  userId: string, connId: string, collection: string, chunkId: string,
+): Promise<{ ok: boolean }> =>
+  http.delete('/vector/chunk', { data: { user_anon_id: userId, connection_id: connId, collection, chunk_id: chunkId } }).then(r => r.data)
+
+export const apiUpdateVectorChunk = (
+  userId: string, connId: string, collection: string, chunkId: string, properties: Record<string, unknown>,
+): Promise<{ ok: boolean }> =>
+  http.patch('/vector/chunk', { user_anon_id: userId, connection_id: connId, collection, chunk_id: chunkId, properties }).then(r => r.data)
+
+export const apiUploadVectorChunks = (
+  userId: string, connId: string, collection: string, textField: string, files: File[],
+): Promise<{ created: number; errors: { file: string; error: string }[] }> => {
+  const form = new FormData()
+  form.append('user_anon_id', userId)
+  form.append('connection_id', connId)
+  form.append('collection', collection)
+  form.append('text_field', textField)
+  files.forEach(f => form.append('files', f))
+  return http.post('/vector/upload', form, { headers: { 'Content-Type': 'multipart/form-data' } }).then(r => r.data)
+}
+
 // ── AI ────────────────────────────────────────────────────────────────────────
 
 export const apiChat = (userId: string, connId: string, message: string): Promise<{ response: string }> =>

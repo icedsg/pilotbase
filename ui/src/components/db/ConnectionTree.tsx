@@ -64,7 +64,7 @@ interface DbCtxMenu {
 }
 
 export default function ConnectionTree({ refreshKey }: Props) {
-  const { connections, activeConnectionId, setActiveConnection, removeConnection, updateConnection, setActiveQuery, setQueryResult, setQueryLoading, setActiveDatabase, setColumnViewContext } = useStore()
+  const { connections, activeConnectionId, setActiveConnection, removeConnection, updateConnection, setActiveQuery, setQueryResult, setQueryLoading, setActiveDatabase, setColumnViewContext, appendAlterScript, setVectorViewContext, setNosqlViewContext } = useStore()
   const { userId } = useUserSession()
   const [state,      setState]      = useState<ConnectionState>({})
   const [openConns,  setOpenConns]  = useState<Set<string>>(new Set())
@@ -74,7 +74,11 @@ export default function ConnectionTree({ refreshKey }: Props) {
   const [editConn,       setEditConn]       = useState<DbConnection | null>(null)
   const [deleting,       setDeleting]       = useState<string | null>(null)
   const [ctxMenu,        setCtxMenu]        = useState<ContextMenuTarget | null>(null)
-  const [confirmAction,  setConfirmAction]  = useState<{ type: 'truncate' | 'drop'; target: ContextMenuTarget } | null>(null)
+  const [confirmAction,  setConfirmAction]  = useState<
+    | { type: 'truncate' | 'drop'; target: ContextMenuTarget }
+    | { type: 'drop_database'; connId: string; db: string }
+    | null
+  >(null)
   const [dbCtxMenu,      setDbCtxMenu]      = useState<DbCtxMenu | null>(null)
   const dbCtxRef                            = useRef<HTMLDivElement>(null)
 
@@ -197,13 +201,30 @@ export default function ConnectionTree({ refreshKey }: Props) {
     if (!conn) return
 
     setColumnViewContext(null)
+    setActiveConnection(target.connId)
+
+    // Vector DB → dedicated chunks view
+    if (VECTOR_DB_TYPES.has(conn.db_type)) {
+      setVectorViewContext({ collection: target.name, connId: target.connId, db: target.db, dbType: conn.db_type })
+      setNosqlViewContext(null)
+      return
+    }
+
+    // MongoDB → dedicated document view
+    if (conn.db_type === 'mongodb') {
+      setNosqlViewContext({ collection: target.name, connId: target.connId, db: target.db, dbType: conn.db_type })
+      setVectorViewContext(null)
+      return
+    }
+
+    // SQL / Redis → query result table
+    setVectorViewContext(null)
+    setNosqlViewContext(null)
 
     let sql: string
     let queryDb: string | undefined
     if (conn.db_type === 'mysql' || conn.db_type === 'mariadb') {
       sql = `SELECT * FROM \`${target.db}\`.\`${target.name}\` LIMIT 500`
-    } else if (conn.db_type === 'mongodb') {
-      sql = JSON.stringify({ collection: target.name, scroll: true, limit: 100 }, null, 2)
     } else if (conn.db_type === 'redis') {
       sql = `GET ${target.name}`
     } else {
@@ -211,7 +232,6 @@ export default function ConnectionTree({ refreshKey }: Props) {
       queryDb = target.db
     }
 
-    setActiveConnection(target.connId)
     setActiveDatabase(queryDb || null)
     setActiveQuery(sql)
     setQueryLoading(true)
@@ -229,6 +249,8 @@ export default function ConnectionTree({ refreshKey }: Props) {
   const handleViewColumns = async (target: ContextMenuTarget) => {
     const conn = connections.find(c => c.id === target.connId)
     setActiveConnection(target.connId)
+    setVectorViewContext(null)
+    setNosqlViewContext(null)
     setQueryLoading(true)
     setQueryResult(null)
     if (conn) {
@@ -265,21 +287,35 @@ export default function ConnectionTree({ refreshKey }: Props) {
 
   const executeConfirmedAction = async () => {
     if (!confirmAction) return
-    const { type, target } = confirmAction
+    const action = confirmAction
     setConfirmAction(null)
 
+    if (action.type === 'drop_database') {
+      try {
+        await apiRunDdl(userId, action.connId, 'drop_database', action.db, 'database')
+        appendAlterScript(`DROP DATABASE ${action.db};`, true)
+        await refreshConnDbs(action.connId)
+      } catch (err: any) {
+        alert(err?.response?.data?.detail || 'Drop database failed.')
+      }
+      return
+    }
+
+    const { type, target } = action
     if (type === 'truncate') {
       try {
         await apiRunDdl(userId, target.connId, 'truncate', target.name, 'table', target.db)
+        appendAlterScript(`TRUNCATE TABLE ${target.name};`, true)
       } catch (err: any) {
         alert(err?.response?.data?.detail || 'Truncate failed.')
       }
     } else {
       const isView = target.type === 'view'
-      const action = isView ? 'drop_view' : 'drop_table'
+      const ddlAction = isView ? 'drop_view' : 'drop_table'
       const objType = isView ? 'view' : 'table'
       try {
-        await apiRunDdl(userId, target.connId, action, target.name, objType, target.db)
+        await apiRunDdl(userId, target.connId, ddlAction, target.name, objType, target.db)
+        appendAlterScript(isView ? `DROP VIEW ${target.name};` : `DROP TABLE ${target.name};`, true)
         const node = state[target.connId]?.[target.db]
         if (node) {
           setState(s => ({ ...s, [target.connId]: { ...s[target.connId], [target.db]: { ...node, loading: true } } }))
@@ -434,21 +470,35 @@ export default function ConnectionTree({ refreshKey }: Props) {
                                         <Layers size={13} />
                                         <span className="uppercase text-[13px] tracking-wider">{label}</span>
                                       </div>
-                                      {items.map((obj) => (
-                                        <div
-                                          key={obj.name}
-                                          className="tree-item"
-                                          style={{ paddingLeft: '44px' }}
-                                          onClick={() => setActiveConnection(conn.id)}
-                                          onContextMenu={(e) => {
-                                            e.preventDefault()
-                                            setCtxMenu({ connId: conn.id, connType: conn.db_type, db, name: obj.name, type: obj.type, x: e.clientX, y: e.clientY })
-                                          }}
-                                        >
-                                          <Icon size={16} className="flex-shrink-0 text-gray-400" />
-                                          <span className="truncate font-mono text-[16px] font-medium">{obj.name}</span>
-                                        </div>
-                                      ))}
+                                      {items.map((obj) => {
+                                        const isVectorCollection = VECTOR_DB_TYPES.has(conn.db_type) && obj.type === 'collection'
+                                        return (
+                                          <div
+                                            key={obj.name}
+                                            className="tree-item"
+                                            style={{ paddingLeft: '44px' }}
+                                            onClick={() => {
+                                              if (isVectorCollection) {
+                                                setVectorViewContext({ collection: obj.name, connId: conn.id, db, dbType: conn.db_type })
+                                                setNosqlViewContext(null)
+                                                setColumnViewContext(null)
+                                                setActiveConnection(conn.id)
+                                              } else {
+                                                setActiveConnection(conn.id)
+                                              }
+                                            }}
+                                            onContextMenu={(e) => {
+                                              e.preventDefault()
+                                              if (!isVectorCollection) {
+                                                setCtxMenu({ connId: conn.id, connType: conn.db_type, db, name: obj.name, type: obj.type, x: e.clientX, y: e.clientY })
+                                              }
+                                            }}
+                                          >
+                                            <Icon size={16} className="flex-shrink-0 text-gray-400" />
+                                            <span className="truncate font-mono text-[16px] font-medium">{obj.name}</span>
+                                          </div>
+                                        )
+                                      })}
                                     </div>
                                   )
                                 })}
@@ -513,23 +563,46 @@ export default function ConnectionTree({ refreshKey }: Props) {
             <RefreshCw size={15} />
             <span>Refresh</span>
           </button>
+          <div className="border-t border-surface-50 my-1" />
+          <button
+            className="ctx-item hover:text-red-600 dark:hover:text-red-400"
+            onClick={() => { setConfirmAction({ type: 'drop_database', connId: dbCtxMenu.connId, db: dbCtxMenu.db }); setDbCtxMenu(null) }}
+          >
+            <Trash2 size={15} />
+            <span>Drop Database</span>
+          </button>
         </div>
       )}
 
-      {confirmAction && (
-        <ConfirmDialog
-          title={confirmAction.type === 'truncate' ? 'Truncate Table' : `Drop ${confirmAction.target.type === 'view' ? 'View' : 'Table'}`}
-          description={
-            confirmAction.type === 'truncate'
-              ? `All rows in "${confirmAction.target.name}" will be permanently deleted. The table structure remains intact.`
-              : `"${confirmAction.target.name}" and all its data will be permanently removed from the database. This cannot be undone.`
-          }
-          confirmWord={confirmAction.type}
-          variant={confirmAction.type === 'truncate' ? 'warning' : 'danger'}
-          onConfirm={executeConfirmedAction}
-          onCancel={() => setConfirmAction(null)}
-        />
-      )}
+      {confirmAction && (() => {
+        if (confirmAction.type === 'drop_database') {
+          return (
+            <ConfirmDialog
+              title="Drop Database"
+              description={`"${confirmAction.db}" and all its tables and data will be permanently removed. This cannot be undone.`}
+              confirmWord="drop"
+              variant="danger"
+              onConfirm={executeConfirmedAction}
+              onCancel={() => setConfirmAction(null)}
+            />
+          )
+        }
+        const { type, target } = confirmAction
+        return (
+          <ConfirmDialog
+            title={type === 'truncate' ? 'Truncate Table' : `Drop ${target.type === 'view' ? 'View' : 'Table'}`}
+            description={
+              type === 'truncate'
+                ? `All rows in "${target.name}" will be permanently deleted. The table structure remains intact.`
+                : `"${target.name}" and all its data will be permanently removed from the database. This cannot be undone.`
+            }
+            confirmWord={type}
+            variant={type === 'truncate' ? 'warning' : 'danger'}
+            onConfirm={executeConfirmedAction}
+            onCancel={() => setConfirmAction(null)}
+          />
+        )
+      })()}
     </>
   )
 }

@@ -8,9 +8,24 @@ export interface ColumnViewContext {
   dbType: string
 }
 
+export interface VectorViewContext {
+  collection: string
+  connId: string
+  db: string
+  dbType: string
+}
+
+export interface NoSQLViewContext {
+  collection: string
+  connId: string
+  db: string
+  dbType: string
+}
+
 export interface AlterScriptEntry {
   ts: string
   sql: string
+  executed?: boolean
 }
 
 interface PilotbaseStore {
@@ -41,8 +56,16 @@ interface PilotbaseStore {
   columnViewContext: ColumnViewContext | null
   setColumnViewContext: (ctx: ColumnViewContext | null) => void
   alterScriptLog: AlterScriptEntry[]
-  appendAlterScript: (sql: string) => void
+  appendAlterScript: (sql: string, executed?: boolean) => void
   clearAlterScripts: () => void
+
+  // ── Vector DB view ────────────────────────────────────────────────
+  vectorViewContext: VectorViewContext | null
+  setVectorViewContext: (ctx: VectorViewContext | null) => void
+
+  // ── NoSQL view ────────────────────────────────────────────────────
+  nosqlViewContext: NoSQLViewContext | null
+  setNosqlViewContext: (ctx: NoSQLViewContext | null) => void
 
   // ── AI Chat ──────────────────────────────────────────────────────
   chatMessages: ChatMessage[]
@@ -93,10 +116,18 @@ export const useStore = create<PilotbaseStore>((set) => ({
   columnViewContext: null,
   setColumnViewContext: (columnViewContext) => set({ columnViewContext }),
   alterScriptLog: [],
-  appendAlterScript: (sql) => set((s) => ({
-    alterScriptLog: [...s.alterScriptLog, { ts: new Date().toLocaleTimeString(), sql }],
+  appendAlterScript: (sql, executed) => set((s) => ({
+    alterScriptLog: [...s.alterScriptLog, { ts: new Date().toLocaleTimeString(), sql, executed }],
   })),
   clearAlterScripts: () => set({ alterScriptLog: [] }),
+
+  // Vector DB view
+  vectorViewContext: null,
+  setVectorViewContext: (vectorViewContext) => set({ vectorViewContext }),
+
+  // NoSQL view
+  nosqlViewContext: null,
+  setNosqlViewContext: (nosqlViewContext) => set({ nosqlViewContext }),
 
   // Chat
   chatMessages: [],

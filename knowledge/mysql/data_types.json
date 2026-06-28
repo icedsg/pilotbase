@@ -1,0 +1,338 @@
+{
+  "db_type": "mysql",
+  "version_info": "MySQL 5.7+ / MySQL 8.0+",
+  "source": "https://dev.mysql.com/doc/refman/8.0/en/data-types.html",
+  "categories": [
+    {
+      "category": "Numeric",
+      "types": [
+        {
+          "name": "INT",
+          "aliases": ["INTEGER"],
+          "params": "[(n)] [UNSIGNED]",
+          "default_expr": "INT",
+          "description": "Signed 4-byte integer. Range: -2147483648 to 2147483647. UNSIGNED: 0 to 4294967295.",
+          "storage": "4 bytes"
+        },
+        {
+          "name": "BIGINT",
+          "aliases": [],
+          "params": "[(n)] [UNSIGNED]",
+          "default_expr": "BIGINT",
+          "description": "Signed 8-byte integer. UNSIGNED: 0 to 18446744073709551615.",
+          "storage": "8 bytes"
+        },
+        {
+          "name": "SMALLINT",
+          "aliases": [],
+          "params": "[(n)] [UNSIGNED]",
+          "default_expr": "SMALLINT",
+          "description": "Signed 2-byte integer. Range: -32768 to 32767. UNSIGNED: 0 to 65535.",
+          "storage": "2 bytes"
+        },
+        {
+          "name": "TINYINT",
+          "aliases": [],
+          "params": "[(n)] [UNSIGNED]",
+          "default_expr": "TINYINT",
+          "description": "Signed 1-byte integer. Range: -128 to 127. UNSIGNED: 0 to 255. TINYINT(1) is the standard boolean.",
+          "storage": "1 byte"
+        },
+        {
+          "name": "MEDIUMINT",
+          "aliases": [],
+          "params": "[(n)] [UNSIGNED]",
+          "default_expr": "MEDIUMINT",
+          "description": "Signed 3-byte integer. Range: -8388608 to 8388607. UNSIGNED: 0 to 16777215.",
+          "storage": "3 bytes"
+        },
+        {
+          "name": "DECIMAL",
+          "aliases": ["NUMERIC", "DEC", "FIXED"],
+          "params": "[(M[,D])]",
+          "default_expr": "DECIMAL(10, 2)",
+          "description": "Exact fixed-point number. M = total digits (1-65), D = digits after decimal point (0-30).",
+          "storage": "variable"
+        },
+        {
+          "name": "FLOAT",
+          "aliases": [],
+          "params": "[(M, D)]",
+          "default_expr": "FLOAT",
+          "description": "Single-precision 4-byte floating-point number (approx 7 significant digits).",
+          "storage": "4 bytes",
+          "notes": "Avoid using M,D in MySQL 8.0.17+ as they are deprecated."
+        },
+        {
+          "name": "DOUBLE",
+          "aliases": ["DOUBLE PRECISION", "REAL"],
+          "params": "[(M, D)]",
+          "default_expr": "DOUBLE",
+          "description": "Double-precision 8-byte floating-point number (approx 15 significant digits).",
+          "storage": "8 bytes"
+        },
+        {
+          "name": "BIT",
+          "aliases": [],
+          "params": "[(M)]",
+          "default_expr": "BIT(1)",
+          "description": "Bit-field type. M = number of bits (1-64). BIT(1) is commonly used as boolean.",
+          "storage": "approximately (M+7)/8 bytes"
+        },
+        {
+          "name": "BOOLEAN",
+          "aliases": ["BOOL"],
+          "params": null,
+          "default_expr": "BOOLEAN",
+          "description": "Synonym for TINYINT(1). Values: 0 = false, non-zero = true.",
+          "storage": "1 byte"
+        }
+      ]
+    },
+    {
+      "category": "String",
+      "types": [
+        {
+          "name": "VARCHAR",
+          "aliases": [],
+          "params": "(M)",
+          "default_expr": "VARCHAR(255)",
+          "description": "Variable-length string. M = max length in characters (0-65535 depending on row format and charset).",
+          "storage": "L + 1 or 2 bytes (L = actual length)"
+        },
+        {
+          "name": "CHAR",
+          "aliases": [],
+          "params": "(M)",
+          "default_expr": "CHAR(36)",
+          "description": "Fixed-length string padded with spaces. M = 0-255 characters.",
+          "storage": "M × W bytes (W = bytes per character)"
+        },
+        {
+          "name": "TEXT",
+          "aliases": [],
+          "params": null,
+          "default_expr": "TEXT",
+          "description": "Variable-length string up to 65535 characters. No default value allowed.",
+          "storage": "L + 2 bytes"
+        },
+        {
+          "name": "MEDIUMTEXT",
+          "aliases": [],
+          "params": null,
+          "default_expr": "MEDIUMTEXT",
+          "description": "Variable-length string up to 16777215 characters.",
+          "storage": "L + 3 bytes"
+        },
+        {
+          "name": "LONGTEXT",
+          "aliases": [],
+          "params": null,
+          "default_expr": "LONGTEXT",
+          "description": "Variable-length string up to 4294967295 characters.",
+          "storage": "L + 4 bytes"
+        },
+        {
+          "name": "TINYTEXT",
+          "aliases": [],
+          "params": null,
+          "default_expr": "TINYTEXT",
+          "description": "Variable-length string up to 255 characters.",
+          "storage": "L + 1 bytes"
+        },
+        {
+          "name": "BLOB",
+          "aliases": [],
+          "params": null,
+          "default_expr": "BLOB",
+          "description": "Binary Large Object up to 65535 bytes.",
+          "storage": "L + 2 bytes"
+        },
+        {
+          "name": "MEDIUMBLOB",
+          "aliases": [],
+          "params": null,
+          "default_expr": "MEDIUMBLOB",
+          "description": "Binary Large Object up to 16777215 bytes.",
+          "storage": "L + 3 bytes"
+        },
+        {
+          "name": "LONGBLOB",
+          "aliases": [],
+          "params": null,
+          "default_expr": "LONGBLOB",
+          "description": "Binary Large Object up to 4294967295 bytes.",
+          "storage": "L + 4 bytes"
+        },
+        {
+          "name": "TINYBLOB",
+          "aliases": [],
+          "params": null,
+          "default_expr": "TINYBLOB",
+          "description": "Binary Large Object up to 255 bytes.",
+          "storage": "L + 1 bytes"
+        },
+        {
+          "name": "BINARY",
+          "aliases": [],
+          "params": "(M)",
+          "default_expr": "BINARY(16)",
+          "description": "Fixed-length binary string of M bytes, right-padded with 0x00.",
+          "storage": "M bytes"
+        },
+        {
+          "name": "VARBINARY",
+          "aliases": [],
+          "params": "(M)",
+          "default_expr": "VARBINARY(255)",
+          "description": "Variable-length binary string up to M bytes.",
+          "storage": "L + 1 or 2 bytes"
+        },
+        {
+          "name": "ENUM",
+          "aliases": [],
+          "params": "('val1','val2',...)",
+          "default_expr": "ENUM('active', 'inactive', 'pending')",
+          "description": "String from a predefined list. Up to 65535 distinct values.",
+          "storage": "1 or 2 bytes"
+        },
+        {
+          "name": "SET",
+          "aliases": [],
+          "params": "('val1','val2',...)",
+          "default_expr": "SET('a', 'b', 'c')",
+          "description": "String that can hold zero or more values from a predefined list. Up to 64 members.",
+          "storage": "1, 2, 3, 4, or 8 bytes"
+        }
+      ]
+    },
+    {
+      "category": "Date / Time",
+      "types": [
+        {
+          "name": "DATETIME",
+          "aliases": [],
+          "params": "[(fsp)]",
+          "default_expr": "DATETIME",
+          "description": "Date and time. Range: 1000-01-01 00:00:00.000000 – 9999-12-31 23:59:59.999999. fsp = fractional seconds precision (0-6).",
+          "storage": "5 bytes + fractional bytes"
+        },
+        {
+          "name": "TIMESTAMP",
+          "aliases": [],
+          "params": "[(fsp)]",
+          "default_expr": "TIMESTAMP",
+          "description": "Timestamp stored as UTC. Range: 1970-01-01 00:00:01 UTC – 2038-01-19 03:14:07 UTC. Auto-updates on INSERT/UPDATE by default.",
+          "storage": "4 bytes + fractional bytes"
+        },
+        {
+          "name": "DATE",
+          "aliases": [],
+          "params": null,
+          "default_expr": "DATE",
+          "description": "Date only. Range: 1000-01-01 – 9999-12-31.",
+          "storage": "3 bytes"
+        },
+        {
+          "name": "TIME",
+          "aliases": [],
+          "params": "[(fsp)]",
+          "default_expr": "TIME",
+          "description": "Time of day or elapsed time. Range: -838:59:59 – 838:59:59.",
+          "storage": "3 bytes + fractional bytes"
+        },
+        {
+          "name": "YEAR",
+          "aliases": [],
+          "params": null,
+          "default_expr": "YEAR",
+          "description": "4-digit year. Range: 1901 – 2155.",
+          "storage": "1 byte"
+        }
+      ]
+    },
+    {
+      "category": "JSON",
+      "types": [
+        {
+          "name": "JSON",
+          "aliases": [],
+          "params": null,
+          "default_expr": "JSON",
+          "description": "JSON document. Stored in binary format for efficient parsing. Supports JSON functions and path expressions.",
+          "storage": "variable",
+          "min_version": "5.7.8"
+        }
+      ]
+    },
+    {
+      "category": "Spatial",
+      "types": [
+        {
+          "name": "GEOMETRY",
+          "aliases": [],
+          "params": null,
+          "default_expr": "GEOMETRY",
+          "description": "Base spatial type that can store any type of geometry.",
+          "storage": "variable"
+        },
+        {
+          "name": "POINT",
+          "aliases": [],
+          "params": null,
+          "default_expr": "POINT",
+          "description": "Single location in coordinate space (X, Y).",
+          "storage": "variable"
+        },
+        {
+          "name": "LINESTRING",
+          "aliases": [],
+          "params": null,
+          "default_expr": "LINESTRING",
+          "description": "Curve with linear interpolation between points.",
+          "storage": "variable"
+        },
+        {
+          "name": "POLYGON",
+          "aliases": [],
+          "params": null,
+          "default_expr": "POLYGON",
+          "description": "Planar surface defined by exterior boundary and optional holes.",
+          "storage": "variable"
+        },
+        {
+          "name": "MULTIPOINT",
+          "aliases": [],
+          "params": null,
+          "default_expr": "MULTIPOINT",
+          "description": "Collection of Points.",
+          "storage": "variable"
+        },
+        {
+          "name": "MULTILINESTRING",
+          "aliases": [],
+          "params": null,
+          "default_expr": "MULTILINESTRING",
+          "description": "Collection of LineStrings.",
+          "storage": "variable"
+        },
+        {
+          "name": "MULTIPOLYGON",
+          "aliases": [],
+          "params": null,
+          "default_expr": "MULTIPOLYGON",
+          "description": "Collection of Polygons.",
+          "storage": "variable"
+        },
+        {
+          "name": "GEOMETRYCOLLECTION",
+          "aliases": ["GEOMCOLLECTION"],
+          "params": null,
+          "default_expr": "GEOMETRYCOLLECTION",
+          "description": "Collection of geometries of any type.",
+          "storage": "variable"
+        }
+      ]
+    }
+  ]
+}

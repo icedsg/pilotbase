@@ -15,12 +15,13 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import {
-  Download, AlertCircle, CheckCircle,
+  Download, AlertCircle, CheckCircle, CheckCircle2,
   Pencil, X, Check, Play, Copy, Loader2, Trash2, Plus,
 } from 'lucide-react'
 import { useStore } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
 import { apiExecuteQuery } from '../../api/client'
+import TypeSelector from './TypeSelector'
 
 // ── CSV export ────────────────────────────────────────────────────────────────
 
@@ -160,6 +161,15 @@ function generateAlterScripts(
   return scripts
 }
 
+function generateDropColumnScript(dbType: string, table: string, db: string | null, colName: string): string {
+  const q = (s: string) => quoteId(s, dbType)
+  const tbl = tableRef(table, db, dbType)
+  if (dbType === 'sqlite') {
+    return `-- SQLite 3.35+\nALTER TABLE ${tbl} DROP COLUMN ${q(colName)};`
+  }
+  return `ALTER TABLE ${tbl} DROP COLUMN ${q(colName)};`
+}
+
 function generateAddColumnScript(
   dbType: string,
   table: string,
@@ -241,13 +251,14 @@ export default function ResultsTable() {
   } = useStore()
   const { userId } = useUserSession()
 
-  const [columnOrder, setColumnOrder]     = useState<string[]>([])
-  const [editingRowIdx, setEditingRowIdx] = useState<number | null>(null)
-  const [editDraft, setEditDraft]         = useState<ColDraft | null>(null)
-  const [addingColumn, setAddingColumn]   = useState(false)
-  const [newColDraft, setNewColDraft]     = useState<ColDraft>(EMPTY_COL)
-  const [afterColumn, setAfterColumn]     = useState('')
-  const [scriptRunning, setScriptRunning] = useState(false)
+  const [columnOrder, setColumnOrder]       = useState<string[]>([])
+  const [editingRowIdx, setEditingRowIdx]   = useState<number | null>(null)
+  const [editDraft, setEditDraft]           = useState<ColDraft | null>(null)
+  const [deletingRowIdx, setDeletingRowIdx] = useState<number | null>(null)
+  const [addingColumn, setAddingColumn]     = useState(false)
+  const [newColDraft, setNewColDraft]       = useState<ColDraft>(EMPTY_COL)
+  const [afterColumn, setAfterColumn]       = useState('')
+  const [scriptRunning, setScriptRunning]   = useState(false)
   const scriptEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -289,6 +300,7 @@ export default function ResultsTable() {
     if (!queryResult) return
     const row = queryResult.rows[idx]
     setAddingColumn(false)
+    setDeletingRowIdx(null)
     setEditingRowIdx(idx)
     setEditDraft({
       name:     String(row.column  ?? ''),
@@ -332,16 +344,25 @@ export default function ResultsTable() {
     setEditDraft(null)
     setAddingColumn(true)
     setNewColDraft(EMPTY_COL)
-    setAfterColumn(
-      queryResult?.rows.length
-        ? String(queryResult.rows[queryResult.rows.length - 1].column ?? '')
-        : ''
-    )
+    setAfterColumn('')
   }
 
   const handleCancelAdd = () => {
     setAddingColumn(false)
     setNewColDraft(EMPTY_COL)
+  }
+
+  const handleConfirmDelete = (idx: number) => {
+    if (!queryResult || !columnViewContext) return
+    const colName = String(queryResult.rows[idx].column ?? '')
+    const sql = generateDropColumnScript(columnViewContext.dbType, columnViewContext.table, columnViewContext.db, colName)
+    appendAlterScript(sql)
+    setQueryResult({
+      ...queryResult,
+      rows: queryResult.rows.filter((_, ri) => ri !== idx),
+      row_count: queryResult.row_count - 1,
+    })
+    setDeletingRowIdx(null)
   }
 
   const handleSaveAdd = () => {
@@ -367,10 +388,11 @@ export default function ResultsTable() {
   // ── Script execution ─────────────────────────────────────────────────────────
 
   const handleRunAllScripts = async () => {
-    if (!alterScriptLog.length || !columnViewContext || !userId) return
+    const pending = alterScriptLog.filter(e => !e.executed)
+    if (!pending.length || !columnViewContext || !userId) return
     setScriptRunning(true)
     try {
-      for (const entry of alterScriptLog) {
+      for (const entry of pending) {
         const firstLine = entry.sql.trimStart()
         if (firstLine.startsWith('--') && !firstLine.includes('\n')) continue
         const execSql = firstLine.startsWith('--')
@@ -433,6 +455,88 @@ export default function ResultsTable() {
     )
   }
 
+  // ── Shared SQL log panel ──────────────────────────────────────────────────────
+
+  const pendingScripts = alterScriptLog.filter(e => !e.executed)
+
+  const sqlLogPanel = (
+    <div className="h-44 flex-shrink-0 border-t-2 border-surface-50 flex flex-col bg-surface-300">
+      <div className="flex items-center justify-between px-3 py-1 border-b border-surface-50 flex-shrink-0">
+        <span className="text-xs font-medium text-gray-400">
+          Executed SQL Scripts
+          {alterScriptLog.length > 0 && (
+            <span className="ml-1.5 text-accent font-mono">({alterScriptLog.length})</span>
+          )}
+        </span>
+        <div className="flex items-center gap-1">
+          {alterScriptLog.length > 0 && (
+            <>
+              <button
+                onClick={handleCopyAllScripts}
+                className="btn-ghost flex items-center gap-1 text-xs"
+                title="Copy all scripts to clipboard"
+              >
+                <Copy size={12} /> Copy All
+              </button>
+              {pendingScripts.length > 0 && (
+                <button
+                  onClick={handleRunAllScripts}
+                  disabled={scriptRunning}
+                  className="btn-ghost flex items-center gap-1 text-xs text-green-400 hover:text-green-300 disabled:opacity-50"
+                  title="Execute pending scripts on the database"
+                >
+                  {scriptRunning
+                    ? <Loader2 size={12} className="animate-spin" />
+                    : <Play size={12} fill="currentColor" />
+                  }
+                  Run Pending
+                </button>
+              )}
+              <button
+                onClick={clearAlterScripts}
+                className="btn-ghost p-0.5 text-gray-500 hover:text-red-400 transition-colors"
+                title="Clear script log"
+              >
+                <Trash2 size={13} />
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="flex-1 overflow-y-auto p-3 font-mono text-xs">
+        {alterScriptLog.length === 0 ? (
+          <p className="text-gray-600 text-center pt-3">
+            SQL executed by actions (drop, truncate, alter) will appear here
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {alterScriptLog.map((entry, i) => {
+              const isCommentOnly = entry.sql.split('\n').every(l => l.trimStart().startsWith('--') || l.trim() === '')
+              return (
+                <div key={i}>
+                  <div className="flex items-center gap-1.5 text-[11px] text-gray-600">
+                    {entry.executed
+                      ? <CheckCircle2 size={11} className="text-green-600 flex-shrink-0" />
+                      : <span className="w-[11px] h-[11px] inline-block rounded-full border border-yellow-600 flex-shrink-0" />
+                    }
+                    <span>{entry.ts}</span>
+                    {entry.executed && <span className="text-green-700">executed</span>}
+                  </div>
+                  <pre className={`mt-0.5 whitespace-pre-wrap pl-[15px] ${
+                    entry.executed ? 'text-green-500' : isCommentOnly ? 'text-yellow-600' : 'text-accent'
+                  }`}>
+                    {entry.sql}
+                  </pre>
+                </div>
+              )
+            })}
+            <div ref={scriptEndRef} />
+          </div>
+        )}
+      </div>
+    </div>
+  )
+
   // ── Column view (editable) ────────────────────────────────────────────────────
 
   if (isColumnView) {
@@ -489,7 +593,7 @@ export default function ResultsTable() {
                         <CellInput value={editDraft.name} onChange={v => setEditDraft({ ...editDraft, name: v })} autoFocus />
                       </td>
                       <td className="px-2 py-1 border-b border-r border-surface-50">
-                        <CellInput value={editDraft.type} onChange={v => setEditDraft({ ...editDraft, type: v })} />
+                        <TypeSelector value={editDraft.type} onChange={v => setEditDraft({ ...editDraft, type: v })} dbType={columnViewContext!.dbType} />
                       </td>
                       <td className="px-2 py-1 border-b border-r border-surface-50">
                         <select
@@ -520,26 +624,55 @@ export default function ResultsTable() {
                     </tr>
                   )
                 }
+                const isDeleting = deletingRowIdx === i
                 return (
-                  <tr key={i} className="hover:bg-surface-50 transition-colors group">
+                  <tr key={i} className={`hover:bg-surface-50 transition-colors group ${isDeleting ? 'bg-red-950/30' : ''}`}>
                     {VIEW_COLS.map(col => (
                       <td
                         key={col}
                         className={`px-3 py-1 border-b border-r border-surface-50 ${
-                          !row[col] ? 'text-gray-500 italic' : 'text-gray-700 dark:text-gray-300'
+                          isDeleting ? 'text-red-400' : !row[col] ? 'text-gray-500 italic' : 'text-gray-700 dark:text-gray-300'
                         }`}
                       >
                         {String(row[col] ?? '')}
                       </td>
                     ))}
-                    <td className="px-2 py-1 border-b border-surface-50 w-8">
-                      <button
-                        onClick={() => handleEditRow(i)}
-                        className="opacity-0 group-hover:opacity-100 btn-ghost p-0.5 text-gray-400 hover:text-accent transition-all"
-                        title="Edit column"
-                      >
-                        <Pencil size={13} />
-                      </button>
+                    <td className="px-2 py-1 border-b border-surface-50 w-16">
+                      {isDeleting ? (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleConfirmDelete(i)}
+                            className="p-0.5 rounded text-red-400 hover:text-red-300 transition-colors"
+                            title="Confirm drop column"
+                          >
+                            <Check size={13} />
+                          </button>
+                          <button
+                            onClick={() => setDeletingRowIdx(null)}
+                            className="p-0.5 rounded text-gray-500 hover:text-gray-300 transition-colors"
+                            title="Cancel"
+                          >
+                            <X size={13} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1 transition-all">
+                          <button
+                            onClick={() => handleEditRow(i)}
+                            className="btn-ghost p-0.5 text-gray-400 hover:text-accent"
+                            title="Edit column"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            onClick={() => { setDeletingRowIdx(i); setEditingRowIdx(null); setEditDraft(null) }}
+                            className="btn-ghost p-0.5 text-gray-400 hover:text-red-400"
+                            title="Drop column"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 )
@@ -552,7 +685,7 @@ export default function ResultsTable() {
                     <CellInput value={newColDraft.name} onChange={v => setNewColDraft({ ...newColDraft, name: v })} placeholder="column_name" autoFocus />
                   </td>
                   <td className="px-2 py-1 border-b border-r border-surface-50">
-                    <CellInput value={newColDraft.type} onChange={v => setNewColDraft({ ...newColDraft, type: v })} placeholder="VARCHAR(255)" />
+                    <TypeSelector value={newColDraft.type} onChange={v => setNewColDraft({ ...newColDraft, type: v })} dbType={columnViewContext!.dbType} />
                   </td>
                   <td className="px-2 py-1 border-b border-r border-surface-50">
                     <select
@@ -598,71 +731,7 @@ export default function ResultsTable() {
           </table>
         </div>
 
-        {/* ALTER TABLE script output panel */}
-        <div className="h-44 flex-shrink-0 border-t-2 border-surface-50 flex flex-col bg-surface-300">
-          <div className="flex items-center justify-between px-3 py-1 border-b border-surface-50 flex-shrink-0">
-            <span className="text-xs font-medium text-gray-400">
-              ALTER TABLE Scripts
-              {alterScriptLog.length > 0 && (
-                <span className="ml-1.5 text-accent font-mono">({alterScriptLog.length})</span>
-              )}
-            </span>
-            <div className="flex items-center gap-1">
-              {alterScriptLog.length > 0 && (
-                <>
-                  <button
-                    onClick={handleCopyAllScripts}
-                    className="btn-ghost flex items-center gap-1 text-xs"
-                    title="Copy all scripts to clipboard"
-                  >
-                    <Copy size={12} /> Copy All
-                  </button>
-                  <button
-                    onClick={handleRunAllScripts}
-                    disabled={scriptRunning}
-                    className="btn-ghost flex items-center gap-1 text-xs text-green-400 hover:text-green-300 disabled:opacity-50"
-                    title="Execute all scripts on the database"
-                  >
-                    {scriptRunning
-                      ? <Loader2 size={12} className="animate-spin" />
-                      : <Play size={12} fill="currentColor" />
-                    }
-                    Run All
-                  </button>
-                  <button
-                    onClick={clearAlterScripts}
-                    className="btn-ghost p-0.5 text-gray-500 hover:text-red-400 transition-colors"
-                    title="Clear script log"
-                  >
-                    <Trash2 size={13} />
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 font-mono text-xs">
-            {alterScriptLog.length === 0 ? (
-              <p className="text-gray-600 text-center pt-3">
-                Edit a column or add a new one — ALTER TABLE scripts will appear here
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {alterScriptLog.map((entry, i) => {
-                  const isCommentOnly = entry.sql.split('\n').every(l => l.trimStart().startsWith('--') || l.trim() === '')
-                  return (
-                    <div key={i}>
-                      <span className="text-gray-600 text-[11px]">-- {entry.ts}</span>
-                      <pre className={`mt-0.5 whitespace-pre-wrap ${isCommentOnly ? 'text-yellow-600' : 'text-green-400'}`}>
-                        {entry.sql}
-                      </pre>
-                    </div>
-                  )
-                })}
-                <div ref={scriptEndRef} />
-              </div>
-            )}
-          </div>
-        </div>
+        {sqlLogPanel}
       </div>
     )
   }
@@ -687,7 +756,7 @@ export default function ResultsTable() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto min-h-0">
         <table className="min-w-full text-xs font-mono">
           <thead className="sticky top-0 bg-surface-300 z-10">
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -723,6 +792,7 @@ export default function ResultsTable() {
           </tbody>
         </table>
       </div>
+      {sqlLogPanel}
     </div>
   )
 }

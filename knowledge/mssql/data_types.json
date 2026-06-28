@@ -1,0 +1,273 @@
+{
+  "db_type": "mssql",
+  "version_info": "SQL Server 2016+",
+  "source": "https://learn.microsoft.com/en-us/sql/t-sql/data-types/data-types-transact-sql",
+  "categories": [
+    {
+      "category": "Exact Numeric",
+      "types": [
+        {
+          "name": "INT",
+          "aliases": ["INTEGER"],
+          "params": null,
+          "default_expr": "INT",
+          "description": "Signed 4-byte integer. Range: -2147483648 to 2147483647.",
+          "storage": "4 bytes"
+        },
+        {
+          "name": "BIGINT",
+          "aliases": [],
+          "params": null,
+          "default_expr": "BIGINT",
+          "description": "Signed 8-byte integer. Range: -9223372036854775808 to 9223372036854775807.",
+          "storage": "8 bytes"
+        },
+        {
+          "name": "SMALLINT",
+          "aliases": [],
+          "params": null,
+          "default_expr": "SMALLINT",
+          "description": "Signed 2-byte integer. Range: -32768 to 32767.",
+          "storage": "2 bytes"
+        },
+        {
+          "name": "TINYINT",
+          "aliases": [],
+          "params": null,
+          "default_expr": "TINYINT",
+          "description": "Unsigned 1-byte integer. Range: 0 to 255.",
+          "storage": "1 byte"
+        },
+        {
+          "name": "BIT",
+          "aliases": [],
+          "params": null,
+          "default_expr": "BIT",
+          "description": "Integer data type 0, 1, or NULL. SQL Server optimizes storage of BIT columns.",
+          "storage": "1 bit (8 bit columns = 1 byte)"
+        },
+        {
+          "name": "DECIMAL",
+          "aliases": ["NUMERIC"],
+          "params": "[(p[,s])]",
+          "default_expr": "DECIMAL(18, 2)",
+          "description": "Fixed precision and scale numbers. p = total digits (1-38), s = decimal places (0-p). Default: DECIMAL(18,0).",
+          "storage": "5–17 bytes depending on precision"
+        },
+        {
+          "name": "MONEY",
+          "aliases": [],
+          "params": null,
+          "default_expr": "MONEY",
+          "description": "Monetary data. Range: -922337203685477.5808 to 922337203685477.5807. 4 decimal places.",
+          "storage": "8 bytes"
+        },
+        {
+          "name": "SMALLMONEY",
+          "aliases": [],
+          "params": null,
+          "default_expr": "SMALLMONEY",
+          "description": "Monetary data. Range: -214748.3648 to 214748.3647. 4 decimal places.",
+          "storage": "4 bytes"
+        }
+      ]
+    },
+    {
+      "category": "Approximate Numeric",
+      "types": [
+        {
+          "name": "FLOAT",
+          "aliases": [],
+          "params": "[(n)]",
+          "default_expr": "FLOAT",
+          "description": "Floating-point number. n = mantissa bits (1-53). FLOAT(1-24) = 4 bytes; FLOAT(25-53) = 8 bytes.",
+          "storage": "4 or 8 bytes"
+        },
+        {
+          "name": "REAL",
+          "aliases": [],
+          "params": null,
+          "default_expr": "REAL",
+          "description": "Equivalent to FLOAT(24). Single-precision float.",
+          "storage": "4 bytes"
+        }
+      ]
+    },
+    {
+      "category": "Date / Time",
+      "types": [
+        {
+          "name": "DATETIME2",
+          "aliases": [],
+          "params": "[(n)]",
+          "default_expr": "DATETIME2",
+          "description": "Date and time with fractional seconds precision 0-7. Range: 0001-01-01 through 9999-12-31. Preferred over DATETIME.",
+          "storage": "6–8 bytes",
+          "min_version": "SQL Server 2008"
+        },
+        {
+          "name": "DATETIME",
+          "aliases": [],
+          "params": null,
+          "default_expr": "DATETIME",
+          "description": "Date and time. Range: 1753-01-01 through 9999-12-31. 3.33ms accuracy. Use DATETIME2 for new work.",
+          "storage": "8 bytes"
+        },
+        {
+          "name": "DATE",
+          "aliases": [],
+          "params": null,
+          "default_expr": "DATE",
+          "description": "Date only. Range: 0001-01-01 through 9999-12-31.",
+          "storage": "3 bytes",
+          "min_version": "SQL Server 2008"
+        },
+        {
+          "name": "TIME",
+          "aliases": [],
+          "params": "[(n)]",
+          "default_expr": "TIME",
+          "description": "Time of day. Precision n = 0-7 fractional second digits. Range: 00:00:00.0000000 through 23:59:59.9999999.",
+          "storage": "3–5 bytes",
+          "min_version": "SQL Server 2008"
+        },
+        {
+          "name": "DATETIMEOFFSET",
+          "aliases": [],
+          "params": "[(n)]",
+          "default_expr": "DATETIMEOFFSET",
+          "description": "Date and time with time zone awareness. Range: 0001-01-01 through 9999-12-31.",
+          "storage": "8–10 bytes",
+          "min_version": "SQL Server 2008"
+        },
+        {
+          "name": "SMALLDATETIME",
+          "aliases": [],
+          "params": null,
+          "default_expr": "SMALLDATETIME",
+          "description": "Date and time. Range: 1900-01-01 through 2079-06-06. Minute accuracy.",
+          "storage": "4 bytes"
+        }
+      ]
+    },
+    {
+      "category": "Character",
+      "types": [
+        {
+          "name": "NVARCHAR",
+          "aliases": [],
+          "params": "(n | MAX)",
+          "default_expr": "NVARCHAR(255)",
+          "description": "Variable-length Unicode string. n = 1-4000 chars. NVARCHAR(MAX) up to 2GB. Recommended for text data.",
+          "storage": "2 × L + 2 bytes"
+        },
+        {
+          "name": "VARCHAR",
+          "aliases": [],
+          "params": "(n | MAX)",
+          "default_expr": "VARCHAR(255)",
+          "description": "Variable-length non-Unicode string. n = 1-8000 bytes. VARCHAR(MAX) up to 2GB.",
+          "storage": "L + 2 bytes"
+        },
+        {
+          "name": "NCHAR",
+          "aliases": [],
+          "params": "(n)",
+          "default_expr": "NCHAR(10)",
+          "description": "Fixed-length Unicode string. n = 1-4000 characters.",
+          "storage": "2 × n bytes"
+        },
+        {
+          "name": "CHAR",
+          "aliases": [],
+          "params": "(n)",
+          "default_expr": "CHAR(10)",
+          "description": "Fixed-length non-Unicode string. n = 1-8000 bytes.",
+          "storage": "n bytes"
+        }
+      ]
+    },
+    {
+      "category": "Binary",
+      "types": [
+        {
+          "name": "VARBINARY",
+          "aliases": [],
+          "params": "(n | MAX)",
+          "default_expr": "VARBINARY(MAX)",
+          "description": "Variable-length binary data. n = 1-8000 bytes. VARBINARY(MAX) up to 2GB.",
+          "storage": "L + 2 bytes"
+        },
+        {
+          "name": "BINARY",
+          "aliases": [],
+          "params": "(n)",
+          "default_expr": "BINARY(16)",
+          "description": "Fixed-length binary data, n = 1-8000 bytes.",
+          "storage": "n bytes"
+        }
+      ]
+    },
+    {
+      "category": "Other",
+      "types": [
+        {
+          "name": "UNIQUEIDENTIFIER",
+          "aliases": [],
+          "params": null,
+          "default_expr": "UNIQUEIDENTIFIER",
+          "description": "16-byte GUID. Use NEWID() or NEWSEQUENTIALID() as default. Commonly used as primary key.",
+          "storage": "16 bytes"
+        },
+        {
+          "name": "XML",
+          "aliases": [],
+          "params": null,
+          "default_expr": "XML",
+          "description": "Stores XML data. Supports XQuery and xml methods (.query(), .value(), .exist(), etc.).",
+          "storage": "up to 2GB"
+        },
+        {
+          "name": "ROWVERSION",
+          "aliases": ["TIMESTAMP"],
+          "params": null,
+          "default_expr": "ROWVERSION",
+          "description": "Auto-generated, unique binary number. Updated on every INSERT/UPDATE. Useful for optimistic concurrency.",
+          "storage": "8 bytes"
+        },
+        {
+          "name": "SQL_VARIANT",
+          "aliases": [],
+          "params": null,
+          "default_expr": "SQL_VARIANT",
+          "description": "Stores values of various SQL Server data types (except TEXT, NTEXT, IMAGE, ROWVERSION, SQL_VARIANT).",
+          "storage": "up to 8016 bytes"
+        },
+        {
+          "name": "HIERARCHYID",
+          "aliases": [],
+          "params": null,
+          "default_expr": "HIERARCHYID",
+          "description": "Compact representation of position in a hierarchy. Used for tree-structured data.",
+          "storage": "variable (1–892 bytes)"
+        },
+        {
+          "name": "GEOGRAPHY",
+          "aliases": [],
+          "params": null,
+          "default_expr": "GEOGRAPHY",
+          "description": "Spatial data in round-earth coordinate system (lat/long). Supports spatial methods and indexes.",
+          "storage": "variable"
+        },
+        {
+          "name": "GEOMETRY",
+          "aliases": [],
+          "params": null,
+          "default_expr": "GEOMETRY",
+          "description": "Spatial data in flat-earth planar coordinate system. Supports OGC standards.",
+          "storage": "variable"
+        }
+      ]
+    }
+  ]
+}

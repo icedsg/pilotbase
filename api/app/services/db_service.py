@@ -94,15 +94,18 @@ class SQLAdapter(BaseAdapter):
         else:
             raise ValueError(f"create_db_user is not supported for {self._db_type}")
 
+    _PG_SYSTEM_DBS = frozenset({"postgres", "template0", "template1"})
+    _MYSQL_SYSTEM_DBS = frozenset({"information_schema", "mysql", "performance_schema", "sys"})
+
     def list_databases(self) -> List[str]:
         from sqlalchemy import text
         with self._engine.connect() as c:
             if self._db_type == "postgresql":
                 rows = c.execute(text("SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"))
-                return [r[0] for r in rows]
+                return [r[0] for r in rows if r[0] not in self._PG_SYSTEM_DBS]
             if self._db_type in ("mysql", "mariadb"):
                 rows = c.execute(text("SHOW DATABASES"))
-                return [r[0] for r in rows]
+                return [r[0] for r in rows if r[0] not in self._MYSQL_SYSTEM_DBS]
         return [self._database or "main"]
 
     def list_schemas(self) -> List[str]:
@@ -222,8 +225,10 @@ class MongoAdapter(BaseAdapter):
         except Exception:
             return False
 
+    _SYSTEM_DBS = frozenset({"admin", "local", "config"})
+
     def list_databases(self) -> List[str]:
-        return self._client.list_database_names()
+        return [db for db in self._client.list_database_names() if db not in self._SYSTEM_DBS]
 
     def list_objects(self, schema: Optional[str] = None, database: Optional[str] = None) -> List[Dict]:
         db_name = database or schema or self._default_db
@@ -377,6 +382,14 @@ class QdrantAdapter(BaseAdapter):
 
         return {"rows": rows, "columns": columns, "row_count": len(rows), "truncated": False}
 
+    def delete_chunk(self, collection: str, chunk_id: str) -> None:
+        from qdrant_client.models import PointIdsList
+        self._client.delete(collection_name=collection, points_selector=PointIdsList(points=[chunk_id]))
+
+    def update_chunk(self, collection: str, chunk_id: str, properties: Dict) -> None:
+        payload = {k: v for k, v in properties.items() if k not in ("id", "score")}
+        self._client.set_payload(collection_name=collection, payload=payload, points=[chunk_id])
+
     def close(self) -> None:
         try:
             self._client.close()
@@ -425,7 +438,20 @@ class ChromaAdapter(BaseAdapter):
             return {"error": "Missing 'collection'", "rows": [], "columns": [], "row_count": 0}
 
         col = self._client.get_collection(col_name)
-        n = min(q.get("n_results", 10), limit)
+        n = min(q.get("n_results", q.get("limit", 10)), limit)
+
+        if q.get("scroll"):
+            result = col.get(limit=n, include=["documents", "metadatas"])
+            rows = []
+            for i, doc_id in enumerate(result["ids"]):
+                row: Dict[str, Any] = {"id": doc_id}
+                if result.get("documents"):
+                    row["document"] = result["documents"][i] or ""
+                if result.get("metadatas") and result["metadatas"][i]:
+                    row["metadata"] = json.dumps(result["metadatas"][i])
+                rows.append(row)
+            columns = list(rows[0].keys()) if rows else ["id"]
+            return {"rows": rows, "columns": columns, "row_count": len(rows), "truncated": False}
 
         if "query_texts" in q or "query_embeddings" in q:
             kwargs: Dict[str, Any] = {"n_results": n}
@@ -446,6 +472,28 @@ class ChromaAdapter(BaseAdapter):
         ids = col.get()["ids"][:n]
         rows = [{"id": i} for i in ids]
         return {"rows": rows, "columns": ["id"], "row_count": len(rows), "truncated": False}
+
+    def delete_chunk(self, collection: str, chunk_id: str) -> None:
+        col = self._client.get_collection(collection)
+        col.delete(ids=[chunk_id])
+
+    def update_chunk(self, collection: str, chunk_id: str, properties: Dict) -> None:
+        col = self._client.get_collection(collection)
+        doc = properties.pop("document", None)
+        meta = {k: v for k, v in properties.items() if k != "id"} or None
+        if doc is not None:
+            col.update(ids=[chunk_id], documents=[doc], metadatas=[meta] if meta else None)
+        elif meta:
+            col.update(ids=[chunk_id], metadatas=[meta])
+
+    def create_chunk(self, collection: str, properties: Dict) -> str:
+        import uuid as _uuid
+        col = self._client.get_collection(collection)
+        chunk_id = str(_uuid.uuid4())
+        doc = properties.pop("document", "")
+        meta = {k: v for k, v in properties.items() if k != "id"} or None
+        col.add(ids=[chunk_id], documents=[doc], metadatas=[meta] if meta else None)
+        return chunk_id
 
     def close(self) -> None:
         pass
@@ -480,6 +528,16 @@ class WeaviateAdapter(BaseAdapter):
         return [{"name": c["class"], "type": "collection"} for c in schema_data.get("classes", [])]
 
     def execute_query(self, query: str, params: Optional[Dict] = None, limit: int = 1000) -> Dict[str, Any]:
+        # Handle JSON scroll/search format
+        try:
+            q = json.loads(query)
+            collection = q.get("collection")
+            if collection and q.get("scroll"):
+                return self._scroll_objects(collection, min(q.get("limit", 200), limit))
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # Raw GraphQL fallback
         try:
             result = self._client.query.raw(query)
             data = result.get("data", {})
@@ -492,6 +550,40 @@ class WeaviateAdapter(BaseAdapter):
             return {"rows": [], "columns": [], "row_count": 0, "truncated": False}
         except Exception as e:
             return {"error": str(e), "rows": [], "columns": [], "row_count": 0}
+
+    def _scroll_objects(self, collection: str, limit: int = 200) -> Dict[str, Any]:
+        try:
+            result = self._client.data_object.get(
+                class_name=collection,
+                limit=limit,
+                additional_properties=["id"],
+            )
+            objects = result.get("objects", [])
+            if not objects:
+                return {"rows": [], "columns": [], "row_count": 0}
+            rows = [{"id": obj.get("id", ""), **obj.get("properties", {})} for obj in objects]
+            columns = list(rows[0].keys()) if rows else []
+            return {"rows": rows, "columns": columns, "row_count": len(rows)}
+        except Exception as e:
+            return {"error": str(e), "rows": [], "columns": [], "row_count": 0}
+
+    def get_collection_schema(self, collection: str) -> List[Dict]:
+        try:
+            schema = self._client.schema.get_class(collection)
+            return schema.get("properties", [])
+        except Exception:
+            return []
+
+    def delete_chunk(self, collection: str, chunk_id: str) -> None:
+        self._client.data_object.delete(chunk_id, class_name=collection)
+
+    def update_chunk(self, collection: str, chunk_id: str, properties: Dict) -> None:
+        props = {k: v for k, v in properties.items() if k != "id"}
+        self._client.data_object.update(props, class_name=collection, uuid=chunk_id)
+
+    def create_chunk(self, collection: str, properties: Dict) -> str:
+        props = {k: v for k, v in properties.items() if k != "id"}
+        return self._client.data_object.create(props, class_name=collection)
 
     def close(self) -> None:
         try:
@@ -664,7 +756,29 @@ class DatabaseService:
         limit: int = 1000,
         database: Optional[str] = None,
     ) -> Dict[str, Any]:
-        return self.get_adapter(conn).execute_query(query, params, limit, database)
+        adapter = self.get_adapter(conn)
+        if isinstance(adapter, SQLAdapter):
+            return adapter.execute_query(query, params, limit, database)
+        return adapter.execute_query(query, params, limit)
+
+    def get_vector_schema(self, conn: DbConnection, collection: str) -> List[Dict]:
+        adapter = self.get_adapter(conn)
+        if isinstance(adapter, WeaviateAdapter):
+            return adapter.get_collection_schema(collection)
+        if isinstance(adapter, ChromaAdapter):
+            return [{"name": "document", "dataType": ["text"]}, {"name": "metadata", "dataType": ["object"]}]
+        if isinstance(adapter, QdrantAdapter):
+            return [{"name": "payload", "dataType": ["object"]}]
+        return []
+
+    def delete_vector_chunk(self, conn: DbConnection, collection: str, chunk_id: str) -> None:
+        self.get_adapter(conn).delete_chunk(collection, chunk_id)
+
+    def update_vector_chunk(self, conn: DbConnection, collection: str, chunk_id: str, properties: Dict) -> None:
+        self.get_adapter(conn).update_chunk(collection, chunk_id, properties)
+
+    def create_vector_chunk(self, conn: DbConnection, collection: str, properties: Dict) -> str:
+        return self.get_adapter(conn).create_chunk(collection, properties)
 
     def get_version(self, conn: DbConnection) -> Optional[str]:
         try:

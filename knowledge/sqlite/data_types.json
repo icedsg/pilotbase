@@ -1,0 +1,108 @@
+{
+  "db_type": "sqlite",
+  "version_info": "SQLite 3.x",
+  "source": "https://www.sqlite.org/datatype3.html",
+  "notes": "SQLite uses a dynamic type system with type affinity. The declared type name influences affinity rules but any column can store any value. SQLite recognizes 5 storage classes: NULL, INTEGER, REAL, TEXT, BLOB.",
+  "categories": [
+    {
+      "category": "Integer Affinity",
+      "types": [
+        {
+          "name": "INTEGER",
+          "aliases": ["INT", "INT2", "INT4", "INT8", "TINYINT", "SMALLINT", "MEDIUMINT", "BIGINT"],
+          "params": null,
+          "default_expr": "INTEGER",
+          "description": "Whole number. SQLite stores in 1, 2, 3, 4, 6, or 8 bytes depending on the value magnitude. INTEGER PRIMARY KEY is the rowid alias (auto-increment).",
+          "storage": "1–8 bytes"
+        }
+      ]
+    },
+    {
+      "category": "Real Affinity",
+      "types": [
+        {
+          "name": "REAL",
+          "aliases": ["FLOAT", "DOUBLE", "DOUBLE PRECISION"],
+          "params": null,
+          "default_expr": "REAL",
+          "description": "Floating-point number stored as an 8-byte IEEE 754 double.",
+          "storage": "8 bytes"
+        }
+      ]
+    },
+    {
+      "category": "Text Affinity",
+      "types": [
+        {
+          "name": "TEXT",
+          "aliases": ["CLOB"],
+          "params": null,
+          "default_expr": "TEXT",
+          "description": "String encoded in UTF-8, UTF-16BE, or UTF-16LE.",
+          "storage": "variable"
+        },
+        {
+          "name": "VARCHAR",
+          "aliases": ["CHARACTER VARYING", "VARYING CHARACTER", "NCHAR", "NVARCHAR", "NATIVE CHARACTER", "CHARACTER"],
+          "params": "(n)",
+          "default_expr": "VARCHAR(255)",
+          "description": "Maps to TEXT affinity. Length n is ignored at the storage level but is preserved in the schema.",
+          "storage": "variable",
+          "notes": "Length limit is not enforced by SQLite — any length of text is accepted."
+        }
+      ]
+    },
+    {
+      "category": "Blob Affinity",
+      "types": [
+        {
+          "name": "BLOB",
+          "aliases": [],
+          "params": null,
+          "default_expr": "BLOB",
+          "description": "Binary data stored exactly as input. No type affinity conversions applied.",
+          "storage": "variable"
+        }
+      ]
+    },
+    {
+      "category": "Numeric Affinity",
+      "types": [
+        {
+          "name": "NUMERIC",
+          "aliases": ["DECIMAL"],
+          "params": "[(M, D)]",
+          "default_expr": "NUMERIC",
+          "description": "Converts text/blob to integer or real if lossless. Falls back to text otherwise.",
+          "storage": "variable",
+          "notes": "SQLite does not enforce decimal precision; values are stored as INTEGER or REAL."
+        },
+        {
+          "name": "BOOLEAN",
+          "aliases": [],
+          "params": null,
+          "default_expr": "INTEGER",
+          "description": "No native boolean type. Convention: 0 = FALSE, 1 = TRUE stored as INTEGER.",
+          "storage": "1 byte"
+        },
+        {
+          "name": "DATE",
+          "aliases": [],
+          "params": null,
+          "default_expr": "TEXT",
+          "description": "No native date type. Store as TEXT (ISO 8601: 'YYYY-MM-DD'), REAL (Julian day), or INTEGER (Unix timestamp).",
+          "storage": "variable",
+          "notes": "SQLite date functions work with all three representations."
+        },
+        {
+          "name": "DATETIME",
+          "aliases": ["TIMESTAMP"],
+          "params": null,
+          "default_expr": "TEXT",
+          "description": "No native datetime type. Store as TEXT ('YYYY-MM-DD HH:MM:SS'), REAL (Julian day), or INTEGER (Unix epoch).",
+          "storage": "variable"
+        }
+      ]
+    }
+  ]
+}

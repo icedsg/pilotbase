@@ -1,0 +1,455 @@
+{
+  "db_type": "postgresql",
+  "version_info": "PostgreSQL 9.6+",
+  "source": "https://www.postgresql.org/docs/current/datatype.html",
+  "categories": [
+    {
+      "category": "Numeric",
+      "types": [
+        {
+          "name": "INTEGER",
+          "aliases": ["INT", "INT4"],
+          "params": null,
+          "default_expr": "INTEGER",
+          "description": "Signed 4-byte integer. Range: -2147483648 to 2147483647.",
+          "storage": "4 bytes"
+        },
+        {
+          "name": "BIGINT",
+          "aliases": ["INT8"],
+          "params": null,
+          "default_expr": "BIGINT",
+          "description": "Signed 8-byte integer. Range: -9223372036854775808 to 9223372036854775807.",
+          "storage": "8 bytes"
+        },
+        {
+          "name": "SMALLINT",
+          "aliases": ["INT2"],
+          "params": null,
+          "default_expr": "SMALLINT",
+          "description": "Signed 2-byte integer. Range: -32768 to 32767.",
+          "storage": "2 bytes"
+        },
+        {
+          "name": "SERIAL",
+          "aliases": ["SERIAL4"],
+          "params": null,
+          "default_expr": "SERIAL",
+          "description": "Auto-incrementing 4-byte integer (not null, sequence-backed). Equivalent to INTEGER with a DEFAULT nextval(seq).",
+          "storage": "4 bytes",
+          "notes": "Prefer GENERATED ALWAYS AS IDENTITY in PG 10+."
+        },
+        {
+          "name": "BIGSERIAL",
+          "aliases": ["SERIAL8"],
+          "params": null,
+          "default_expr": "BIGSERIAL",
+          "description": "Auto-incrementing 8-byte integer.",
+          "storage": "8 bytes"
+        },
+        {
+          "name": "SMALLSERIAL",
+          "aliases": ["SERIAL2"],
+          "params": null,
+          "default_expr": "SMALLSERIAL",
+          "description": "Auto-incrementing 2-byte integer.",
+          "storage": "2 bytes"
+        },
+        {
+          "name": "NUMERIC",
+          "aliases": ["DECIMAL"],
+          "params": "(precision, scale)",
+          "default_expr": "NUMERIC(10, 2)",
+          "description": "Exact numeric with user-specified precision and scale. Arbitrary precision.",
+          "storage": "variable"
+        },
+        {
+          "name": "REAL",
+          "aliases": ["FLOAT4"],
+          "params": null,
+          "default_expr": "REAL",
+          "description": "4-byte single-precision floating-point number (approx 6 decimal digits of precision).",
+          "storage": "4 bytes"
+        },
+        {
+          "name": "DOUBLE PRECISION",
+          "aliases": ["FLOAT8", "FLOAT"],
+          "params": null,
+          "default_expr": "DOUBLE PRECISION",
+          "description": "8-byte double-precision floating-point number (approx 15 decimal digits of precision).",
+          "storage": "8 bytes"
+        },
+        {
+          "name": "MONEY",
+          "aliases": [],
+          "params": null,
+          "default_expr": "MONEY",
+          "description": "Currency amount. Fraction precision depends on lc_monetary. Range: -92233720368547758.08 to +92233720368547758.07.",
+          "storage": "8 bytes",
+          "notes": "Use NUMERIC for portable currency storage."
+        }
+      ]
+    },
+    {
+      "category": "Character",
+      "types": [
+        {
+          "name": "VARCHAR",
+          "aliases": ["CHARACTER VARYING"],
+          "params": "(n)",
+          "default_expr": "VARCHAR(255)",
+          "description": "Variable-length string with limit n. If n is omitted, any length is accepted.",
+          "storage": "1 or 4 bytes + string length"
+        },
+        {
+          "name": "TEXT",
+          "aliases": [],
+          "params": null,
+          "default_expr": "TEXT",
+          "description": "Variable unlimited-length string. Preferred over VARCHAR without a limit in PostgreSQL.",
+          "storage": "1 or 4 bytes + string length"
+        },
+        {
+          "name": "CHAR",
+          "aliases": ["CHARACTER"],
+          "params": "(n)",
+          "default_expr": "CHAR(1)",
+          "description": "Fixed-length, blank-padded string of exactly n characters.",
+          "storage": "1 or 4 bytes + n"
+        },
+        {
+          "name": "BYTEA",
+          "aliases": [],
+          "params": null,
+          "default_expr": "BYTEA",
+          "description": "Binary string (byte array). Stores raw bytes.",
+          "storage": "1 or 4 bytes + binary string length"
+        }
+      ]
+    },
+    {
+      "category": "Date / Time",
+      "types": [
+        {
+          "name": "TIMESTAMP",
+          "aliases": ["TIMESTAMP WITHOUT TIME ZONE"],
+          "params": "[(p)]",
+          "default_expr": "TIMESTAMP",
+          "description": "Date and time without timezone. Range: 4713 BC – 294276 AD. p = fractional seconds precision (0-6).",
+          "storage": "8 bytes"
+        },
+        {
+          "name": "TIMESTAMPTZ",
+          "aliases": ["TIMESTAMP WITH TIME ZONE"],
+          "params": "[(p)]",
+          "default_expr": "TIMESTAMPTZ",
+          "description": "Date and time with timezone. Stored as UTC internally. p = fractional seconds precision (0-6).",
+          "storage": "8 bytes"
+        },
+        {
+          "name": "DATE",
+          "aliases": [],
+          "params": null,
+          "default_expr": "DATE",
+          "description": "Calendar date (year, month, day). Range: 4713 BC – 5874897 AD.",
+          "storage": "4 bytes"
+        },
+        {
+          "name": "TIME",
+          "aliases": ["TIME WITHOUT TIME ZONE"],
+          "params": "[(p)]",
+          "default_expr": "TIME",
+          "description": "Time of day without timezone. Range: 00:00:00 – 24:00:00.",
+          "storage": "8 bytes"
+        },
+        {
+          "name": "TIMETZ",
+          "aliases": ["TIME WITH TIME ZONE"],
+          "params": "[(p)]",
+          "default_expr": "TIMETZ",
+          "description": "Time of day with timezone.",
+          "storage": "12 bytes",
+          "notes": "Use TIMESTAMPTZ in most cases instead."
+        },
+        {
+          "name": "INTERVAL",
+          "aliases": [],
+          "params": "[(fields)] [(p)]",
+          "default_expr": "INTERVAL",
+          "description": "Time span. e.g., '1 year 2 months 3 days'. Supports optional field restriction and precision.",
+          "storage": "16 bytes"
+        }
+      ]
+    },
+    {
+      "category": "Boolean",
+      "types": [
+        {
+          "name": "BOOLEAN",
+          "aliases": ["BOOL"],
+          "params": null,
+          "default_expr": "BOOLEAN",
+          "description": "Logical boolean. Stores TRUE, FALSE, or NULL.",
+          "storage": "1 byte"
+        }
+      ]
+    },
+    {
+      "category": "JSON",
+      "types": [
+        {
+          "name": "JSONB",
+          "aliases": [],
+          "params": null,
+          "default_expr": "JSONB",
+          "description": "JSON data stored in a decomposed binary format. Supports GIN indexes. Preferred over JSON for querying.",
+          "storage": "variable",
+          "min_version": "9.4"
+        },
+        {
+          "name": "JSON",
+          "aliases": [],
+          "params": null,
+          "default_expr": "JSON",
+          "description": "JSON data stored as exact text copy. Faster to input; use JSONB for querying/indexing.",
+          "storage": "variable"
+        }
+      ]
+    },
+    {
+      "category": "UUID",
+      "types": [
+        {
+          "name": "UUID",
+          "aliases": [],
+          "params": null,
+          "default_expr": "UUID",
+          "description": "Universally unique identifier (128-bit). Stored efficiently. Use gen_random_uuid() or uuid_generate_v4() for defaults.",
+          "storage": "16 bytes"
+        }
+      ]
+    },
+    {
+      "category": "Network",
+      "types": [
+        {
+          "name": "INET",
+          "aliases": [],
+          "params": null,
+          "default_expr": "INET",
+          "description": "IPv4 or IPv6 host address (and optionally its subnet). Stores network mask with address.",
+          "storage": "7 or 19 bytes"
+        },
+        {
+          "name": "CIDR",
+          "aliases": [],
+          "params": null,
+          "default_expr": "CIDR",
+          "description": "IPv4 or IPv6 network specification. Host bits must be zero.",
+          "storage": "7 or 19 bytes"
+        },
+        {
+          "name": "MACADDR",
+          "aliases": [],
+          "params": null,
+          "default_expr": "MACADDR",
+          "description": "MAC address (6 bytes).",
+          "storage": "6 bytes"
+        },
+        {
+          "name": "MACADDR8",
+          "aliases": [],
+          "params": null,
+          "default_expr": "MACADDR8",
+          "description": "MAC address in EUI-64 format (8 bytes).",
+          "storage": "8 bytes",
+          "min_version": "10"
+        }
+      ]
+    },
+    {
+      "category": "Array",
+      "types": [
+        {
+          "name": "TEXT[]",
+          "aliases": [],
+          "params": null,
+          "default_expr": "TEXT[]",
+          "description": "Array of text. Any base type can be made into an array with [].",
+          "storage": "variable"
+        },
+        {
+          "name": "INTEGER[]",
+          "aliases": [],
+          "params": null,
+          "default_expr": "INTEGER[]",
+          "description": "Array of integers.",
+          "storage": "variable"
+        },
+        {
+          "name": "JSONB[]",
+          "aliases": [],
+          "params": null,
+          "default_expr": "JSONB[]",
+          "description": "Array of JSONB values.",
+          "storage": "variable"
+        }
+      ]
+    },
+    {
+      "category": "Range",
+      "types": [
+        {
+          "name": "INT4RANGE",
+          "aliases": [],
+          "params": null,
+          "default_expr": "INT4RANGE",
+          "description": "Range of integer.",
+          "storage": "variable",
+          "min_version": "9.2"
+        },
+        {
+          "name": "INT8RANGE",
+          "aliases": [],
+          "params": null,
+          "default_expr": "INT8RANGE",
+          "description": "Range of bigint.",
+          "storage": "variable",
+          "min_version": "9.2"
+        },
+        {
+          "name": "NUMRANGE",
+          "aliases": [],
+          "params": null,
+          "default_expr": "NUMRANGE",
+          "description": "Range of numeric.",
+          "storage": "variable",
+          "min_version": "9.2"
+        },
+        {
+          "name": "TSRANGE",
+          "aliases": [],
+          "params": null,
+          "default_expr": "TSRANGE",
+          "description": "Range of timestamp without time zone.",
+          "storage": "variable",
+          "min_version": "9.2"
+        },
+        {
+          "name": "TSTZRANGE",
+          "aliases": [],
+          "params": null,
+          "default_expr": "TSTZRANGE",
+          "description": "Range of timestamp with time zone.",
+          "storage": "variable",
+          "min_version": "9.2"
+        },
+        {
+          "name": "DATERANGE",
+          "aliases": [],
+          "params": null,
+          "default_expr": "DATERANGE",
+          "description": "Range of date.",
+          "storage": "variable",
+          "min_version": "9.2"
+        }
+      ]
+    },
+    {
+      "category": "Text Search",
+      "types": [
+        {
+          "name": "TSVECTOR",
+          "aliases": [],
+          "params": null,
+          "default_expr": "TSVECTOR",
+          "description": "Sorted list of distinct lexemes. Used for full-text search.",
+          "storage": "variable"
+        },
+        {
+          "name": "TSQUERY",
+          "aliases": [],
+          "params": null,
+          "default_expr": "TSQUERY",
+          "description": "Text search query. Stores lexemes with operators &, |, !, <->.",
+          "storage": "variable"
+        }
+      ]
+    },
+    {
+      "category": "Geometric",
+      "types": [
+        {
+          "name": "POINT",
+          "aliases": [],
+          "params": null,
+          "default_expr": "POINT",
+          "description": "Geometric point (x, y).",
+          "storage": "16 bytes"
+        },
+        {
+          "name": "LINE",
+          "aliases": [],
+          "params": null,
+          "default_expr": "LINE",
+          "description": "Infinite line defined by A, B, C where Ax + By + C = 0.",
+          "storage": "24 bytes"
+        },
+        {
+          "name": "POLYGON",
+          "aliases": [],
+          "params": null,
+          "default_expr": "POLYGON",
+          "description": "Closed geometric path (polygon).",
+          "storage": "variable"
+        },
+        {
+          "name": "BOX",
+          "aliases": [],
+          "params": null,
+          "default_expr": "BOX",
+          "description": "Rectangular box defined by two corner points.",
+          "storage": "32 bytes"
+        },
+        {
+          "name": "CIRCLE",
+          "aliases": [],
+          "params": null,
+          "default_expr": "CIRCLE",
+          "description": "Geometric circle (center point and radius).",
+          "storage": "24 bytes"
+        }
+      ]
+    },
+    {
+      "category": "Identity / Other",
+      "types": [
+        {
+          "name": "XML",
+          "aliases": [],
+          "params": null,
+          "default_expr": "XML",
+          "description": "XML data. Stores well-formed XML.",
+          "storage": "variable"
+        },
+        {
+          "name": "OID",
+          "aliases": [],
+          "params": null,
+          "default_expr": "OID",
+          "description": "Object identifier. Used internally by PostgreSQL for system tables.",
+          "storage": "4 bytes"
+        },
+        {
+          "name": "PG_LSN",
+          "aliases": [],
+          "params": null,
+          "default_expr": "PG_LSN",
+          "description": "PostgreSQL Log Sequence Number (WAL position).",
+          "storage": "8 bytes",
+          "min_version": "9.4"
+        }
+      ]
+    }
+  ]
+}

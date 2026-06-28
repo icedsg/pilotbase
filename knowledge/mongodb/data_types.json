@@ -1,0 +1,194 @@
+{
+  "db_type": "mongodb",
+  "version_info": "MongoDB 5.0+",
+  "source": "https://www.mongodb.com/docs/manual/reference/bson-types/",
+  "notes": "MongoDB uses BSON (Binary JSON) for storage. These types are used in $type operators, JSON Schema validation ($jsonSchema), and aggregation expressions.",
+  "categories": [
+    {
+      "category": "String & Text",
+      "types": [
+        {
+          "name": "string",
+          "aliases": [],
+          "params": null,
+          "default_expr": "string",
+          "description": "UTF-8 string. Most common type for text data. BSON type 2.",
+          "bson_code": 2
+        },
+        {
+          "name": "symbol",
+          "aliases": [],
+          "params": null,
+          "default_expr": "symbol",
+          "description": "Deprecated. Identical to string but intended for languages using a symbol data type.",
+          "bson_code": 14
+        }
+      ]
+    },
+    {
+      "category": "Numeric",
+      "types": [
+        {
+          "name": "int",
+          "aliases": ["integer"],
+          "params": null,
+          "default_expr": "int",
+          "description": "32-bit signed integer. BSON type 16. Range: -2147483648 to 2147483647.",
+          "bson_code": 16
+        },
+        {
+          "name": "long",
+          "aliases": [],
+          "params": null,
+          "default_expr": "long",
+          "description": "64-bit signed integer. BSON type 18. Range: -9223372036854775808 to 9223372036854775807.",
+          "bson_code": 18
+        },
+        {
+          "name": "double",
+          "aliases": ["number"],
+          "params": null,
+          "default_expr": "double",
+          "description": "64-bit IEEE 754 floating-point. BSON type 1. Default numeric type in BSON.",
+          "bson_code": 1
+        },
+        {
+          "name": "decimal",
+          "aliases": [],
+          "params": null,
+          "default_expr": "decimal",
+          "description": "128-bit decimal floating-point (Decimal128). BSON type 19. Used for precise monetary calculations.",
+          "bson_code": 19,
+          "min_version": "3.4"
+        }
+      ]
+    },
+    {
+      "category": "Boolean",
+      "types": [
+        {
+          "name": "bool",
+          "aliases": ["boolean"],
+          "params": null,
+          "default_expr": "bool",
+          "description": "Boolean true or false. BSON type 8.",
+          "bson_code": 8
+        }
+      ]
+    },
+    {
+      "category": "Date / Time",
+      "types": [
+        {
+          "name": "date",
+          "aliases": [],
+          "params": null,
+          "default_expr": "date",
+          "description": "UTC datetime stored as 64-bit integer (milliseconds since Unix epoch). BSON type 9.",
+          "bson_code": 9
+        },
+        {
+          "name": "timestamp",
+          "aliases": [],
+          "params": null,
+          "default_expr": "timestamp",
+          "description": "Internal MongoDB type for replication. 64-bit: 32-bit seconds + 32-bit ordinal. Not the same as date. BSON type 17.",
+          "bson_code": 17,
+          "notes": "Use 'date' for application timestamps; 'timestamp' is for MongoDB internal use."
+        }
+      ]
+    },
+    {
+      "category": "Identity",
+      "types": [
+        {
+          "name": "objectId",
+          "aliases": [],
+          "params": null,
+          "default_expr": "objectId",
+          "description": "12-byte BSON ObjectId. Encodes creation time (4 bytes), machine id (5 bytes), process counter (3 bytes). BSON type 7.",
+          "bson_code": 7
+        }
+      ]
+    },
+    {
+      "category": "Binary",
+      "types": [
+        {
+          "name": "binData",
+          "aliases": ["binary"],
+          "params": null,
+          "default_expr": "binData",
+          "description": "Binary data with a subtype byte. BSON type 5. Used for files, UUIDs, MD5 hashes, and custom binary.",
+          "bson_code": 5
+        }
+      ]
+    },
+    {
+      "category": "Document & Array",
+      "types": [
+        {
+          "name": "object",
+          "aliases": [],
+          "params": null,
+          "default_expr": "object",
+          "description": "Embedded BSON document. BSON type 3.",
+          "bson_code": 3
+        },
+        {
+          "name": "array",
+          "aliases": [],
+          "params": null,
+          "default_expr": "array",
+          "description": "Ordered list of BSON values. BSON type 4. Elements can be of mixed types.",
+          "bson_code": 4
+        }
+      ]
+    },
+    {
+      "category": "Special",
+      "types": [
+        {
+          "name": "null",
+          "aliases": [],
+          "params": null,
+          "default_expr": "null",
+          "description": "Null value or a missing field. BSON type 10.",
+          "bson_code": 10
+        },
+        {
+          "name": "regex",
+          "aliases": [],
+          "params": null,
+          "default_expr": "regex",
+          "description": "Regular expression with options. BSON type 11.",
+          "bson_code": 11
+        },
+        {
+          "name": "javascript",
+          "aliases": [],
+          "params": null,
+          "default_expr": "javascript",
+          "description": "JavaScript code. BSON type 13. Used in system.js or map-reduce (deprecated in favor of aggregation pipeline).",
+          "bson_code": 13
+        },
+        {
+          "name": "minKey",
+          "aliases": [],
+          "params": null,
+          "default_expr": "minKey",
+          "description": "Internal type. Compares lower than all BSON elements. BSON type -1. Used for range queries.",
+          "bson_code": -1
+        },
+        {
+          "name": "maxKey",
+          "aliases": [],
+          "params": null,
+          "default_expr": "maxKey",
+          "description": "Internal type. Compares higher than all BSON elements. BSON type 127. Used for range queries.",
+          "bson_code": 127
+        }
+      ]
+    }
+  ]
+}
