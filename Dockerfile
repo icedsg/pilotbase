@@ -9,6 +9,7 @@ RUN npm install --frozen-lockfile 2>&1 || \
     { echo ""; echo "ERROR: npm install failed. Ensure package-lock.json is committed or remove --frozen-lockfile."; exit 1; }
 
 COPY ui/ ./
+COPY knowledge/ /build/knowledge/
 
 RUN npm run build 2>&1 || \
     { echo ""; echo "ERROR: Frontend build failed. Check ui/src for TypeScript or build errors."; exit 1; }
