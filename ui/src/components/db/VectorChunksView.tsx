@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  Search, RefreshCw, Loader2, X, Package, ChevronRight,
+  Search, RefreshCw, Loader2, X, Package, ChevronRight, ChevronLeft,
   Trash2, Pencil, Check, Upload, AlertCircle,
 } from 'lucide-react'
 import { useStore } from '../../store'
@@ -62,6 +62,41 @@ function matchesSearch(chunk: Chunk, term: string): boolean {
   return scan(chunk.payload)
 }
 
+function findMatchContext(chunk: Chunk, term: string): { field: string; snippet: string } | null {
+  if (!term.trim()) return null
+  const lower = term.toLowerCase()
+  if (chunk.id.toLowerCase().includes(lower)) return { field: 'id', snippet: chunk.id }
+
+  function findIn(val: unknown, field: string): { field: string; snippet: string } | null {
+    if (typeof val === 'string') {
+      const idx = val.toLowerCase().indexOf(lower)
+      if (idx === -1) return null
+      const start = Math.max(0, idx - 18)
+      const end = Math.min(val.length, idx + term.length + 18)
+      return { field, snippet: (start > 0 ? '…' : '') + val.slice(start, end) + (end < val.length ? '…' : '') }
+    }
+    if (typeof val === 'number') {
+      return String(val).includes(lower) ? { field, snippet: String(val) } : null
+    }
+    if (Array.isArray(val)) {
+      for (let i = 0; i < val.length; i++) {
+        const r = findIn(val[i], `${field}[${i}]`)
+        if (r) return r
+      }
+      return null
+    }
+    if (val && typeof val === 'object') {
+      for (const [k, v] of Object.entries(val as object)) {
+        const r = findIn(v, k)
+        if (r) return r
+      }
+      return null
+    }
+    return null
+  }
+  return findIn(chunk.payload, '')
+}
+
 function findTextField(schema: SchemaProperty[]): string {
   for (const p of schema) {
     if (['text', 'content', 'body', 'page_content', 'document'].includes(p.name)) return p.name
@@ -75,13 +110,13 @@ function findTextField(schema: SchemaProperty[]): string {
 function JsonView({ data, depth = 0 }: { data: unknown; depth?: number }) {
   const [collapsed, setCollapsed] = useState(depth > 1)
   if (data === null || data === undefined) return <span className="text-gray-500 italic">null</span>
-  if (typeof data === 'boolean') return <span className="text-blue-400">{String(data)}</span>
-  if (typeof data === 'number') return <span className="text-green-400">{data}</span>
+  if (typeof data === 'boolean') return <span className="text-blue-600 dark:text-blue-400">{String(data)}</span>
+  if (typeof data === 'number') return <span className="text-green-700 dark:text-green-400">{data}</span>
   if (typeof data === 'string') {
     if (data.length > 300) return (
       <ExpandStr value={data} />
     )
-    return <span className="text-amber-300 whitespace-pre-wrap break-words">"{data}"</span>
+    return <span className="text-amber-700 dark:text-amber-300 whitespace-pre-wrap break-words">"{data}"</span>
   }
   if (Array.isArray(data)) {
     if (data.length === 0) return <span className="text-gray-500">[]</span>
@@ -108,7 +143,7 @@ function JsonView({ data, depth = 0 }: { data: unknown; depth?: number }) {
       <div className={depth > 0 ? 'ml-3 border-l border-surface-50 pl-2' : ''}>
         {(collapsed ? entries.slice(0, 4) : entries).map(([k, v]) => (
           <div key={k} className="text-xs py-0.5 flex gap-1 flex-wrap">
-            <span className="text-sky-400 font-medium flex-shrink-0">{k}:</span>
+            <span className="text-sky-700 dark:text-sky-400 font-medium flex-shrink-0">{k}:</span>
             <div className="flex-1 min-w-0"><JsonView data={v} depth={depth + 1} /></div>
           </div>
         ))}
@@ -118,14 +153,14 @@ function JsonView({ data, depth = 0 }: { data: unknown; depth?: number }) {
       </div>
     )
   }
-  return <span className="text-gray-300">{String(data)}</span>
+  return <span className="text-gray-700 dark:text-gray-300">{String(data)}</span>
 }
 
 function ExpandStr({ value }: { value: string }) {
   const [exp, setExp] = useState(false)
   return (
     <span>
-      <span className="text-amber-300 whitespace-pre-wrap break-words">
+      <span className="text-amber-700 dark:text-amber-300 whitespace-pre-wrap break-words">
         "{exp ? value : value.slice(0, 300)}{!exp && value.length > 300 ? '…' : ''}"
       </span>
       <button onClick={() => setExp(e => !e)} className="ml-1 text-[11px] text-accent hover:underline">
@@ -170,13 +205,13 @@ function UploadDialog({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Upload size={16} className="text-accent" />
-            <span className="text-sm font-medium text-gray-200">Upload chunks</span>
+            <span className="text-sm font-medium text-gray-800 dark:text-gray-200">Upload chunks</span>
           </div>
           <button onClick={onClose} className="btn-ghost p-1"><X size={14} /></button>
         </div>
 
         <p className="text-xs text-gray-500">
-          Supported: <span className="text-gray-400">.txt, .json, .csv</span> — each file is split into chunks and inserted.
+          Supported: <span className="text-gray-600 dark:text-gray-400">.txt, .json, .csv</span> — each file is split into chunks and inserted.
           Text will be embedded using the collection's vectorizer.
         </p>
 
@@ -221,6 +256,8 @@ function UploadDialog({
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+const PAGE_SIZE = 100
+
 export default function VectorChunksView() {
   const { vectorViewContext } = useStore()
   const { userId } = useUserSession()
@@ -231,6 +268,11 @@ export default function VectorChunksView() {
   const [searchTerm, setSearchTerm]   = useState('')
   const [selectedId, setSelectedId]   = useState<string | null>(null)
   const [schema, setSchema]           = useState<SchemaProperty[]>([])
+
+  // Pagination state
+  const [cursorStack, setCursorStack] = useState<(string | null)[]>([null])
+  const [pageIdx, setPageIdx]         = useState(0)
+  const [nextOffset, setNextOffset]   = useState<string | null>(null)
 
   // Edit state
   const [editing, setEditing]           = useState(false)
@@ -245,10 +287,11 @@ export default function VectorChunksView() {
   const [showUpload, setShowUpload]     = useState(false)
 
   const textField = findTextField(schema)
+  const totalCount = vectorViewContext?.totalCount
 
   // ── Data fetch ─────────────────────────────────────────────────────────────
 
-  const fetchChunks = useCallback(async () => {
+  const fetchPage = useCallback(async (cursor: string | null) => {
     if (!vectorViewContext || !userId) return
     setLoading(true)
     setError(null)
@@ -257,7 +300,7 @@ export default function VectorChunksView() {
     setChunks([])
     try {
       const { collection, connId, db } = vectorViewContext
-      const query = JSON.stringify({ collection, scroll: true, limit: 200 })
+      const query = JSON.stringify({ collection, scroll: true, limit: PAGE_SIZE, offset: cursor })
       const result = await apiExecuteQuery(userId, connId, query, db || undefined)
       if ((result as any).error) { setError((result as any).error); return }
       const loaded: Chunk[] = (result.rows || []).map(row => ({
@@ -265,6 +308,7 @@ export default function VectorChunksView() {
         payload: parsePayload(row),
       }))
       setChunks(loaded)
+      setNextOffset(result.next_offset ?? null)
     } catch (e: any) {
       setError(e?.response?.data?.detail || 'Failed to load chunks')
     } finally {
@@ -272,15 +316,37 @@ export default function VectorChunksView() {
     }
   }, [vectorViewContext, userId])
 
+  const resetAndFetch = useCallback(() => {
+    setCursorStack([null])
+    setPageIdx(0)
+    setNextOffset(null)
+    fetchPage(null)
+  }, [fetchPage])
+
   useEffect(() => {
     if (!vectorViewContext || !userId) return
-    fetchChunks()
+    resetAndFetch()
     apiGetVectorSchema(userId, vectorViewContext.connId, vectorViewContext.collection)
       .then(res => setSchema(res.properties ?? []))
       .catch(() => setSchema([]))
   }, [vectorViewContext?.collection, vectorViewContext?.connId, userId])  // eslint-disable-line
 
   useEffect(() => { setSearchTerm('') }, [vectorViewContext?.collection])
+
+  const handleNextPage = () => {
+    if (!nextOffset || loading) return
+    const newStack = [...cursorStack.slice(0, pageIdx + 1), nextOffset]
+    setCursorStack(newStack)
+    setPageIdx(pageIdx + 1)
+    fetchPage(nextOffset)
+  }
+
+  const handlePrevPage = () => {
+    if (pageIdx === 0 || loading) return
+    const newIdx = pageIdx - 1
+    setPageIdx(newIdx)
+    fetchPage(cursorStack[newIdx])
+  }
 
   // ── Edit handlers ──────────────────────────────────────────────────────────
 
@@ -332,7 +398,7 @@ export default function VectorChunksView() {
     const result = await apiUploadVectorChunks(
       userId, vectorViewContext.connId, vectorViewContext.collection, textField, files,
     )
-    if (result.created > 0) await fetchChunks()
+    if (result.created > 0) resetAndFetch()
     return result
   }
 
@@ -342,6 +408,8 @@ export default function VectorChunksView() {
 
   const filtered = chunks.filter(c => matchesSearch(c, searchTerm))
   const selected = selectedId ? chunks.find(c => c.id === selectedId) ?? null : null
+  const pageStart = pageIdx * PAGE_SIZE + 1
+  const pageEnd   = pageIdx * PAGE_SIZE + chunks.length
 
   return (
     <div className="h-full flex flex-col bg-surface-200">
@@ -350,8 +418,8 @@ export default function VectorChunksView() {
         <div className="relative flex-1">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
           <input
-            className="w-full bg-surface-200 text-gray-300 pl-8 pr-8 py-1 rounded text-xs outline-none border border-surface-50 focus:border-accent transition-colors"
-            placeholder={`Search ${vectorViewContext.collection} chunks…`}
+            className="w-full bg-surface-200 text-gray-700 dark:text-gray-300 pl-8 pr-8 py-1 rounded text-xs outline-none border border-surface-50 focus:border-accent transition-colors"
+            placeholder={`Search chunks…`}
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
           />
@@ -361,9 +429,12 @@ export default function VectorChunksView() {
             </button>
           )}
         </div>
-        <span className="text-[11px] text-gray-600 flex-shrink-0 tabular-nums">
-          {loading ? '…' : `${filtered.length} / ${chunks.length}`}
-        </span>
+
+        {searchTerm && !loading && (
+          <span className="text-[11px] text-gray-600 flex-shrink-0 tabular-nums">
+            {filtered.length} match{filtered.length !== 1 ? 'es' : ''}
+          </span>
+        )}
         <button
           onClick={() => setShowUpload(true)}
           className="btn-ghost p-1 flex-shrink-0 text-accent hover:text-accent-hover"
@@ -371,7 +442,7 @@ export default function VectorChunksView() {
         >
           <Upload size={13} />
         </button>
-        <button onClick={fetchChunks} disabled={loading} className="btn-ghost p-1 flex-shrink-0" title="Refresh">
+        <button onClick={resetAndFetch} disabled={loading} className="btn-ghost p-1 flex-shrink-0" title="Refresh">
           {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
         </button>
       </div>
@@ -381,10 +452,15 @@ export default function VectorChunksView() {
 
         {/* Left: chunk list */}
         <div className="w-72 flex-shrink-0 border-r border-surface-50 flex flex-col">
-          <div className="px-3 py-1 bg-surface-300 border-b border-surface-50 flex-shrink-0">
-            <span className="text-[11px] text-gray-600 uppercase tracking-wider font-medium">
+          <div className="px-3 py-1.5 bg-surface-300 border-b border-surface-50 flex-shrink-0 flex items-baseline gap-1.5 min-w-0">
+            <span className="text-[11px] text-gray-500 uppercase tracking-wider font-medium truncate">
               {vectorViewContext.collection}
             </span>
+            {totalCount != null && (
+              <span className="text-[10px] text-gray-600 dark:text-gray-400 flex-shrink-0 tabular-nums">
+                · {totalCount.toLocaleString()} chunks
+              </span>
+            )}
           </div>
           <div className="flex-1 overflow-y-auto">
             {error ? (
@@ -397,14 +473,15 @@ export default function VectorChunksView() {
                 <Loader2 size={13} className="animate-spin" /> Loading…
               </div>
             ) : filtered.length === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-2 h-24 text-xs text-gray-600">
-                <Package size={20} className="text-gray-700" />
+              <div className="flex flex-col items-center justify-center gap-2 h-24 text-xs text-gray-600 dark:text-gray-400">
+                <Package size={20} className="text-gray-500 dark:text-gray-500" />
                 {chunks.length === 0 ? 'No chunks found' : 'No matches'}
               </div>
             ) : (
               filtered.map(chunk => {
                 const title = extractTitle(chunk.payload, chunk.id)
                 const isSelected = selectedId === chunk.id
+                const matchCtx = searchTerm ? findMatchContext(chunk, searchTerm) : null
                 return (
                   <button
                     key={chunk.id}
@@ -417,8 +494,13 @@ export default function VectorChunksView() {
                   >
                     <Package size={13} className={`flex-shrink-0 mt-0.5 ${isSelected ? 'text-accent' : 'text-violet-400'}`} />
                     <div className="min-w-0 flex-1">
-                      <div className={`text-xs truncate leading-snug ${isSelected ? 'text-gray-100' : 'text-gray-300'}`}>{title}</div>
-                      <div className="text-[10px] text-gray-600 font-mono truncate">{chunk.id}</div>
+                      <div className={`text-xs truncate leading-snug ${isSelected ? 'text-gray-900 dark:text-gray-100' : 'text-gray-700 dark:text-gray-300'}`}>{title}</div>
+                      <div className="text-[10px] text-gray-500 dark:text-gray-500 font-mono truncate">{chunk.id}</div>
+                      {matchCtx && (
+                        <div className="text-[10px] text-amber-500/80 font-mono truncate mt-0.5">
+                          <span className="text-gray-500">{matchCtx.field}: </span>{matchCtx.snippet}
+                        </div>
+                      )}
                     </div>
                     {isSelected && <ChevronRight size={11} className="flex-shrink-0 mt-0.5 text-accent" />}
                   </button>
@@ -426,13 +508,40 @@ export default function VectorChunksView() {
               })
             )}
           </div>
+
+          {/* Pagination footer */}
+          {!error && (chunks.length > 0 || pageIdx > 0) && (
+            <div className="flex items-center justify-between px-3 py-1.5 border-t border-surface-50 bg-surface-300 flex-shrink-0">
+              <span className="text-[11px] text-gray-600 tabular-nums">
+                {loading ? '…' : `${pageStart.toLocaleString()}–${pageEnd.toLocaleString()}${totalCount != null ? ` / ${totalCount.toLocaleString()}` : ''}`}
+              </span>
+              <div className="flex items-center gap-0.5">
+                <button
+                  onClick={handlePrevPage}
+                  disabled={pageIdx === 0 || loading}
+                  className="btn-ghost p-0.5 disabled:opacity-30"
+                  title="Previous page"
+                >
+                  <ChevronLeft size={13} />
+                </button>
+                <button
+                  onClick={handleNextPage}
+                  disabled={!nextOffset || loading}
+                  className="btn-ghost p-0.5 disabled:opacity-30"
+                  title="Next page"
+                >
+                  <ChevronRight size={13} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Right: chunk detail / editor */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {!selected ? (
-            <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-600">
-              <Package size={28} className="text-gray-700" />
+            <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-600 dark:text-gray-400">
+              <Package size={28} className="text-gray-500 dark:text-gray-500" />
               <span className="text-xs">Select a chunk to view or edit</span>
             </div>
           ) : (
@@ -501,6 +610,9 @@ export default function VectorChunksView() {
                     schema={schema}
                     textField={textField}
                     onChange={setEditPayload}
+                    onSave={saveEdit}
+                    onCancel={cancelEdit}
+                    saving={saving}
                   />
                 ) : (
                   <div className="font-mono text-xs space-y-1">
@@ -527,18 +639,20 @@ export default function VectorChunksView() {
 // ── Edit form ─────────────────────────────────────────────────────────────────
 
 function EditForm({
-  payload, schema, textField, onChange,
+  payload, schema, textField, onChange, onSave, onCancel, saving,
 }: {
   payload: Record<string, unknown>
   schema: SchemaProperty[]
   textField: string
   onChange: (p: Record<string, unknown>) => void
+  onSave: () => void
+  onCancel: () => void
+  saving: boolean
 }) {
   const keys = Object.keys(payload).filter(k => k !== 'id')
 
   const updateKey = (k: string, v: unknown) => onChange({ ...payload, [k]: v })
 
-  // Determine if a field should be a textarea
   const isTextArea = (k: string, v: unknown) =>
     k === textField || (typeof v === 'string' && (v as string).length > 80)
 
@@ -551,7 +665,7 @@ function EditForm({
             <div key={k}>
               <label className="text-[11px] text-sky-400 font-medium block mb-1">{k}</label>
               <textarea
-                className="w-full bg-surface-300 text-gray-300 text-xs font-mono p-2 rounded border border-surface-50 focus:border-accent outline-none resize-y min-h-[60px]"
+                className="w-full bg-surface-300 text-gray-300 text-xs font-mono p-2 rounded border border-surface-50 focus:border-accent outline-none resize-y min-h-[100px]"
                 value={JSON.stringify(v, null, 2)}
                 onChange={e => { try { updateKey(k, JSON.parse(e.target.value)) } catch { updateKey(k, e.target.value) } }}
               />
@@ -562,7 +676,7 @@ function EditForm({
             <div key={k}>
               <label className="text-[11px] text-sky-400 font-medium block mb-1">{k}</label>
               <textarea
-                className="w-full bg-surface-300 text-gray-300 text-xs font-mono p-2 rounded border border-surface-50 focus:border-accent outline-none resize-y min-h-[120px]"
+                className={`w-full bg-surface-300 text-gray-300 text-xs font-mono p-2 rounded border border-surface-50 focus:border-accent outline-none resize-y ${k === textField ? 'min-h-[240px]' : 'min-h-[72px]'}`}
                 value={String(v ?? '')}
                 onChange={e => updateKey(k, e.target.value)}
               />
@@ -582,6 +696,19 @@ function EditForm({
       {keys.length === 0 && (
         <p className="text-xs text-gray-600 italic">No editable fields in payload</p>
       )}
+
+      <div className="flex items-center gap-2 pt-3 border-t border-surface-50 sticky bottom-0 bg-surface-200 pb-1">
+        <button
+          onClick={onSave}
+          disabled={saving}
+          className="flex items-center gap-1.5 bg-accent hover:bg-accent-hover text-white text-xs px-3 py-1.5 rounded disabled:opacity-50 transition-colors"
+        >
+          {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Save
+        </button>
+        <button onClick={onCancel} className="btn-ghost text-xs text-gray-400 hover:text-gray-200 px-3 py-1.5">
+          <X size={12} className="inline mr-1" />Cancel
+        </button>
+      </div>
     </div>
   )
 }

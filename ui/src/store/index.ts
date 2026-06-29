@@ -13,6 +13,7 @@ export interface VectorViewContext {
   connId: string
   db: string
   dbType: string
+  totalCount?: number | null
 }
 
 export interface NoSQLViewContext {

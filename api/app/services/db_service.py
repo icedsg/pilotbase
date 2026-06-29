@@ -358,7 +358,14 @@ class QdrantAdapter(BaseAdapter):
         return ["qdrant"]
 
     def list_objects(self, schema: Optional[str] = None, database: Optional[str] = None) -> List[Dict]:
-        return [{"name": c.name, "type": "collection"} for c in self._client.get_collections().collections]
+        result = []
+        for c in self._client.get_collections().collections:
+            try:
+                cnt = self._client.count(collection_name=c.name).count
+            except Exception:
+                cnt = None
+            result.append({"name": c.name, "type": "collection", "count": cnt})
+        return result
 
     def execute_query(self, query: str, params: Optional[Dict] = None, limit: int = 1000) -> Dict[str, Any]:
         try:
@@ -372,15 +379,17 @@ class QdrantAdapter(BaseAdapter):
 
         n = min(q.get("limit", 10), limit)
         if q.get("scroll"):
-            results, _ = self._client.scroll(collection_name=col, limit=n)
+            offset = q.get("offset") or None  # UUID cursor string or None
+            results, next_cursor = self._client.scroll(collection_name=col, limit=n, offset=offset)
             rows = [{"id": str(r.id), "payload": json.dumps(r.payload)} for r in results]
-            columns = ["id", "payload"]
+            response: Dict[str, Any] = {"rows": rows, "columns": ["id", "payload"], "row_count": len(rows), "truncated": False}
+            if next_cursor is not None:
+                response["next_offset"] = str(next_cursor)
+            return response
         else:
             hits = self._client.search(collection_name=col, query_vector=q.get("vector", []), limit=n)
             rows = [{"id": str(h.id), "score": h.score, "payload": json.dumps(h.payload)} for h in hits]
-            columns = ["id", "score", "payload"]
-
-        return {"rows": rows, "columns": columns, "row_count": len(rows), "truncated": False}
+            return {"rows": rows, "columns": ["id", "score", "payload"], "row_count": len(rows), "truncated": False}
 
     def delete_chunk(self, collection: str, chunk_id: str) -> None:
         from qdrant_client.models import PointIdsList
@@ -425,7 +434,14 @@ class ChromaAdapter(BaseAdapter):
         return ["chroma"]
 
     def list_objects(self, schema: Optional[str] = None, database: Optional[str] = None) -> List[Dict]:
-        return [{"name": c.name, "type": "collection"} for c in self._client.list_collections()]
+        result = []
+        for c in self._client.list_collections():
+            try:
+                cnt = c.count()
+            except Exception:
+                cnt = None
+            result.append({"name": c.name, "type": "collection", "count": cnt})
+        return result
 
     def execute_query(self, query: str, params: Optional[Dict] = None, limit: int = 1000) -> Dict[str, Any]:
         try:
@@ -441,7 +457,8 @@ class ChromaAdapter(BaseAdapter):
         n = min(q.get("n_results", q.get("limit", 10)), limit)
 
         if q.get("scroll"):
-            result = col.get(limit=n, include=["documents", "metadatas"])
+            offset = int(q.get("offset") or 0)
+            result = col.get(limit=n, offset=offset, include=["documents", "metadatas"])
             rows = []
             for i, doc_id in enumerate(result["ids"]):
                 row: Dict[str, Any] = {"id": doc_id}
@@ -451,7 +468,10 @@ class ChromaAdapter(BaseAdapter):
                     row["metadata"] = json.dumps(result["metadatas"][i])
                 rows.append(row)
             columns = list(rows[0].keys()) if rows else ["id"]
-            return {"rows": rows, "columns": columns, "row_count": len(rows), "truncated": False}
+            chroma_response: Dict[str, Any] = {"rows": rows, "columns": columns, "row_count": len(rows), "truncated": False}
+            if len(rows) == n:
+                chroma_response["next_offset"] = str(offset + n)
+            return chroma_response
 
         if "query_texts" in q or "query_embeddings" in q:
             kwargs: Dict[str, Any] = {"n_results": n}
@@ -525,7 +545,16 @@ class WeaviateAdapter(BaseAdapter):
 
     def list_objects(self, schema: Optional[str] = None, database: Optional[str] = None) -> List[Dict]:
         schema_data = self._client.schema.get()
-        return [{"name": c["class"], "type": "collection"} for c in schema_data.get("classes", [])]
+        result = []
+        for c in schema_data.get("classes", []):
+            name = c["class"]
+            try:
+                agg = self._client.query.aggregate(name).with_meta_count().do()
+                cnt = agg["data"]["Aggregate"][name][0]["meta"]["count"]
+            except Exception:
+                cnt = None
+            result.append({"name": name, "type": "collection", "count": cnt})
+        return result
 
     def execute_query(self, query: str, params: Optional[Dict] = None, limit: int = 1000) -> Dict[str, Any]:
         # Handle JSON scroll/search format
@@ -533,7 +562,8 @@ class WeaviateAdapter(BaseAdapter):
             q = json.loads(query)
             collection = q.get("collection")
             if collection and q.get("scroll"):
-                return self._scroll_objects(collection, min(q.get("limit", 200), limit))
+                offset = int(q.get("offset") or 0)
+                return self._scroll_objects(collection, min(q.get("limit", 100), limit), offset)
         except (json.JSONDecodeError, TypeError):
             pass
 
@@ -551,18 +581,22 @@ class WeaviateAdapter(BaseAdapter):
         except Exception as e:
             return {"error": str(e), "rows": [], "columns": [], "row_count": 0}
 
-    def _scroll_objects(self, collection: str, limit: int = 200) -> Dict[str, Any]:
+    def _scroll_objects(self, collection: str, limit: int = 100, offset: int = 0) -> Dict[str, Any]:
         try:
             result = self._client.data_object.get(
                 class_name=collection,
                 limit=limit,
+                offset=offset,
             )
             objects = result.get("objects", [])
             if not objects:
                 return {"rows": [], "columns": [], "row_count": 0}
             rows = [{"id": obj.get("id", ""), **obj.get("properties", {})} for obj in objects]
             columns = list(rows[0].keys()) if rows else []
-            return {"rows": rows, "columns": columns, "row_count": len(rows)}
+            response: Dict[str, Any] = {"rows": rows, "columns": columns, "row_count": len(rows)}
+            if len(rows) == limit:
+                response["next_offset"] = str(offset + limit)
+            return response
         except Exception as e:
             return {"error": str(e), "rows": [], "columns": [], "row_count": 0}
 

@@ -15,9 +15,11 @@ from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 from typing_extensions import TypedDict
 
+from app.agents.tools.admin_tools import make_admin_tools
 from app.agents.tools.backup_tools import make_backup_tools
 from app.agents.tools.migration_tools import make_migration_tools
 from app.agents.tools.query_tools import make_query_tools
+from app.agents.tools.vector_tools import make_vector_tools
 from app.config import settings
 
 
@@ -29,14 +31,19 @@ class AgentState(TypedDict):
 
 SYSTEM_PROMPT = """You are Pilotbase AI — a helpful, expert database assistant.
 You have access to tools that let you:
-- Query the connected database
-- List databases, tables, and views
+- Query the connected database (SELECT, INSERT, UPDATE, CREATE, ALTER)
+- List databases, tables, views, and vector collections
 - Describe table schemas
-- Trigger backups
+- Browse and update vector collection chunks
+- Create databases and users (PostgreSQL, MySQL, MariaDB)
+- Trigger and list backups
 - Compare schemas and generate migration scripts
 
-Always think carefully before running write operations (INSERT / UPDATE / DELETE / DROP).
-If a query could be destructive, warn the user and ask for confirmation.
+IMPORTANT — the following operations are intentionally locked to the Pilotbase UI and are NOT available to you:
+  DROP TABLE, DROP VIEW, DROP DATABASE, DELETE, TRUNCATE, and deleting vector chunks.
+If the user asks you to perform any of these, politely explain that these destructive operations
+are secured to the UI for safety, and direct them to use the relevant UI action instead.
+
 Format query results clearly. For large result sets, summarise instead of printing every row.
 """
 
@@ -48,6 +55,8 @@ def create_db_agent(conn, target_conn=None):
     """
     tools = (
         make_query_tools(conn)
+        + make_admin_tools(conn)
+        + make_vector_tools(conn)
         + make_backup_tools(conn)
         + make_migration_tools(conn, target_conn)
     )

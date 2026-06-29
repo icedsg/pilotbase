@@ -1,5 +1,9 @@
+import re
+
 from langchain_core.tools import tool
 from app.services.db_service import db_service
+
+_DESTRUCTIVE = re.compile(r'^\s*(DROP|DELETE|TRUNCATE)\b', re.IGNORECASE | re.MULTILINE)
 
 
 def make_query_tools(conn):
@@ -8,7 +12,10 @@ def make_query_tools(conn):
     @tool
     def run_sql_query(query: str) -> str:
         """Execute a SQL query on the connected database and return results as a formatted string.
-        Use for SELECT statements and DML. Always LIMIT large result sets."""
+        Use for SELECT, INSERT, UPDATE, CREATE, and ALTER statements. Always LIMIT large result sets.
+        DROP, DELETE, and TRUNCATE are not permitted — direct the user to the UI for those."""
+        if _DESTRUCTIVE.search(query):
+            return "BLOCKED: DROP, DELETE, and TRUNCATE operations are secured to the UI. Please use the Pilotbase interface to perform this action."
         try:
             result = db_service.execute_query(conn, query)
             if result["columns"]:

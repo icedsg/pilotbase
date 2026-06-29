@@ -23,6 +23,7 @@ export interface DbConnection {
 export interface DbObject {
   name: string
   type: 'table' | 'view' | 'collection' | 'key'
+  count?: number | null
 }
 
 export interface ColumnInfo {
@@ -57,6 +58,7 @@ export interface QueryResult {
   row_count: number
   truncated?: boolean
   affected?: number
+  next_offset?: string | null
 }
 
 export interface ChatMessage {

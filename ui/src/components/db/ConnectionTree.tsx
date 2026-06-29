@@ -205,7 +205,8 @@ export default function ConnectionTree({ refreshKey }: Props) {
 
     // Vector DB → dedicated chunks view
     if (VECTOR_DB_TYPES.has(conn.db_type)) {
-      setVectorViewContext({ collection: target.name, connId: target.connId, db: target.db, dbType: conn.db_type })
+      const obj = Object.values(state[target.connId]?.[target.db] ?? {}).flatMap(n => (n as any).objects ?? []).find((o: any) => o.name === target.name)
+      setVectorViewContext({ collection: target.name, connId: target.connId, db: target.db, dbType: conn.db_type, totalCount: obj?.count })
       setNosqlViewContext(null)
       return
     }
@@ -469,6 +470,7 @@ export default function ConnectionTree({ refreshKey }: Props) {
                                       <div className="tree-item text-gray-600" style={{ paddingLeft: '32px' }}>
                                         <Layers size={13} />
                                         <span className="uppercase text-[13px] tracking-wider">{label}</span>
+                                        <span className="text-[11px] text-gray-500 dark:text-gray-400 ml-1">({items.length})</span>
                                       </div>
                                       {items.map((obj) => {
                                         const isVectorCollection = VECTOR_DB_TYPES.has(conn.db_type) && obj.type === 'collection'
@@ -479,7 +481,7 @@ export default function ConnectionTree({ refreshKey }: Props) {
                                             style={{ paddingLeft: '44px' }}
                                             onClick={() => {
                                               if (isVectorCollection) {
-                                                setVectorViewContext({ collection: obj.name, connId: conn.id, db, dbType: conn.db_type })
+                                                setVectorViewContext({ collection: obj.name, connId: conn.id, db, dbType: conn.db_type, totalCount: obj.count })
                                                 setNosqlViewContext(null)
                                                 setColumnViewContext(null)
                                                 setActiveConnection(conn.id)
@@ -495,7 +497,10 @@ export default function ConnectionTree({ refreshKey }: Props) {
                                             }}
                                           >
                                             <Icon size={16} className="flex-shrink-0 text-gray-400" />
-                                            <span className="truncate font-mono text-[16px] font-medium">{obj.name}</span>
+                                            <span className="truncate font-mono text-[16px] font-medium flex-1 min-w-0">{obj.name}</span>
+                                            {isVectorCollection && obj.count != null && (
+                                              <span className="text-[10px] text-gray-600 flex-shrink-0 tabular-nums ml-1">{obj.count.toLocaleString()}</span>
+                                            )}
                                           </div>
                                         )
                                       })}

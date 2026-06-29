@@ -9,11 +9,14 @@ const BASE_WS = import.meta.env.VITE_API_URL
 export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>()
+  const intentionalClose = useRef(false)
   const { setWsConnected, addChatMessage, setChatLoading } = useStore()
 
   const connect = useCallback((userId: string) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return
+    const state = wsRef.current?.readyState
+    if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) return
 
+    intentionalClose.current = false
     const ws = new WebSocket(`${BASE_WS}/ws/${userId}`)
     wsRef.current = ws
 
@@ -31,8 +34,9 @@ export function useWebSocket() {
 
     ws.onclose = () => {
       setWsConnected(false)
-      // Reconnect after 3 seconds
-      reconnectTimer.current = setTimeout(() => connect(userId), 3_000)
+      if (!intentionalClose.current) {
+        reconnectTimer.current = setTimeout(() => connect(userId), 3_000)
+      }
     }
 
     ws.onerror = () => {
@@ -72,6 +76,7 @@ export function useWebSocket() {
   }, [setWsConnected, addChatMessage, setChatLoading])
 
   const disconnect = useCallback(() => {
+    intentionalClose.current = true
     clearTimeout(reconnectTimer.current)
     wsRef.current?.close()
     wsRef.current = null

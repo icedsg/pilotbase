@@ -45,9 +45,14 @@ export default function MainArea() {
           {isSpecialView && specialLabel && (
             <>
               <span className="text-gray-600">/</span>
-              <div className="flex items-center gap-1 text-gray-300">
+              <div className="flex items-center gap-1.5 text-gray-700 dark:text-gray-300 min-w-0">
                 <Box size={12} className="text-violet-400 flex-shrink-0" />
                 <span className="font-mono font-medium truncate">{specialLabel}</span>
+                {vectorViewContext?.totalCount != null && (
+                  <span className="text-[11px] text-gray-600 dark:text-gray-400 tabular-nums flex-shrink-0">
+                    ({vectorViewContext.totalCount.toLocaleString()} chunks)
+                  </span>
+                )}
               </div>
             </>
           )}

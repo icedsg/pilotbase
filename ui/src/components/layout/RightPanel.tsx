@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Send, Trash2, Bot, X } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 import { useStore } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
 import { apiChatViaWs } from '../../api/client'
@@ -11,13 +12,16 @@ interface Props {
 
 export default function RightPanel({ onClose }: Props) {
   const { userId } = useUserSession()
-  const { chatMessages, chatLoading, addChatMessage, setChatLoading, clearChat, activeConnectionId } = useStore()
+  const { chatMessages, chatLoading, addChatMessage, setChatLoading, clearChat, activeConnectionId, connections } = useStore()
+  const activeConnection = connections.find(c => c.id === activeConnectionId) ?? null
   const [input, setInput] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [chatMessages])
+    if (!chatLoading) inputRef.current?.focus()
+  }, [chatMessages, chatLoading])
 
   const sendMessage = async () => {
     const text = input.trim()
@@ -49,9 +53,14 @@ export default function RightPanel({ onClose }: Props) {
   return (
     <div className="h-full flex flex-col overflow-hidden border-l border-surface-50">
       <div className="flex items-center justify-between px-3 py-2 border-b border-surface-50 flex-shrink-0">
-        <div className="flex items-center gap-1.5">
-          <Bot size={17} className="text-gray-500" />
-          <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">AI Agent</span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          <Bot size={17} className="text-gray-500 flex-shrink-0" />
+          <span className="text-xs font-medium text-gray-500 uppercase tracking-wide flex-shrink-0">AI Agent</span>
+          {activeConnection && (
+            <span className="text-xs text-accent truncate" title={activeConnection.name}>
+              · {activeConnection.name}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-0.5">
           <button onClick={clearChat} className="btn-ghost p-1" title="Clear chat">
@@ -67,8 +76,10 @@ export default function RightPanel({ onClose }: Props) {
         {chatMessages.length === 0 && (
           <div className="text-center text-gray-600 mt-4 px-4">
             <Bot size={31} className="mx-auto mb-2 text-gray-700" />
-            <p>Ask me anything about your database.</p>
-            <p className="mt-1 text-gray-700">Select a connection first.</p>
+            {activeConnection
+              ? <p>Ask me anything about <span className="text-accent">{activeConnection.name}</span>.</p>
+              : <><p>Ask me anything about your database.</p><p className="mt-1 text-gray-700">Select a connection first.</p></>
+            }
           </div>
         )}
         {chatMessages.map((msg) => (
@@ -80,7 +91,15 @@ export default function RightPanel({ onClose }: Props) {
                   : 'bg-surface-300 text-gray-700 dark:text-gray-300'
               }`}
             >
-              <p className="whitespace-pre-wrap break-words leading-relaxed">{msg.content}</p>
+              {msg.role === 'assistant' ? (
+                <div className="prose prose-xs dark:prose-invert max-w-none leading-relaxed
+                  prose-p:my-1 prose-pre:my-1 prose-pre:text-[11px] prose-code:text-[11px]
+                  prose-headings:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0">
+                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                </div>
+              ) : (
+                <p className="whitespace-pre-wrap break-words leading-relaxed">{msg.content}</p>
+              )}
               <p className="text-[13px] text-gray-600 mt-1">{msg.timestamp.toLocaleTimeString()}</p>
             </div>
           </div>
@@ -100,6 +119,7 @@ export default function RightPanel({ onClose }: Props) {
       <div className="p-2 border-t border-surface-50 flex-shrink-0">
         <div className="flex gap-1.5">
           <input
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
