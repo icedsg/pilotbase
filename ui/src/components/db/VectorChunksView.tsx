@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Search, RefreshCw, Loader2, X, Package, ChevronRight,
-  Trash2, Pencil, Check, Upload, AlertCircle, Plus,
+  Trash2, Pencil, Check, Upload, AlertCircle,
 } from 'lucide-react'
 import { useStore } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
@@ -137,24 +137,26 @@ function ExpandStr({ value }: { value: string }) {
 
 // ── Upload dialog ─────────────────────────────────────────────────────────────
 
+interface UploadResult { created: number; errors: { file: string; error: string }[] }
+
 function UploadDialog({
   textField, onUpload, onClose,
 }: {
   textField: string
-  onUpload: (files: File[]) => Promise<void>
+  onUpload: (files: File[]) => Promise<UploadResult>
   onClose: () => void
 }) {
   const [files, setFiles] = useState<File[]>([])
   const [uploading, setUploading] = useState(false)
-  const [result, setResult] = useState<{ created: number; errors: { file: string; error: string }[] } | null>(null)
+  const [result, setResult] = useState<UploadResult | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
   const handleUpload = async () => {
     if (!files.length) return
     setUploading(true)
     try {
-      await onUpload(files)
-      setResult({ created: files.length, errors: [] })
+      const res = await onUpload(files)
+      setResult(res)
     } catch (e: any) {
       setResult({ created: 0, errors: [{ file: 'upload', error: e?.response?.data?.detail || String(e) }] })
     } finally {
@@ -193,11 +195,11 @@ function UploadDialog({
         </div>
 
         {result && (
-          <div className={`text-xs rounded p-2 ${result.errors.length ? 'text-red-400 bg-red-900/20' : 'text-green-400 bg-green-900/20'}`}>
-            {result.errors.length
-              ? result.errors.map((e, i) => <div key={i}>{e.file}: {e.error}</div>)
-              : `Upload complete — chunks created successfully`
-            }
+          <div className={`text-xs rounded p-2 space-y-0.5 ${result.errors.length && !result.created ? 'text-red-400 bg-red-900/20' : 'text-green-400 bg-green-900/20'}`}>
+            {result.created > 0 && <div>{result.created} chunk{result.created !== 1 ? 's' : ''} created successfully.</div>}
+            {result.errors.map((e, i) => (
+              <div key={i} className="text-red-400">{e.file}: {e.error}</div>
+            ))}
           </div>
         )}
 
@@ -254,13 +256,10 @@ export default function VectorChunksView() {
     setEditing(false)
     setChunks([])
     try {
-      const { collection, connId, db, dbType } = vectorViewContext
+      const { collection, connId, db } = vectorViewContext
       const query = JSON.stringify({ collection, scroll: true, limit: 200 })
       const result = await apiExecuteQuery(userId, connId, query, db || undefined)
-      if ((result as any).error) {
-        setError((result as any).error)
-        return
-      }
+      if ((result as any).error) { setError((result as any).error); return }
       const loaded: Chunk[] = (result.rows || []).map(row => ({
         id: String(row.id ?? (row._additional as any)?.id ?? Object.values(row)[0] ?? '?'),
         payload: parsePayload(row),
@@ -273,22 +272,13 @@ export default function VectorChunksView() {
     }
   }, [vectorViewContext, userId])
 
-  const fetchSchema = useCallback(async () => {
-    if (!vectorViewContext || !userId) return
-    try {
-      const { data } = await apiGetVectorSchema(userId, vectorViewContext.connId, vectorViewContext.collection) as any
-      setSchema((data as any)?.properties ?? [])
-    } catch {
-      setSchema([])
-    }
-  }, [vectorViewContext, userId])
-
   useEffect(() => {
+    if (!vectorViewContext || !userId) return
     fetchChunks()
-    apiGetVectorSchema(userId!, vectorViewContext?.connId!, vectorViewContext?.collection!)
+    apiGetVectorSchema(userId, vectorViewContext.connId, vectorViewContext.collection)
       .then(res => setSchema(res.properties ?? []))
       .catch(() => setSchema([]))
-  }, [vectorViewContext?.collection, vectorViewContext?.connId])  // eslint-disable-line
+  }, [vectorViewContext?.collection, vectorViewContext?.connId, userId])  // eslint-disable-line
 
   useEffect(() => { setSearchTerm('') }, [vectorViewContext?.collection])
 
@@ -337,13 +327,13 @@ export default function VectorChunksView() {
 
   // ── Upload handler ─────────────────────────────────────────────────────────
 
-  const handleUpload = async (files: File[]) => {
-    if (!vectorViewContext || !userId) return
+  const handleUpload = async (files: File[]): Promise<UploadResult> => {
+    if (!vectorViewContext || !userId) return { created: 0, errors: [] }
     const result = await apiUploadVectorChunks(
       userId, vectorViewContext.connId, vectorViewContext.collection, textField, files,
     )
-    if (result.errors.length) throw new Error(result.errors.map(e => e.error).join('; '))
-    await fetchChunks()
+    if (result.created > 0) await fetchChunks()
+    return result
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────

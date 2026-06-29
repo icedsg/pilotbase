@@ -556,7 +556,6 @@ class WeaviateAdapter(BaseAdapter):
             result = self._client.data_object.get(
                 class_name=collection,
                 limit=limit,
-                additional_properties=["id"],
             )
             objects = result.get("objects", [])
             if not objects:
