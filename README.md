@@ -45,25 +45,6 @@ Stop juggling pgAdmin, MongoDB Compass, RedisInsight, and separate vector DB das
 - Pluggable `AuthBackend` interface — drop in JWT, OAuth2, LDAP, or SSO
 - Per-connection read/write/admin permission grants
 
-### Coming Soon
-- **Schema Migration** — diff two databases, preview changes, generate and apply migration scripts
-- **Backup & Restore** — schedule or trigger on-demand database backups, downloadable from the UI
-- **Query History** — saved and recent queries per connection
-- **ER Diagram View** — visual schema explorer
-
----
-
-## Screenshots
-
-> Screenshots coming soon. To contribute screenshots, open a PR adding them to `docs/screenshots/`.
-
-<!-- Uncomment as screenshots are added:
-![Connection Tree showing multiple DB types](docs/screenshots/connection-tree.png)
-![Monaco SQL editor with results table](docs/screenshots/query-editor.png)
-![Vector chunk browser with similarity search](docs/screenshots/vector-chunks.png)
-![AI agent answering a natural language question](docs/screenshots/ai-agent.png)
--->
-
 ---
 
 ## Tech Stack
@@ -151,15 +132,19 @@ All settings are read from environment variables or `api/.env`.
 | `DATABASE_URL` | `postgresql+psycopg2://pilotbase:pilotbase_secret@localhost:5432/pilotbase` | Pilotbase's own internal store |
 | `SECRET_KEY` | `change-me` | JWT signing secret — **always override in production** |
 | `ENCRYPTION_KEY` | `change-me-must-be-valid-fernet-key=` | Fernet key for stored DB credentials — **always override in production** |
-| `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | OpenAI-compatible LLM base URL |
-| `OLLAMA_MODEL` | `deepseek-r1` | Primary reasoning model for the AI agent |
-| `OLLAMA_FLASH_MODEL` | `deepseek-v3` | Faster model for lightweight agent steps |
+| `OLLAMA_BASE_URL` | `https://ollama.com/v1` | OpenAI-compatible LLM base URL (use `http://localhost:11434/v1` for local Ollama) |
+| `OLLAMA_MODEL` | `gemma4:31b-cloud` | Primary reasoning model for the AI agent |
+| `OLLAMA_FLASH_MODEL` | `gemma4:cloud` | Faster model for lightweight agent steps |
 | `OLLAMA_API_KEY` | `ollama` | API key (`ollama` for local, real key for hosted providers) |
 | `AUTH_BACKEND` | `anon` | `anon` for single-user/anonymous, or dotted path to a custom `AuthBackend` class |
 | `ENVIRONMENT` | `development` | Set to `production` for tighter CORS and security defaults |
 | `CORS_ORIGINS` | `http://localhost:5173,...` | Comma-separated allowed origins |
 
-**Using a hosted LLM instead of Ollama:**
+**Using a local Ollama instance instead of the cloud:**
+
+Set `OLLAMA_BASE_URL` to `http://localhost:11434/v1`, set `OLLAMA_API_KEY` to `ollama`, and pick any model available in your local Ollama install.
+
+**Using a different hosted LLM:**
 
 Set `OLLAMA_BASE_URL` to any OpenAI-compatible endpoint and provide the appropriate `OLLAMA_API_KEY`. Works with OpenAI, Groq, Together AI, Anthropic (via proxy), and others.
 
@@ -167,7 +152,7 @@ Set `OLLAMA_BASE_URL` to any OpenAI-compatible endpoint and provide the appropri
 
 ## Supported Databases
 
-| Database | Protocol | Notes |
+| Database | Type | Notes |
 |---|---|---|
 | PostgreSQL | SQL | Multi-database, schema browsing, user/DB creation |
 | MySQL / MariaDB | SQL | Full database listing, user management |
@@ -178,6 +163,20 @@ Set `OLLAMA_BASE_URL` to any OpenAI-compatible endpoint and provide the appropri
 | Qdrant | Vector | ANN similarity search, scroll-based browsing, payload editing |
 | ChromaDB | Vector | Text and embedding queries, document browsing |
 | Weaviate | Vector | GraphQL queries and scroll browsing |
+
+### Looking for an admin UI for a specific database?
+
+Pilotbase is a single tool that covers all of these — no separate installs needed.
+
+- **PostgreSQL** — pgAdmin alternative, PostgreSQL web UI, Postgres admin panel, Postgres query browser
+- **MySQL / MariaDB** — phpMyAdmin alternative, MySQL admin UI, MariaDB web interface, MySQL query tool
+- **SQLite** — SQLite admin, SQLite browser, SQLite GUI, SQLite web viewer, SQLite editor online
+- **SQL Server** — MSSQL admin UI, SQL Server web client, SQL Server query tool, SSMS alternative
+- **MongoDB** — MongoDB admin, MongoDB Compass alternative, MongoDB web UI, Mongo document browser
+- **Redis** — RedisInsight alternative, Redis web UI, Redis admin panel, Redis key browser, Redis GUI
+- **Qdrant** — Qdrant UI, Qdrant admin panel, Qdrant web interface, vector database GUI
+- **ChromaDB** — ChromaDB admin, ChromaDB UI, ChromaDB web viewer, Chroma vector browser
+- **Weaviate** — Weaviate admin, Weaviate UI, Weaviate web interface, Weaviate console alternative
 
 ---
 
@@ -247,9 +246,9 @@ pilotbase/
 - [x] Vector chunk browser with ANN search (Qdrant, ChromaDB, Weaviate)
 - [x] LangGraph AI agent with natural language querying
 - [x] Per-connection user access control
-- [x] Token-based invite links
-- [ ] Schema migration: diff and apply across two connections
-- [ ] Scheduled and on-demand database backups
+- [-] Token-based invite links *(backend done — UI in progress)*
+- [-] Schema migration: diff and apply across two connections *(backend done — UI in progress)*
+- [-] Scheduled and on-demand database backups *(backend done — UI in progress)*
 - [ ] Query history and saved queries
 - [ ] ER diagram view
 - [ ] Full user/role management UI
@@ -259,11 +258,47 @@ pilotbase/
 
 ## Contributing
 
-Contributions are welcome — bug fixes, new database adapters, UI improvements, and documentation all appreciated.
+Contributions are welcome — and this codebase is genuinely easy to extend.
+
+### Adding a new database takes about 30 minutes
+
+Every database in Pilotbase is a single Python class that inherits from `BaseAdapter` in `api/app/services/db_service.py`. Implement five methods and you're done:
+
+```python
+class MyDbAdapter(BaseAdapter):
+    def test_connection(self) -> bool: ...
+    def list_databases(self) -> List[str]: ...
+    def list_objects(self, schema, database) -> List[Dict]: ...
+    def execute_query(self, query, params, limit) -> Dict: ...
+    def close(self) -> None: ...
+```
+
+No framework magic, no registration files to edit — just drop the class in and wire it to a new `db_type` string in the factory. The UI picks it up automatically.
+
+### Other good first contributions
+
+- **New UI panel** — React + TypeScript, Tailwind, Zustand for state. Components are small and isolated under `ui/src/components/`.
+- **Auth backend** — implement the `AuthBackend` abstract class to add JWT, OAuth2, LDAP, or API key auth.
+- **Bug fixes and docs** — always welcome, no issue required.
+
+### How to submit
 
 1. Fork the repo and create a feature branch
 2. Open an issue first for large features or breaking changes
 3. Submit a pull request against `master`
+
+---
+
+## Screenshots
+
+> Screenshots coming soon. To contribute screenshots, open a PR adding them to `docs/screenshots/`.
+
+<!-- Uncomment as screenshots are added:
+![Connection Tree showing multiple DB types](docs/screenshots/connection-tree.png)
+![Monaco SQL editor with results table](docs/screenshots/query-editor.png)
+![Vector chunk browser with similarity search](docs/screenshots/vector-chunks.png)
+![AI agent answering a natural language question](docs/screenshots/ai-agent.png)
+-->
 
 ---
 
