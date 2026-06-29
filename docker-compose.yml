@@ -31,12 +31,32 @@ services:
     ports:
       - "8000:8000"
     environment:
+      # Pilotbase internal database
       DATABASE_URL: "postgresql+psycopg2://pilotbase:pilotbase_secret@db:5432/pilotbase"
-      SECRET_KEY: "change-me-in-production-generate-with-openssl-rand-hex-32"
-      ENCRYPTION_KEY: "change-me-must-be-32-url-safe-base64-chars="
-      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY}"
+
+      # Security — change both of these before deploying
+      SECRET_KEY: "change-me-generate-with-openssl-rand-hex-32"
+      ENCRYPTION_KEY: "change-me-generate-with-fernet-generate_key="
+
+      # AI — point to your Ollama instance
+      # If Ollama is running on the host machine use host.docker.internal (Mac/Windows)
+      # or your host's LAN IP on Linux
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434/v1"
+      OLLAMA_API_KEY: "ollama"
+      OLLAMA_MODEL: "deepseek-r1"
+      OLLAMA_FLASH_MODEL: "deepseek-v3"
+
+      # Auth — "anon" for single-user/anonymous mode (default)
+      AUTH_BACKEND: "anon"
+
+      # CORS — add your domain here if accessing from a custom URL
+      CORS_ORIGINS: "http://localhost:8000"
+
+      # Application
       ENVIRONMENT: production
-      PILOTBASE_STATIC_DIR: "/app/api/static"
+      STATIC_DIR: "/app/api/static"
+      BACKUPS_DIR: "/app/api/backups"
+
     volumes:
       - pilotbase_backups:/app/api/backups
     healthcheck:
