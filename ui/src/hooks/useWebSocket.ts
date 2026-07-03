@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useStore } from '../store'
-import type { WsMessage, ChatMessage } from '../types'
+import type { WsMessage, ChatMessage, QueryHistoryEntry } from '../types'
 
 const BASE_WS = import.meta.env.VITE_API_URL
   ? import.meta.env.VITE_API_URL.replace(/^http/, 'ws')
@@ -10,7 +10,7 @@ export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>()
   const intentionalClose = useRef(false)
-  const { setWsConnected, addChatMessage, setChatLoading } = useStore()
+  const { setWsConnected, addChatMessage, setChatLoading, addQueryHistoryEntry } = useStore()
 
   const connect = useCallback((userId: string) => {
     const state = wsRef.current?.readyState
@@ -69,11 +69,15 @@ export function useWebSocket() {
           addChatMessage(chatMsg)
           setChatLoading(false)
         }
+
+        if (msg.type === 'query_executed' && msg.payload) {
+          addQueryHistoryEntry(msg.payload as unknown as QueryHistoryEntry)
+        }
       } catch {
         // ignore parse errors
       }
     }
-  }, [setWsConnected, addChatMessage, setChatLoading])
+  }, [setWsConnected, addChatMessage, setChatLoading, addQueryHistoryEntry])
 
   const disconnect = useCallback(() => {
     intentionalClose.current = true

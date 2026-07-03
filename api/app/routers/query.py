@@ -34,7 +34,10 @@ async def execute_query(
         raise HTTPException(status_code=404, detail="Connection not found.")
 
     try:
-        data = db_service.execute_query(conn, body.query, body.params, body.limit, body.database)
+        data = db_service.execute_query(
+            conn, body.query, body.params, body.limit, body.database,
+            user_id=body.user_anon_id, source="user",
+        )
         return data
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -67,6 +70,8 @@ async def run_ddl(
             q = f"`{body.database}`.`{body.object_name}`"
         else:
             q = f"`{body.object_name}`"
+    elif conn.db_type == "mssql":
+        q = f"[{body.object_name}]"
     else:
         q = f'"{body.object_name}"'
 
@@ -83,7 +88,7 @@ async def run_ddl(
         raise HTTPException(status_code=400, detail="Unsupported DDL action.")
 
     try:
-        db_service.execute_query(conn, sql)
+        db_service.execute_query(conn, sql, user_id=body.user_anon_id, source="user")
         return {"message": f"{body.action} on {body.object_name} executed successfully."}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -1,0 +1,48 @@
+{
+  "db_type": "cockroachdb",
+  "version_info": "CockroachDB 23.x+",
+  "source": "https://www.cockroachlabs.com/docs/stable/data-types",
+  "notes": "CockroachDB is wire- and largely SQL-compatible with PostgreSQL; most Postgres types apply as-is.",
+  "categories": [
+    {
+      "category": "Numeric",
+      "types": [
+        { "name": "INT", "aliases": ["INTEGER", "INT8", "BIGINT"], "params": null, "default_expr": "INT", "description": "Signed 64-bit integer (CockroachDB's default INT width).", "storage": "8 bytes" },
+        { "name": "DECIMAL", "aliases": ["NUMERIC", "DEC"], "params": "(p,s)", "default_expr": "DECIMAL(10,2)", "description": "Exact, variable-precision decimal number.", "storage": "variable" },
+        { "name": "FLOAT", "aliases": ["FLOAT8", "DOUBLE PRECISION"], "params": null, "default_expr": "FLOAT", "description": "64-bit floating-point number.", "storage": "8 bytes" },
+        { "name": "SERIAL", "aliases": [], "params": null, "default_expr": "SERIAL", "description": "Auto-incrementing integer backed by a unique_rowid()-based sequence (not a true SQL sequence by default).", "storage": "8 bytes" }
+      ]
+    },
+    {
+      "category": "Character",
+      "types": [
+        { "name": "STRING", "aliases": ["TEXT", "VARCHAR"], "params": "(n)", "default_expr": "STRING", "description": "Variable-length character string with optional max length.", "storage": "variable" },
+        { "name": "CHAR", "aliases": ["CHARACTER"], "params": "(n)", "default_expr": "CHAR(1)", "description": "Fixed-length, blank-padded character string.", "storage": "fixed" }
+      ]
+    },
+    {
+      "category": "Date/Time",
+      "types": [
+        { "name": "DATE", "aliases": [], "params": null, "default_expr": "DATE", "description": "Date only, no time component.", "storage": "4 bytes" },
+        { "name": "TIMESTAMP", "aliases": [], "params": null, "default_expr": "TIMESTAMP", "description": "Date and time without a time zone.", "storage": "12 bytes" },
+        { "name": "TIMESTAMPTZ", "aliases": ["TIMESTAMP WITH TIME ZONE"], "params": null, "default_expr": "TIMESTAMPTZ", "description": "Date and time stored in UTC, converted on display.", "storage": "12 bytes" },
+        { "name": "INTERVAL", "aliases": [], "params": null, "default_expr": "INTERVAL", "description": "A span of time (e.g. '1 day 2 hours').", "storage": "16 bytes" }
+      ]
+    },
+    {
+      "category": "Semi-structured",
+      "types": [
+        { "name": "JSONB", "aliases": ["JSON"], "params": null, "default_expr": "JSONB", "description": "Binary JSON storage supporting indexing and containment queries.", "storage": "variable" },
+        { "name": "UUID", "aliases": [], "params": null, "default_expr": "UUID DEFAULT gen_random_uuid()", "description": "128-bit universally unique identifier; commonly used as a primary key to spread writes across ranges.", "storage": "16 bytes" },
+        { "name": "ARRAY", "aliases": [], "params": "[]", "default_expr": "STRING[]", "description": "Ordered list of values of another data type.", "storage": "variable" }
+      ]
+    },
+    {
+      "category": "Other",
+      "types": [
+        { "name": "BOOL", "aliases": ["BOOLEAN"], "params": null, "default_expr": "BOOL", "description": "TRUE/FALSE value.", "storage": "1 byte" },
+        { "name": "BYTES", "aliases": ["BLOB"], "params": null, "default_expr": "BYTES", "description": "Variable-length binary string.", "storage": "variable" }
+      ]
+    }
+  ]
+}

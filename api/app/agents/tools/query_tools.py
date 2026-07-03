@@ -6,7 +6,7 @@ from app.services.db_service import db_service
 _DESTRUCTIVE = re.compile(r'^\s*(DROP|DELETE|TRUNCATE)\b', re.IGNORECASE | re.MULTILINE)
 
 
-def make_query_tools(conn):
+def make_query_tools(conn, user_id: str | None = None):
     """Return query tools bound to a specific DbConnection instance."""
 
     @tool
@@ -16,8 +16,9 @@ def make_query_tools(conn):
         DROP, DELETE, and TRUNCATE are not permitted — direct the user to the UI for those."""
         if _DESTRUCTIVE.search(query):
             return "BLOCKED: DROP, DELETE, and TRUNCATE operations are secured to the UI. Please use the Pilotbase interface to perform this action."
-        try:
-            result = db_service.execute_query(conn, query)
+        def _format_one(result: dict) -> str:
+            if result.get("error"):
+                return f"ERROR: {result['error']}"
             if result["columns"]:
                 header = " | ".join(result["columns"])
                 sep = "-" * len(header)
@@ -27,6 +28,14 @@ def make_query_tools(conn):
                 truncated = "\n(truncated to 50 rows)" if result.get("truncated") else ""
                 return f"{header}\n{sep}\n{rows_str}{truncated}"
             return f"Query executed. Rows affected: {result.get('affected', 0)}"
+
+        try:
+            result = db_service.execute_query(conn, query, user_id=user_id, source="agent")
+            if result.get("multi"):
+                return "\n\n".join(
+                    f"-- Statement {i + 1} --\n{_format_one(r)}" for i, r in enumerate(result["results"])
+                )
+            return _format_one(result)
         except Exception as e:
             return f"ERROR: {e}"
 

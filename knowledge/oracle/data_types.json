@@ -1,0 +1,48 @@
+{
+  "db_type": "oracle",
+  "version_info": "Oracle Database 19c+",
+  "source": "https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlrf/Data-Types.html",
+  "categories": [
+    {
+      "category": "Numeric",
+      "types": [
+        { "name": "NUMBER", "aliases": [], "params": "(p,s)", "default_expr": "NUMBER", "description": "Variable-precision fixed/floating-point number. p = total digits (1-38), s = digits after the decimal point.", "storage": "up to 22 bytes" },
+        { "name": "FLOAT", "aliases": [], "params": "(p)", "default_expr": "FLOAT", "description": "ANSI floating-point number stored as a NUMBER subtype.", "storage": "up to 22 bytes" },
+        { "name": "BINARY_FLOAT", "aliases": [], "params": null, "default_expr": "BINARY_FLOAT", "description": "32-bit IEEE 754 floating-point number.", "storage": "4 bytes" },
+        { "name": "BINARY_DOUBLE", "aliases": [], "params": null, "default_expr": "BINARY_DOUBLE", "description": "64-bit IEEE 754 floating-point number.", "storage": "8 bytes" }
+      ]
+    },
+    {
+      "category": "Character",
+      "types": [
+        { "name": "VARCHAR2", "aliases": [], "params": "(n)", "default_expr": "VARCHAR2(255)", "description": "Variable-length character string, max 4000 bytes (32767 with extended data types).", "storage": "variable" },
+        { "name": "CHAR", "aliases": [], "params": "(n)", "default_expr": "CHAR(1)", "description": "Fixed-length character string, blank-padded, max 2000 bytes.", "storage": "fixed" },
+        { "name": "NVARCHAR2", "aliases": [], "params": "(n)", "default_expr": "NVARCHAR2(255)", "description": "Variable-length national character set string.", "storage": "variable" },
+        { "name": "CLOB", "aliases": [], "params": null, "default_expr": "CLOB", "description": "Character large object, up to 4GB of character data.", "storage": "variable" }
+      ]
+    },
+    {
+      "category": "Date/Time",
+      "types": [
+        { "name": "DATE", "aliases": [], "params": null, "default_expr": "DATE", "description": "Date and time to the second (year 4712 BC to 9999 AD).", "storage": "7 bytes" },
+        { "name": "TIMESTAMP", "aliases": [], "params": "(p)", "default_expr": "TIMESTAMP", "description": "Date and time with fractional seconds precision p (0-9).", "storage": "7-11 bytes" },
+        { "name": "TIMESTAMP WITH TIME ZONE", "aliases": ["TIMESTAMP WITH TIME ZONE"], "params": "(p)", "default_expr": "TIMESTAMP WITH TIME ZONE", "description": "Timestamp including a time zone offset.", "storage": "13 bytes" },
+        { "name": "INTERVAL DAY TO SECOND", "aliases": [], "params": null, "default_expr": "INTERVAL DAY TO SECOND", "description": "Stores a duration in days, hours, minutes, and seconds.", "storage": "11 bytes" }
+      ]
+    },
+    {
+      "category": "Binary / LOB",
+      "types": [
+        { "name": "RAW", "aliases": [], "params": "(n)", "default_expr": "RAW(2000)", "description": "Variable-length raw binary data, max 2000 bytes.", "storage": "variable" },
+        { "name": "BLOB", "aliases": [], "params": null, "default_expr": "BLOB", "description": "Binary large object, up to 4GB.", "storage": "variable" }
+      ]
+    },
+    {
+      "category": "Other",
+      "types": [
+        { "name": "BOOLEAN", "aliases": [], "params": null, "default_expr": "BOOLEAN", "description": "PL/SQL boolean type; not usable directly as a table column type prior to 23c.", "storage": "-", "min_version": "23c", "notes": "Use NUMBER(1) or CHAR(1) as a boolean column workaround on older versions." },
+        { "name": "ROWID", "aliases": [], "params": null, "default_expr": "ROWID", "description": "Base64-encoded physical row address, unique within a database.", "storage": "10 bytes" }
+      ]
+    }
+  ]
+}

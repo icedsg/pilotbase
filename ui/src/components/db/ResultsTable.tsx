@@ -21,6 +21,7 @@ import {
 import { useStore } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
 import { apiExecuteQuery } from '../../api/client'
+import type { QueryResult } from '../../types'
 import TypeSelector from './TypeSelector'
 
 // ── CSV export ────────────────────────────────────────────────────────────────
@@ -259,14 +260,17 @@ export default function ResultsTable() {
   const [newColDraft, setNewColDraft]       = useState<ColDraft>(EMPTY_COL)
   const [afterColumn, setAfterColumn]       = useState('')
   const [scriptRunning, setScriptRunning]   = useState(false)
+  const [activeResultTab, setActiveResultTab] = useState(0)
   const scriptEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (queryResult?.columns) setColumnOrder([...queryResult.columns])
+    const current = queryResult?.multi ? queryResult.results?.[0] : queryResult
+    if (current?.columns) setColumnOrder([...current.columns])
     setEditingRowIdx(null)
     setEditDraft(null)
     setAddingColumn(false)
     setNewColDraft(EMPTY_COL)
+    setActiveResultTab(0)
   }, [queryResult])
 
   useEffect(() => {
@@ -432,25 +436,57 @@ export default function ResultsTable() {
     )
   }
 
-  const hasError = (queryResult as any).error
+  // ── Multiple statements: pick out the active tab's result ────────────────────
+
+  const isMulti = queryResult.multi === true && Array.isArray(queryResult.results)
+  const multiResults = isMulti ? queryResult.results! : null
+  const activeIdx = isMulti ? Math.min(activeResultTab, multiResults!.length - 1) : 0
+  const active: QueryResult = isMulti ? multiResults![activeIdx] : queryResult
+
+  const resultTabs = isMulti && multiResults!.length > 1 ? (
+    <div className="flex items-center gap-1 px-2 pt-1 bg-surface-300 border-b border-surface-50 flex-shrink-0 overflow-x-auto">
+      {multiResults!.map((r, i) => (
+        <button
+          key={i}
+          onClick={() => setActiveResultTab(i)}
+          className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium border-b-2 flex-shrink-0 transition-colors ${
+            i === activeIdx
+              ? 'text-accent border-accent'
+              : 'text-gray-500 border-transparent hover:text-gray-300'
+          }`}
+        >
+          Query {i + 1}
+          {r.error && <AlertCircle size={11} className="text-red-400" />}
+        </button>
+      ))}
+    </div>
+  ) : null
+
+  const hasError = active.error
   if (hasError) {
     return (
-      <div className="h-full p-4">
-        <div className="flex items-start gap-2 text-red-400 text-xs">
-          <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
-          <pre className="whitespace-pre-wrap font-mono">{(queryResult as any).error}</pre>
+      <div className="h-full flex flex-col bg-surface-200">
+        {resultTabs}
+        <div className="p-4">
+          <div className="flex items-start gap-2 text-red-400 text-xs">
+            <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
+            <pre className="whitespace-pre-wrap font-mono">{active.error}</pre>
+          </div>
         </div>
       </div>
     )
   }
 
-  if (queryResult.columns.length === 0) {
+  if (active.columns.length === 0) {
     return (
-      <div className="h-full flex items-center gap-2 justify-center text-xs text-green-400">
-        <CheckCircle size={18} />
-        <span>
-          Query executed.{queryResult.affected !== undefined ? ` ${queryResult.affected} row(s) affected.` : ''}
-        </span>
+      <div className="h-full flex flex-col bg-surface-200">
+        {resultTabs}
+        <div className="flex-1 flex items-center gap-2 justify-center text-xs text-green-400">
+          <CheckCircle size={18} />
+          <span>
+            Query executed.{active.affected !== undefined ? ` ${active.affected} row(s) affected.` : ''}
+          </span>
+        </div>
       </div>
     )
   }
@@ -738,17 +774,18 @@ export default function ResultsTable() {
 
   // ── Normal query results ──────────────────────────────────────────────────────
 
-  const displayColumns = columnOrder.length === queryResult.columns.length ? columnOrder : queryResult.columns
+  const displayColumns = columnOrder.length === active.columns.length ? columnOrder : active.columns
 
   return (
     <div className="h-full flex flex-col bg-surface-200">
+      {resultTabs}
       <div className="flex items-center justify-between px-3 py-1 bg-surface-300 border-b border-surface-50 flex-shrink-0">
         <span className="text-xs text-gray-500">
-          {queryResult.row_count} row{queryResult.row_count !== 1 ? 's' : ''}
-          {queryResult.truncated && <span className="text-yellow-500 ml-2">(truncated to 1000)</span>}
+          {active.row_count} row{active.row_count !== 1 ? 's' : ''}
+          {active.truncated && <span className="text-yellow-500 ml-2">(truncated to 1000)</span>}
         </span>
         <button
-          onClick={() => downloadCsv(displayColumns, queryResult.rows)}
+          onClick={() => downloadCsv(displayColumns, active.rows)}
           className="btn-ghost flex items-center gap-1 text-xs"
         >
           <Download size={16} />
@@ -770,7 +807,7 @@ export default function ResultsTable() {
             </DndContext>
           </thead>
           <tbody>
-            {queryResult.rows.map((row, i) => (
+            {active.rows.map((row, i) => (
               <tr key={i} className="hover:bg-surface-50 transition-colors">
                 {displayColumns.map((col) => {
                   const val = row[col]

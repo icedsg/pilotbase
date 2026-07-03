@@ -30,7 +30,7 @@ class Base(DeclarativeBase):
 
 async def init_db():
     """Create all tables on startup (development). Use Alembic for production migrations."""
-    from app.models import user, connection  # noqa: F401 — import to register models
+    from app.models import user, connection, query_history  # noqa: F401 — import to register models
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 

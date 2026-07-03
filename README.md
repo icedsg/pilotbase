@@ -2,7 +2,7 @@
 
 **The first open-source database admin that unifies relational, NoSQL, and vector databases in one interface.**
 
-Stop juggling pgAdmin, MongoDB Compass, RedisInsight, and separate vector DB dashboards. Pilotbase connects to your entire data stack — PostgreSQL, MySQL, SQLite, MongoDB, Redis, Qdrant, ChromaDB, Weaviate — and lets you query, browse, and manage everything from a single, modern web UI with an AI agent built in.
+Stop juggling pgAdmin, MongoDB Compass, RedisInsight, and separate vector DB dashboards. Pilotbase connects to your entire data stack — PostgreSQL, MySQL, SQLite, SQL Server, Oracle, Db2, CockroachDB, Snowflake, MongoDB, Redis, Cassandra, DynamoDB, Qdrant, ChromaDB, Weaviate, Pinecone, Milvus — and lets you query, browse, and manage everything from a single, modern web UI with an AI agent built in.
 
 > **First Beta Release** — Core query, schema browsing, and connection management are stable and production-ready. AI-assisted natural-language querying is live. Schema migration and automated backup features are actively in development and coming soon.
 
@@ -20,9 +20,9 @@ Stop juggling pgAdmin, MongoDB Compass, RedisInsight, and separate vector DB das
 ## Features
 
 ### Universal Database Connectivity
-- **Relational (SQL)** — PostgreSQL, MySQL, MariaDB, SQLite, Microsoft SQL Server
-- **NoSQL** — MongoDB (find queries + aggregation pipelines), Redis (native command interface)
-- **Vector** — Qdrant, ChromaDB, Weaviate — browse embeddings, run similarity search, view and edit payloads
+- **Relational (SQL)** — PostgreSQL, MySQL, MariaDB, SQLite, Microsoft SQL Server, Oracle, Db2, CockroachDB, Snowflake
+- **NoSQL** — MongoDB (find queries + aggregation pipelines), Redis (native command interface), Cassandra (CQL), DynamoDB (scan/get-item)
+- **Vector** — Qdrant, ChromaDB, Weaviate, Pinecone, Milvus — browse embeddings, run similarity search, view and edit payloads
 
 ### Query & Browse
 - Monaco-based editor with SQL syntax highlighting and `Ctrl+Enter` to run
@@ -152,17 +152,32 @@ Set `OLLAMA_BASE_URL` to any OpenAI-compatible endpoint and provide the appropri
 
 ## Supported Databases
 
-| Database | Type | Notes |
-|---|---|---|
-| PostgreSQL | SQL | Multi-database, schema browsing, user/DB creation |
-| MySQL / MariaDB | SQL | Full database listing, user management |
-| SQLite | SQL | Provide the file path as the database field |
-| Microsoft SQL Server | SQL | Uncomment `pyodbc` in `requirements.txt`, install `unixodbc-dev` |
-| MongoDB | NoSQL | JSON find queries and aggregation pipelines |
-| Redis | Key-Value | Native Redis command interface (KEYS, GET, HGETALL, etc.) |
-| Qdrant | Vector | ANN similarity search, scroll-based browsing, payload editing |
-| ChromaDB | Vector | Text and embedding queries, document browsing |
-| Weaviate | Vector | GraphQL queries and scroll browsing |
+*Feature support current as of `v0.1.0-beta.2`.*
+
+| Database | Type | Create/Drop DB | Create Tables | Create Views | Querying | Migration | AI Agent Query | Backups | Notes |
+|---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|---|
+| PostgreSQL | SQL | ✅¹ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Multi-database, schema browsing, user/DB creation |
+| MySQL / MariaDB | SQL | ✅¹ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Full database listing, user management |
+| SQLite | SQL | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅² | Provide the file path as the database field |
+| Microsoft SQL Server | SQL | ✅¹ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅² | Uses `pymssql` (FreeTDS) — no proprietary ODBC driver needed |
+| Oracle Database | SQL | ❌⁴ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅² | `oracledb` thin mode — no Instant Client install required |
+| Db2 (LUW) | SQL | ❌⁴ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅² | Query/browse parity; no SQL-level database/user creation |
+| CockroachDB | SQL | ✅¹ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅² | Postgres wire-compatible, dedicated retry-aware dialect |
+| Snowflake | SQL | ✅¹ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅² | Connects via account identifier + optional warehouse/role |
+| MongoDB | NoSQL | ❌ | ❌ | ❌ | ✅³ | ❌ | ✅³ | ❌ | JSON find queries and aggregation pipelines |
+| Redis | Key-Value | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | Native Redis command interface (KEYS, GET, HGETALL, etc.) |
+| Cassandra | NoSQL | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | Raw CQL queries, keyspace/table browsing |
+| DynamoDB | NoSQL | ❌ | ❌ | ❌ | ✅³ | ❌ | ✅³ | ❌ | Scan/get-item queries; AWS creds or DynamoDB Local endpoint |
+| Qdrant | Vector | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ANN similarity search, scroll-based browsing, payload editing |
+| ChromaDB | Vector | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | Text and embedding queries, document browsing |
+| Weaviate | Vector | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | GraphQL queries and scroll browsing |
+| Pinecone | Vector | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | Similarity search and vector browsing by index |
+| Milvus | Vector | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ANN search and scroll-based browsing by collection |
+
+¹ Create only — dropping a database isn't a dedicated action yet; run a raw `DROP DATABASE` query if your credentials allow it.
+² No native dump utility for this engine — falls back to a portable SQL `INSERT`-based dump.
+³ Read-only: `find`/scan-style queries. Writes (insert/update/delete) aren't exposed through the query editor or AI agent yet.
+⁴ Database creation isn't a plain SQL statement on this engine (it's an instance-level DBA operation) — user creation is still supported via the AI agent's admin tools where applicable.
 
 ### Looking for an admin UI for a specific database?
 
@@ -172,11 +187,19 @@ Pilotbase is a single tool that covers all of these — no separate installs nee
 - **MySQL / MariaDB** — phpMyAdmin alternative, MySQL admin UI, MariaDB web interface, MySQL query tool
 - **SQLite** — SQLite admin, SQLite browser, SQLite GUI, SQLite web viewer, SQLite editor online
 - **SQL Server** — MSSQL admin UI, SQL Server web client, SQL Server query tool, SSMS alternative
+- **Oracle** — Oracle SQL Developer alternative, Oracle web admin, Oracle query tool
+- **Db2** — Db2 admin UI, Db2 web client, Db2 query tool
+- **CockroachDB** — CockroachDB admin UI, CockroachDB web console alternative
+- **Snowflake** — Snowsight alternative, Snowflake web query tool, Snowflake admin UI
 - **MongoDB** — MongoDB admin, MongoDB Compass alternative, MongoDB web UI, Mongo document browser
 - **Redis** — RedisInsight alternative, Redis web UI, Redis admin panel, Redis key browser, Redis GUI
+- **Cassandra** — Cassandra admin UI, CQL query tool, Cassandra web client
+- **DynamoDB** — DynamoDB admin UI, DynamoDB web client, DynamoDB table browser
 - **Qdrant** — Qdrant UI, Qdrant admin panel, Qdrant web interface, vector database GUI
 - **ChromaDB** — ChromaDB admin, ChromaDB UI, ChromaDB web viewer, Chroma vector browser
 - **Weaviate** — Weaviate admin, Weaviate UI, Weaviate web interface, Weaviate console alternative
+- **Pinecone** — Pinecone admin UI, Pinecone web client, Pinecone vector browser
+- **Milvus** — Milvus admin UI, Milvus web client, Milvus vector browser
 
 ---
 

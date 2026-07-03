@@ -23,33 +23,50 @@ interface TreeNode {
 
 type ConnectionState = Record<string, Record<string, TreeNode>>
 
-const VECTOR_DB_TYPES    = new Set(['qdrant', 'chroma', 'weaviate'])
-const ADMIN_CAPABLE_TYPES = new Set(['postgresql', 'mysql', 'mariadb'])
+const VECTOR_DB_TYPES    = new Set(['qdrant', 'chroma', 'weaviate', 'pinecone', 'milvus'])
+const ADMIN_CAPABLE_TYPES = new Set(['postgresql', 'mysql', 'mariadb', 'mssql', 'cockroachdb', 'snowflake', 'oracle'])
+const NOSQL_DOC_TYPES    = new Set(['mongodb', 'dynamodb'])
 
 const DB_TYPE_COLORS: Record<string, string> = {
-  postgresql: 'text-blue-400',
-  mysql:      'text-orange-400',
-  mariadb:    'text-orange-400',
-  sqlite:     'text-green-400',
-  mssql:      'text-red-400',
-  mongodb:    'text-emerald-400',
-  redis:      'text-rose-400',
-  qdrant:     'text-violet-400',
-  chroma:     'text-fuchsia-400',
-  weaviate:   'text-cyan-400',
+  postgresql:  'text-blue-400',
+  mysql:       'text-orange-400',
+  mariadb:     'text-orange-400',
+  sqlite:      'text-green-400',
+  mssql:       'text-red-400',
+  oracle:      'text-orange-500',
+  db2:         'text-blue-500',
+  cockroachdb: 'text-red-600',
+  snowflake:   'text-sky-400',
+  mongodb:     'text-emerald-400',
+  redis:       'text-rose-400',
+  cassandra:   'text-violet-300',
+  dynamodb:    'text-sky-400',
+  qdrant:      'text-violet-400',
+  chroma:      'text-fuchsia-400',
+  weaviate:    'text-cyan-400',
+  pinecone:    'text-green-400',
+  milvus:      'text-indigo-400',
 }
 
 const DB_TYPE_BADGE: Record<string, string> = {
-  postgresql: 'PG',
-  mysql:      'MY',
-  mariadb:    'MB',
-  sqlite:     'SL',
-  mssql:      'MS',
-  mongodb:    'MG',
-  redis:      'RD',
-  qdrant:     'QD',
-  chroma:     'CH',
-  weaviate:   'WV',
+  postgresql:  'PG',
+  mysql:       'MY',
+  mariadb:     'MB',
+  sqlite:      'SL',
+  mssql:       'MS',
+  oracle:      'OR',
+  db2:         'DB',
+  cockroachdb: 'CR',
+  snowflake:   'SF',
+  mongodb:     'MG',
+  redis:       'RD',
+  cassandra:   'CS',
+  dynamodb:    'DY',
+  qdrant:      'QD',
+  chroma:      'CH',
+  weaviate:    'WV',
+  pinecone:    'PC',
+  milvus:      'MV',
 }
 
 interface Props {
@@ -211,14 +228,14 @@ export default function ConnectionTree({ refreshKey }: Props) {
       return
     }
 
-    // MongoDB → dedicated document view
-    if (conn.db_type === 'mongodb') {
+    // MongoDB / DynamoDB → dedicated document view
+    if (NOSQL_DOC_TYPES.has(conn.db_type)) {
       setNosqlViewContext({ collection: target.name, connId: target.connId, db: target.db, dbType: conn.db_type })
       setVectorViewContext(null)
       return
     }
 
-    // SQL / Redis → query result table
+    // SQL / Redis / Cassandra → query result table
     setVectorViewContext(null)
     setNosqlViewContext(null)
 
@@ -228,6 +245,11 @@ export default function ConnectionTree({ refreshKey }: Props) {
       sql = `SELECT * FROM \`${target.db}\`.\`${target.name}\` LIMIT 500`
     } else if (conn.db_type === 'redis') {
       sql = `GET ${target.name}`
+    } else if (conn.db_type === 'mssql') {
+      sql = `SELECT TOP 500 * FROM [${target.name}]`
+      queryDb = target.db
+    } else if (conn.db_type === 'cassandra') {
+      sql = `SELECT * FROM ${target.db}.${target.name} LIMIT 500`
     } else {
       sql = `SELECT * FROM "${target.name}" LIMIT 500`
       queryDb = target.db

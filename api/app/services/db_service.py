@@ -5,6 +5,7 @@ NoSQL/Vector: native client adapters (lazy imports so missing optional deps
               only fail at connection time, not at import time).
 """
 import json
+import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
@@ -12,6 +13,7 @@ from cryptography.fernet import Fernet
 
 from app.config import settings
 from app.models.connection import DbConnection
+from app.services import history_service
 
 
 # ── Base adapter ──────────────────────────────────────────────────────────────
@@ -58,7 +60,7 @@ class SQLAdapter(BaseAdapter):
         from sqlalchemy import text
         if '"' in db_name:
             raise ValueError("Database name cannot contain double quotes")
-        if self._db_type == "postgresql":
+        if self._db_type in ("postgresql", "cockroachdb"):
             with self._engine.connect() as c:
                 c = c.execution_options(isolation_level="AUTOCOMMIT")
                 c.execute(text(f'CREATE DATABASE "{db_name}"'))
@@ -67,12 +69,21 @@ class SQLAdapter(BaseAdapter):
                 raise ValueError("Database name cannot contain backticks")
             with self._engine.begin() as c:
                 c.execute(text(f"CREATE DATABASE `{db_name}`"))
+        elif self._db_type == "mssql":
+            if "]" in db_name:
+                raise ValueError("Database name cannot contain ']'")
+            with self._engine.connect() as c:
+                c = c.execution_options(isolation_level="AUTOCOMMIT")
+                c.execute(text(f"CREATE DATABASE [{db_name}]"))
+        elif self._db_type == "snowflake":
+            with self._engine.begin() as c:
+                c.execute(text(f'CREATE DATABASE "{db_name}"'))
         else:
             raise ValueError(f"create_database is not supported for {self._db_type}")
 
     def create_db_user(self, username: str, password: str, database: Optional[str] = None) -> None:
         from sqlalchemy import text
-        if self._db_type == "postgresql":
+        if self._db_type in ("postgresql", "cockroachdb"):
             if '"' in username:
                 raise ValueError("Username cannot contain double quotes")
             with self._engine.begin() as c:
@@ -91,11 +102,33 @@ class SQLAdapter(BaseAdapter):
                         raise ValueError("Database name cannot contain backticks")
                     c.execute(text(f"GRANT ALL PRIVILEGES ON `{database}`.* TO '{username}'@'%'"))
                     c.execute(text("FLUSH PRIVILEGES"))
+        elif self._db_type == "mssql":
+            if "]" in username:
+                raise ValueError("Username cannot contain ']'")
+            with self._engine.connect() as c:
+                c = c.execution_options(isolation_level="AUTOCOMMIT")
+                c.execute(text(f"CREATE LOGIN [{username}] WITH PASSWORD = :pw"), {"pw": password})
+            with self._engine.begin() as c:
+                c.execute(text(f"CREATE USER [{username}] FOR LOGIN [{username}]"))
+                if database:
+                    c.execute(text(f"ALTER ROLE db_datareader ADD MEMBER [{username}]"))
+                    c.execute(text(f"ALTER ROLE db_datawriter ADD MEMBER [{username}]"))
+        elif self._db_type == "oracle":
+            if '"' in username:
+                raise ValueError("Username cannot contain double quotes")
+            with self._engine.begin() as c:
+                c.execute(text(f'CREATE USER "{username}" IDENTIFIED BY :pw'), {"pw": password})
+                c.execute(text(f'GRANT CONNECT, RESOURCE TO "{username}"'))
+                c.execute(text(f'ALTER USER "{username}" QUOTA UNLIMITED ON USERS'))
+        elif self._db_type == "snowflake":
+            with self._engine.begin() as c:
+                c.execute(text(f'CREATE USER "{username}" PASSWORD = :pw'), {"pw": password})
         else:
             raise ValueError(f"create_db_user is not supported for {self._db_type}")
 
     _PG_SYSTEM_DBS = frozenset({"postgres", "template0", "template1"})
     _MYSQL_SYSTEM_DBS = frozenset({"information_schema", "mysql", "performance_schema", "sys"})
+    _CRDB_SYSTEM_DBS = frozenset({"system"})
 
     def list_databases(self) -> List[str]:
         from sqlalchemy import text
@@ -106,6 +139,9 @@ class SQLAdapter(BaseAdapter):
             if self._db_type in ("mysql", "mariadb"):
                 rows = c.execute(text("SHOW DATABASES"))
                 return [r[0] for r in rows if r[0] not in self._MYSQL_SYSTEM_DBS]
+            if self._db_type == "cockroachdb":
+                rows = c.execute(text("SHOW DATABASES"))
+                return [r[0] for r in rows if r[0] not in self._CRDB_SYSTEM_DBS]
         return [self._database or "main"]
 
     def list_schemas(self) -> List[str]:
@@ -117,7 +153,7 @@ class SQLAdapter(BaseAdapter):
         engine = self._engine
         temp_engine = None
         try:
-            if database and self._db_type in ("postgresql", "mssql"):
+            if database and self._db_type in ("postgresql", "mssql", "db2", "cockroachdb", "snowflake"):
                 temp_engine = create_engine(engine.url.set(database=database), pool_pre_ping=True)
                 engine = temp_engine
             elif database and self._db_type in ("mysql", "mariadb"):
@@ -135,7 +171,7 @@ class SQLAdapter(BaseAdapter):
         engine = self._engine
         temp_engine = None
         try:
-            if database and self._db_type in ("postgresql", "mssql"):
+            if database and self._db_type in ("postgresql", "mssql", "db2", "cockroachdb", "snowflake"):
                 temp_engine = create_engine(engine.url.set(database=database), pool_pre_ping=True)
                 engine = temp_engine
             elif database and self._db_type in ("mysql", "mariadb"):
@@ -151,22 +187,44 @@ class SQLAdapter(BaseAdapter):
             if temp_engine:
                 temp_engine.dispose()
 
+    @staticmethod
+    def _exec_statement(c, stmt: str, params: Optional[Dict], limit: int) -> Dict[str, Any]:
+        from sqlalchemy import text
+        result = c.execute(text(stmt), params or {})
+        if result.returns_rows:
+            rows = [dict(row._mapping) for row in result.fetchmany(limit)]
+            return {"rows": rows, "columns": list(result.keys()), "row_count": len(rows), "truncated": len(rows) == limit}
+        return {"rows": [], "columns": [], "row_count": result.rowcount, "affected": result.rowcount}
+
     def execute_query(self, query: str, params: Optional[Dict] = None, limit: int = 1000, database: Optional[str] = None) -> Dict[str, Any]:
-        from sqlalchemy import create_engine, text
+        import sqlparse
+        from sqlalchemy import create_engine
         engine = self._engine
         temp_engine = None
         try:
-            if database and self._db_type in ("postgresql", "mssql"):
+            if database and self._db_type in ("postgresql", "mssql", "db2", "cockroachdb", "snowflake"):
                 temp_engine = create_engine(engine.url.set(database=database), pool_pre_ping=True)
                 engine = temp_engine
             elif database and self._db_type in ("mysql", "mariadb"):
                 pass  # MySQL uses qualified table names (db.table) in the query itself
-            with engine.begin() as c:
-                result = c.execute(text(query), params or {})
-                if result.returns_rows:
-                    rows = [dict(row._mapping) for row in result.fetchmany(limit)]
-                    return {"rows": rows, "columns": list(result.keys()), "row_count": len(rows), "truncated": len(rows) == limit}
-                return {"rows": [], "columns": [], "row_count": result.rowcount, "affected": result.rowcount}
+
+            statements = [s.strip() for s in sqlparse.split(query) if s.strip()] or [query]
+
+            if len(statements) == 1:
+                with engine.begin() as c:
+                    return self._exec_statement(c, statements[0], params, limit)
+
+            # Multiple statements: run in one transaction, stop at the first error.
+            # Results already fetched for prior statements are still returned even
+            # though the transaction as a whole rolls back on failure.
+            results: List[Dict[str, Any]] = []
+            try:
+                with engine.begin() as c:
+                    for stmt in statements:
+                        results.append(self._exec_statement(c, stmt, params, limit))
+            except Exception as e:
+                results.append({"error": str(e)})
+            return {"multi": True, "results": results}
         finally:
             if temp_engine:
                 temp_engine.dispose()
@@ -187,6 +245,18 @@ class SQLAdapter(BaseAdapter):
                 if self._db_type == "mssql":
                     row = c.execute(text("SELECT SERVERPROPERTY('ProductVersion')")).fetchone()
                     return str(row[0]) if row else None
+                if self._db_type == "cockroachdb":
+                    row = c.execute(text("SELECT version()")).fetchone()
+                    return row[0] if row else None
+                if self._db_type == "oracle":
+                    row = c.execute(text("SELECT banner FROM v$version WHERE ROWNUM = 1")).fetchone()
+                    return row[0] if row else None
+                if self._db_type == "db2":
+                    row = c.execute(text("SELECT service_level FROM sysibmadm.env_inst_info")).fetchone()
+                    return row[0] if row else None
+                if self._db_type == "snowflake":
+                    row = c.execute(text("SELECT CURRENT_VERSION()")).fetchone()
+                    return row[0] if row else None
         except Exception:
             return None
 
@@ -327,6 +397,173 @@ class RedisAdapter(BaseAdapter):
 
     def close(self) -> None:
         self._client.close()
+
+
+# ── Cassandra ─────────────────────────────────────────────────────────────────
+
+class CassandraAdapter(BaseAdapter):
+    """
+    Query: raw CQL string, e.g. "SELECT * FROM my_keyspace.my_table LIMIT 100".
+    """
+    _SYSTEM_KEYSPACES = frozenset({
+        "system", "system_auth", "system_distributed", "system_schema",
+        "system_traces", "system_views", "system_virtual_schema",
+    })
+
+    def __init__(self, conn: DbConnection, extra: Dict):
+        from cassandra.cluster import Cluster
+        from cassandra.auth import PlainTextAuthProvider
+        auth_provider = None
+        password = extra.get("_password")
+        if conn.username and password:
+            auth_provider = PlainTextAuthProvider(username=conn.username, password=password)
+        self._cluster = Cluster(
+            contact_points=[conn.host or "localhost"],
+            port=conn.port or 9042,
+            auth_provider=auth_provider,
+        )
+        self._session = self._cluster.connect()
+        self._default_keyspace = conn.database or None
+        if self._default_keyspace:
+            self._session.set_keyspace(self._default_keyspace)
+
+    def test_connection(self) -> bool:
+        try:
+            self._session.execute("SELECT release_version FROM system.local")
+            return True
+        except Exception:
+            return False
+
+    def list_databases(self) -> List[str]:
+        rows = self._session.execute("SELECT keyspace_name FROM system_schema.keyspaces")
+        return [r.keyspace_name for r in rows if r.keyspace_name not in self._SYSTEM_KEYSPACES]
+
+    def list_objects(self, schema: Optional[str] = None, database: Optional[str] = None) -> List[Dict]:
+        keyspace = database or schema or self._default_keyspace
+        if not keyspace:
+            return []
+        rows = self._session.execute(
+            "SELECT table_name FROM system_schema.tables WHERE keyspace_name = %s", (keyspace,)
+        )
+        return [{"name": r.table_name, "type": "table"} for r in rows]
+
+    def describe_table(self, table: str, schema: Optional[str] = None, database: Optional[str] = None) -> Dict[str, Any]:
+        keyspace = database or schema or self._default_keyspace
+        rows = self._session.execute(
+            "SELECT column_name, type, kind FROM system_schema.columns WHERE keyspace_name = %s AND table_name = %s",
+            (keyspace, table),
+        )
+        columns: List[Dict] = []
+        primary_keys: List[str] = []
+        for r in rows:
+            is_key = r.kind in ("partition_key", "clustering")
+            columns.append({"name": r.column_name, "type": r.type, "nullable": not is_key, "default": ""})
+            if is_key:
+                primary_keys.append(r.column_name)
+        return {"columns": columns, "primary_keys": primary_keys, "foreign_keys": [], "indexes": []}
+
+    def execute_query(self, query: str, params: Optional[Dict] = None, limit: int = 1000) -> Dict[str, Any]:
+        try:
+            result = self._session.execute(query)
+        except Exception as e:
+            return {"error": str(e), "rows": [], "columns": [], "row_count": 0}
+
+        rows: List[Dict] = []
+        columns: List[str] = []
+        for row in result:
+            d = dict(row._asdict())
+            if not columns:
+                columns = list(d.keys())
+            rows.append(d)
+            if len(rows) >= limit:
+                break
+        return {"rows": rows, "columns": columns, "row_count": len(rows), "truncated": len(rows) == limit}
+
+    def get_version(self) -> Optional[str]:
+        try:
+            row = self._session.execute("SELECT release_version FROM system.local").one()
+            return row.release_version if row else None
+        except Exception:
+            return None
+
+    def close(self) -> None:
+        try:
+            self._cluster.shutdown()
+        except Exception:
+            pass
+
+
+# ── DynamoDB ──────────────────────────────────────────────────────────────────
+
+class DynamoDBAdapter(BaseAdapter):
+    """
+    Query format (JSON string) — mirrors MongoAdapter's envelope so it plugs into
+    the same generic NoSQL document-view UI:
+      {"collection": "TableName", "scroll": true, "limit": 100}     ← scan
+      {"collection": "TableName", "key": {"id": "123"}}             ← get_item
+    """
+    def __init__(self, conn: DbConnection, extra: Dict):
+        import boto3
+        kwargs: Dict[str, Any] = {"region_name": conn.database or "us-east-1"}
+        if conn.username:
+            kwargs["aws_access_key_id"] = conn.username
+        password = extra.get("_password")
+        if password:
+            kwargs["aws_secret_access_key"] = password
+        if conn.host:
+            port = f":{conn.port}" if conn.port else ""
+            scheme = "https" if conn.ssl_mode in ("require", "verify-full", "true", "on") else "http"
+            kwargs["endpoint_url"] = f"{scheme}://{conn.host}{port}"
+        self._resource = boto3.resource("dynamodb", **kwargs)
+        self._client = self._resource.meta.client
+
+    def test_connection(self) -> bool:
+        try:
+            self._client.list_tables(Limit=1)
+            return True
+        except Exception:
+            return False
+
+    def list_databases(self) -> List[str]:
+        return ["dynamodb"]
+
+    def list_objects(self, schema: Optional[str] = None, database: Optional[str] = None) -> List[Dict]:
+        result = []
+        for name in self._client.list_tables().get("TableNames", []):
+            try:
+                cnt = self._resource.Table(name).item_count
+            except Exception:
+                cnt = None
+            result.append({"name": name, "type": "collection", "count": cnt})
+        return result
+
+    def execute_query(self, query: str, params: Optional[Dict] = None, limit: int = 1000) -> Dict[str, Any]:
+        try:
+            q = json.loads(query)
+        except json.JSONDecodeError as e:
+            return {"error": f"Invalid JSON: {e}", "rows": [], "columns": [], "row_count": 0}
+
+        table_name = q.get("collection")
+        if not table_name:
+            return {"error": "Missing 'collection' key", "rows": [], "columns": [], "row_count": 0}
+        table = self._resource.Table(table_name)
+
+        if "key" in q:
+            item = table.get_item(Key=q["key"]).get("Item")
+            rows = [item] if item else []
+        else:
+            n = min(q.get("limit", limit), limit)
+            resp = table.scan(Limit=n)
+            rows = resp.get("Items", [])[:n]
+
+        columns = list(rows[0].keys()) if rows else []
+        return {"rows": rows, "columns": columns, "row_count": len(rows), "truncated": len(rows) == limit}
+
+    def get_version(self) -> Optional[str]:
+        return None
+
+    def close(self) -> None:
+        pass
 
 
 # ── Qdrant ────────────────────────────────────────────────────────────────────
@@ -625,24 +862,180 @@ class WeaviateAdapter(BaseAdapter):
             pass
 
 
+# ── Pinecone ──────────────────────────────────────────────────────────────────
+
+class PineconeAdapter(BaseAdapter):
+    """
+    Query format (JSON string):
+      {"index": "my-index", "vector": [...], "top_k": 10}     ← similarity search
+      {"index": "my-index", "scroll": true, "limit": 10}      ← list + fetch vectors
+    """
+    def __init__(self, conn: DbConnection, extra: Dict):
+        from pinecone import Pinecone
+        self._client = Pinecone(api_key=extra.get("api_key") or extra.get("_password") or "")
+
+    def test_connection(self) -> bool:
+        try:
+            self._client.list_indexes()
+            return True
+        except Exception:
+            return False
+
+    def list_databases(self) -> List[str]:
+        return ["pinecone"]
+
+    def list_objects(self, schema: Optional[str] = None, database: Optional[str] = None) -> List[Dict]:
+        result = []
+        for idx in self._client.list_indexes():
+            try:
+                stats = self._client.Index(idx.name).describe_index_stats()
+                cnt = stats.get("total_vector_count")
+            except Exception:
+                cnt = None
+            result.append({"name": idx.name, "type": "collection", "count": cnt})
+        return result
+
+    def execute_query(self, query: str, params: Optional[Dict] = None, limit: int = 1000) -> Dict[str, Any]:
+        try:
+            q = json.loads(query)
+        except json.JSONDecodeError as e:
+            return {"error": f"Invalid JSON: {e}", "rows": [], "columns": [], "row_count": 0}
+
+        index_name = q.get("index") or q.get("collection")
+        if not index_name:
+            return {"error": "Missing 'index'", "rows": [], "columns": [], "row_count": 0}
+        index = self._client.Index(index_name)
+        namespace = q.get("namespace", "")
+        n = min(q.get("top_k", q.get("limit", 10)), limit)
+
+        if q.get("scroll"):
+            ids: List[str] = []
+            for batch in index.list(namespace=namespace, limit=n):
+                ids.extend(batch)
+                if len(ids) >= n:
+                    break
+            ids = ids[:n]
+            fetched = index.fetch(ids=ids, namespace=namespace).vectors if ids else {}
+            rows = [{"id": vid, "metadata": json.dumps(v.metadata or {})} for vid, v in fetched.items()]
+            return {"rows": rows, "columns": ["id", "metadata"], "row_count": len(rows), "truncated": False}
+
+        results = index.query(vector=q.get("vector", []), top_k=n, include_metadata=True, namespace=namespace)
+        rows = [{"id": m.id, "score": m.score, "metadata": json.dumps(m.metadata or {})} for m in results.matches]
+        return {"rows": rows, "columns": ["id", "score", "metadata"], "row_count": len(rows), "truncated": False}
+
+    def delete_chunk(self, collection: str, chunk_id: str) -> None:
+        self._client.Index(collection).delete(ids=[chunk_id])
+
+    def update_chunk(self, collection: str, chunk_id: str, properties: Dict) -> None:
+        meta = {k: v for k, v in properties.items() if k not in ("id", "score")}
+        self._client.Index(collection).update(id=chunk_id, set_metadata=meta)
+
+    def close(self) -> None:
+        pass
+
+
+# ── Milvus ────────────────────────────────────────────────────────────────────
+
+class MilvusAdapter(BaseAdapter):
+    """
+    Query format (JSON string):
+      {"collection": "my_col", "vector": [...], "limit": 10}     ← ANN search
+      {"collection": "my_col", "scroll": true, "limit": 10}      ← browse all
+    """
+    def __init__(self, conn: DbConnection, extra: Dict):
+        from pymilvus import MilvusClient
+        scheme = "https" if conn.ssl_mode in ("require", "verify-full", "true", "on") else "http"
+        uri = f"{scheme}://{conn.host or 'localhost'}:{conn.port or 19530}"
+        token = extra.get("api_key") or extra.get("_password") or ""
+        self._client = MilvusClient(uri=uri, token=token) if token else MilvusClient(uri=uri)
+
+    def test_connection(self) -> bool:
+        try:
+            self._client.list_collections()
+            return True
+        except Exception:
+            return False
+
+    def list_databases(self) -> List[str]:
+        return ["milvus"]
+
+    def list_objects(self, schema: Optional[str] = None, database: Optional[str] = None) -> List[Dict]:
+        result = []
+        for name in self._client.list_collections():
+            try:
+                stats = self._client.get_collection_stats(name)
+                cnt = int(stats.get("row_count", 0))
+            except Exception:
+                cnt = None
+            result.append({"name": name, "type": "collection", "count": cnt})
+        return result
+
+    def execute_query(self, query: str, params: Optional[Dict] = None, limit: int = 1000) -> Dict[str, Any]:
+        try:
+            q = json.loads(query)
+        except json.JSONDecodeError as e:
+            return {"error": f"Invalid JSON: {e}", "rows": [], "columns": [], "row_count": 0}
+
+        collection = q.get("collection")
+        if not collection:
+            return {"error": "Missing 'collection'", "rows": [], "columns": [], "row_count": 0}
+        n = min(q.get("limit", 10), limit)
+
+        if q.get("scroll"):
+            offset = int(q.get("offset") or 0)
+            results = self._client.query(collection_name=collection, filter="", limit=n, offset=offset, output_fields=["*"])
+            rows = [{"id": str(next(iter(r.values()), "")), "payload": json.dumps(r)} for r in results]
+            response: Dict[str, Any] = {"rows": rows, "columns": ["id", "payload"], "row_count": len(rows), "truncated": False}
+            if len(rows) == n:
+                response["next_offset"] = str(offset + n)
+            return response
+
+        results = self._client.search(collection_name=collection, data=[q.get("vector", [])], limit=n, output_fields=["*"])
+        hits = results[0] if results else []
+        rows = [{"id": str(h.get("id")), "score": h.get("distance"), "payload": json.dumps(h.get("entity", {}))} for h in hits]
+        return {"rows": rows, "columns": ["id", "score", "payload"], "row_count": len(rows), "truncated": False}
+
+    def delete_chunk(self, collection: str, chunk_id: str) -> None:
+        self._client.delete(collection_name=collection, ids=[chunk_id])
+
+    def update_chunk(self, collection: str, chunk_id: str, properties: Dict) -> None:
+        payload = {k: v for k, v in properties.items() if k not in ("id", "score")}
+        payload["id"] = chunk_id
+        self._client.upsert(collection_name=collection, data=[payload])
+
+    def close(self) -> None:
+        try:
+            self._client.close()
+        except Exception:
+            pass
+
+
 # ── Service ───────────────────────────────────────────────────────────────────
 
 _ADAPTER_MAP = {
-    "mongodb":  MongoAdapter,
-    "redis":    RedisAdapter,
-    "qdrant":   QdrantAdapter,
-    "chroma":   ChromaAdapter,
-    "weaviate": WeaviateAdapter,
+    "mongodb":   MongoAdapter,
+    "redis":     RedisAdapter,
+    "cassandra": CassandraAdapter,
+    "dynamodb":  DynamoDBAdapter,
+    "qdrant":    QdrantAdapter,
+    "chroma":    ChromaAdapter,
+    "weaviate":  WeaviateAdapter,
+    "pinecone":  PineconeAdapter,
+    "milvus":    MilvusAdapter,
 }
 
-_SQL_TYPES = {"postgresql", "mysql", "mariadb", "sqlite", "mssql"}
+_SQL_TYPES = {"postgresql", "mysql", "mariadb", "sqlite", "mssql", "oracle", "db2", "cockroachdb", "snowflake"}
 
 _SQL_DRIVERS = {
-    "postgresql": "postgresql+psycopg2",
-    "mysql":      "mysql+pymysql",
-    "mariadb":    "mysql+pymysql",
-    "sqlite":     "sqlite",
-    "mssql":      "mssql+pyodbc",
+    "postgresql":  "postgresql+psycopg2",
+    "mysql":       "mysql+pymysql",
+    "mariadb":     "mysql+pymysql",
+    "sqlite":      "sqlite",
+    "mssql":       "mssql+pymssql",
+    "oracle":      "oracle+oracledb",
+    "db2":         "ibm_db_sa",
+    "cockroachdb": "cockroachdb+psycopg2",
+    "snowflake":   "snowflake",
 }
 
 
@@ -666,6 +1059,16 @@ class DatabaseService:
         driver = _SQL_DRIVERS.get(conn.db_type, conn.db_type)
         if conn.db_type == "sqlite":
             return f"sqlite:///{conn.database}"
+        if conn.db_type == "oracle":
+            host_port = f"{conn.host}:{conn.port or 1521}"
+            return f"oracle+oracledb://{conn.username}:{password}@{host_port}/?service_name={conn.database}"
+        if conn.db_type == "snowflake":
+            extra: Dict[str, Any] = json.loads(conn.extra_params) if conn.extra_params else {}
+            account = conn.host or ""
+            db_part = f"/{conn.database}" if conn.database else ""
+            params = "&".join(f"{k}={v}" for k in ("warehouse", "role") if (v := extra.get(k)))
+            query = f"?{params}" if params else ""
+            return f"snowflake://{conn.username}:{password}@{account}{db_part}{query}"
         host_port = f"{conn.host}:{conn.port}" if conn.port else conn.host
         db_part = f"/{conn.database}" if conn.database else ""
         return f"{driver}://{conn.username}:{password}@{host_port}{db_part}"
@@ -779,6 +1182,8 @@ class DatabaseService:
         adapter = self.get_adapter(conn)
         if isinstance(adapter, SQLAdapter):
             return adapter.describe_table(table, schema, database)
+        if hasattr(adapter, "describe_table"):
+            return adapter.describe_table(table, schema, database)  # type: ignore[attr-defined]
         return {"error": f"describe_table is not supported for {conn.db_type}"}
 
     def execute_query(
@@ -788,11 +1193,39 @@ class DatabaseService:
         params: Optional[Dict] = None,
         limit: int = 1000,
         database: Optional[str] = None,
+        user_id: Optional[str] = None,
+        source: str = "user",
     ) -> Dict[str, Any]:
-        adapter = self.get_adapter(conn)
-        if isinstance(adapter, SQLAdapter):
-            return adapter.execute_query(query, params, limit, database)
-        return adapter.execute_query(query, params, limit)
+        start = time.perf_counter()
+        try:
+            adapter = self.get_adapter(conn)
+            if isinstance(adapter, SQLAdapter):
+                result = adapter.execute_query(query, params, limit, database)
+            else:
+                result = adapter.execute_query(query, params, limit)
+        except Exception as e:
+            history_service.record_execution(
+                connection_id=conn.id,
+                user_id=user_id,
+                source=source,
+                query_text=query,
+                duration_ms=round((time.perf_counter() - start) * 1000, 1),
+                success=False,
+                error=str(e),
+            )
+            raise
+
+        history_service.record_execution(
+            connection_id=conn.id,
+            user_id=user_id,
+            source=source,
+            query_text=query,
+            duration_ms=round((time.perf_counter() - start) * 1000, 1),
+            success=not bool(result.get("error")),
+            error=result.get("error"),
+            row_count=result.get("row_count") if result.get("row_count") is not None else result.get("affected"),
+        )
+        return result
 
     def get_vector_schema(self, conn: DbConnection, collection: str) -> List[Dict]:
         adapter = self.get_adapter(conn)
@@ -800,8 +1233,10 @@ class DatabaseService:
             return adapter.get_collection_schema(collection)
         if isinstance(adapter, ChromaAdapter):
             return [{"name": "document", "dataType": ["text"]}, {"name": "metadata", "dataType": ["object"]}]
-        if isinstance(adapter, QdrantAdapter):
+        if isinstance(adapter, (QdrantAdapter, MilvusAdapter)):
             return [{"name": "payload", "dataType": ["object"]}]
+        if isinstance(adapter, PineconeAdapter):
+            return [{"name": "metadata", "dataType": ["object"]}]
         return []
 
     def delete_vector_chunk(self, conn: DbConnection, collection: str, chunk_id: str) -> None:

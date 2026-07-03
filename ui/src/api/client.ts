@@ -6,6 +6,7 @@ import type {
   TableInfo,
   UserSession,
   ChatMessage,
+  QueryHistoryEntry,
 } from '../types'
 
 const BASE = import.meta.env.VITE_API_URL || ''
@@ -89,6 +90,9 @@ export const apiExecuteQuery = (userId: string, connId: string, query: string, d
 
 export const apiRunDdl = (userId: string, connId: string, action: string, objectName: string, objectType: string, database?: string) =>
   http.post('/query/ddl', { user_anon_id: userId, connection_id: connId, action, object_name: objectName, object_type: objectType, database }).then(r => r.data)
+
+export const apiGetQueryHistory = (limit = 200): Promise<{ entries: QueryHistoryEntry[] }> =>
+  http.get('/query/history', { params: { limit } }).then(r => r.data)
 
 // ── Backup ────────────────────────────────────────────────────────────────────
 

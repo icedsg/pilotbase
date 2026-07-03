@@ -8,13 +8,14 @@ Message types:
   agent_token    — streaming token from AI agent
   agent_done     — agent turn complete
   query_result   — result from an async query
+  query_executed — a query/script finished running on the server (any source)
   error          — error notification
   ping / pong    — keepalive
 """
 import asyncio
 import json
 import logging
-from typing import Dict
+from typing import Dict, Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
@@ -26,6 +27,9 @@ ws_router = APIRouter()
 class ConnectionManager:
     def __init__(self):
         self._connections: Dict[str, list[WebSocket]] = {}
+        # Captured at startup so sync/worker-thread code can schedule a
+        # broadcast without needing to be inside a running event loop itself.
+        self.loop: Optional[asyncio.AbstractEventLoop] = None
 
     async def connect(self, user_id: str, ws: WebSocket) -> None:
         await ws.accept()
@@ -55,6 +59,14 @@ class ConnectionManager:
     async def broadcast(self, msg_type: str, payload: dict) -> None:
         for user_id in list(self._connections.keys()):
             await self.send(user_id, msg_type, payload)
+
+    def broadcast_threadsafe(self, msg_type: str, payload: dict) -> None:
+        """Schedule a broadcast from synchronous code, whether it's running on
+        the event loop thread (blocking route handlers) or a worker thread
+        (LangGraph tool calls via run_in_executor)."""
+        if self.loop is None:
+            return
+        asyncio.run_coroutine_threadsafe(self.broadcast(msg_type, payload), self.loop)
 
 
 manager = ConnectionManager()

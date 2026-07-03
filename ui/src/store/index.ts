@@ -1,5 +1,7 @@
 import { create } from 'zustand'
-import type { ChatMessage, DbConnection, QueryResult, UserSession } from '../types'
+import type { ChatMessage, DbConnection, QueryHistoryEntry, QueryResult, UserSession } from '../types'
+
+const MAX_QUERY_HISTORY = 500
 
 export interface ColumnViewContext {
   table: string
@@ -68,6 +70,12 @@ interface PilotbaseStore {
   nosqlViewContext: NoSQLViewContext | null
   setNosqlViewContext: (ctx: NoSQLViewContext | null) => void
 
+  // ── Query history (executed scripts, any source) ──────────────────
+  queryHistory: QueryHistoryEntry[]
+  setQueryHistory: (entries: QueryHistoryEntry[]) => void
+  addQueryHistoryEntry: (entry: QueryHistoryEntry) => void
+  clearQueryHistory: () => void
+
   // ── AI Chat ──────────────────────────────────────────────────────
   chatMessages: ChatMessage[]
   chatLoading: boolean
@@ -129,6 +137,15 @@ export const useStore = create<PilotbaseStore>((set) => ({
   // NoSQL view
   nosqlViewContext: null,
   setNosqlViewContext: (nosqlViewContext) => set({ nosqlViewContext }),
+
+  // Query history
+  queryHistory: [],
+  setQueryHistory: (queryHistory) => set({ queryHistory }),
+  addQueryHistoryEntry: (entry) => set((s) => {
+    if (s.queryHistory.some((e) => e.id === entry.id)) return s
+    return { queryHistory: [entry, ...s.queryHistory].slice(0, MAX_QUERY_HISTORY) }
+  }),
+  clearQueryHistory: () => set({ queryHistory: [] }),
 
   // Chat
   chatMessages: [],

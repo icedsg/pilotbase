@@ -1,6 +1,8 @@
-import { GitMerge, Download, Sun, Moon, PanelLeft, PanelRight } from 'lucide-react'
+import { useState } from 'react'
+import { GitMerge, Download, History, Sun, Moon, PanelLeft, PanelRight } from 'lucide-react'
 import Logo from '../common/Logo'
 import { useStore } from '../../store'
+import QueryHistoryPanel from '../db/QueryHistoryPanel'
 
 interface Props {
   leftOpen: boolean
@@ -11,6 +13,7 @@ interface Props {
 
 export default function TopBar({ leftOpen, rightOpen, onToggleLeft, onToggleRight }: Props) {
   const { theme, toggleTheme } = useStore()
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   return (
     <header className="h-11 flex items-center justify-between px-2 bg-surface-300 border-b border-surface-50 flex-shrink-0">
@@ -38,6 +41,14 @@ export default function TopBar({ leftOpen, rightOpen, onToggleLeft, onToggleRigh
       </div>
 
       <div className="flex items-center gap-3">
+        <button
+          onClick={() => setHistoryOpen(true)}
+          className="btn-ghost p-1.5 rounded"
+          title="Query history — all scripts executed on the server"
+        >
+          <History size={20} />
+        </button>
+
         <button onClick={toggleTheme} className="btn-ghost p-1.5 rounded" title="Toggle theme">
           {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
         </button>
@@ -50,6 +61,8 @@ export default function TopBar({ leftOpen, rightOpen, onToggleLeft, onToggleRigh
           <PanelRight size={20} />
         </button>
       </div>
+
+      {historyOpen && <QueryHistoryPanel onClose={() => setHistoryOpen(false)} />}
     </header>
   )
 }

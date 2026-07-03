@@ -4,6 +4,11 @@ import mbTypes    from '@knowledge/mariadb/data_types.json'
 import slTypes    from '@knowledge/sqlite/data_types.json'
 import msTypes    from '@knowledge/mssql/data_types.json'
 import mgTypes    from '@knowledge/mongodb/data_types.json'
+import orTypes    from '@knowledge/oracle/data_types.json'
+import dbTypes    from '@knowledge/db2/data_types.json'
+import crTypes    from '@knowledge/cockroachdb/data_types.json'
+import sfTypes    from '@knowledge/snowflake/data_types.json'
+import csTypes    from '@knowledge/cassandra/data_types.json'
 
 export interface KnowledgeTypeEntry {
   name: string
@@ -31,12 +36,17 @@ export interface KnowledgeDataTypes {
 }
 
 const RAW: Record<string, KnowledgeDataTypes> = {
-  postgresql: pgTypes as KnowledgeDataTypes,
-  mysql:      myTypes as KnowledgeDataTypes,
-  mariadb:    mbTypes as KnowledgeDataTypes,
-  sqlite:     slTypes as KnowledgeDataTypes,
-  mssql:      msTypes as KnowledgeDataTypes,
-  mongodb:    mgTypes as KnowledgeDataTypes,
+  postgresql:  pgTypes as KnowledgeDataTypes,
+  mysql:       myTypes as KnowledgeDataTypes,
+  mariadb:     mbTypes as KnowledgeDataTypes,
+  sqlite:      slTypes as KnowledgeDataTypes,
+  mssql:       msTypes as KnowledgeDataTypes,
+  mongodb:     mgTypes as KnowledgeDataTypes,
+  oracle:      orTypes as KnowledgeDataTypes,
+  db2:         dbTypes as KnowledgeDataTypes,
+  cockroachdb: crTypes as KnowledgeDataTypes,
+  snowflake:   sfTypes as KnowledgeDataTypes,
+  cassandra:   csTypes as KnowledgeDataTypes,
 }
 
 export function getTypeCategories(dbType: string): KnowledgeTypeCategory[] {

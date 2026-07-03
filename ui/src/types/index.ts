@@ -59,6 +59,10 @@ export interface QueryResult {
   truncated?: boolean
   affected?: number
   next_offset?: string | null
+  error?: string
+  /** Set when the edited SQL contained multiple statements; `results` holds one entry per statement. */
+  multi?: boolean
+  results?: QueryResult[]
 }
 
 export interface ChatMessage {
@@ -68,10 +72,24 @@ export interface ChatMessage {
   timestamp: Date
 }
 
+export interface QueryHistoryEntry {
+  id: string
+  connection_id: string
+  user_id: string | null
+  query_text: string
+  source: 'user' | 'agent'
+  success: boolean
+  error: string | null
+  row_count: number | null
+  duration_ms: number
+  executed_at: string
+}
+
 export type WsMessageType =
   | 'agent_token'
   | 'agent_done'
   | 'query_result'
+  | 'query_executed'
   | 'error'
   | 'ping'
   | 'pong'

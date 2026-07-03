@@ -1,7 +1,7 @@
 from langchain_core.tools import tool
 from app.services.db_service import db_service
 
-_ADMIN_TYPES = {"postgresql", "mysql", "mariadb"}
+_ADMIN_TYPES = {"postgresql", "mysql", "mariadb", "mssql", "cockroachdb", "snowflake", "oracle"}
 
 
 def make_admin_tools(conn):
@@ -11,7 +11,7 @@ def make_admin_tools(conn):
 
     @tool
     def create_database(db_name: str) -> str:
-        """Create a new database on the connected server. Supported for PostgreSQL, MySQL, and MariaDB."""
+        """Create a new database on the connected server. Not supported for Oracle (no SQL-level CREATE DATABASE)."""
         try:
             db_service.create_database(conn, db_name)
             return f"Database '{db_name}' created successfully."

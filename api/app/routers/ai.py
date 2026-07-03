@@ -47,7 +47,7 @@ async def chat(
     conn = await _get_conn(body.connection_id, session)
     target_conn = await _get_conn(body.target_connection_id, session) if body.target_connection_id else None
 
-    agent = create_db_agent(conn, target_conn)
+    agent = create_db_agent(conn, target_conn, user_id=body.user_anon_id)
 
     state = {
         "messages": [HumanMessage(content=body.message)],
@@ -75,7 +75,7 @@ async def chat_stream(
     conn = await _get_conn(body.connection_id, session)
     target_conn = await _get_conn(body.target_connection_id, session) if body.target_connection_id else None
 
-    agent = create_db_agent(conn, target_conn)
+    agent = create_db_agent(conn, target_conn, user_id=body.user_anon_id)
 
     state = {
         "messages": [HumanMessage(content=body.message)],
@@ -115,7 +115,7 @@ async def chat_via_ws(
     conn = await _get_conn(body.connection_id, session)
     target_conn = await _get_conn(body.target_connection_id, session) if body.target_connection_id else None
 
-    agent = create_db_agent(conn, target_conn)
+    agent = create_db_agent(conn, target_conn, user_id=body.user_anon_id)
     state = {
         "messages": [HumanMessage(content=body.message)],
         "connection_id": body.connection_id,

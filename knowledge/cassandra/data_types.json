@@ -1,0 +1,50 @@
+{
+  "db_type": "cassandra",
+  "version_info": "Apache Cassandra 4.x+ (CQL)",
+  "source": "https://cassandra.apache.org/doc/latest/cassandra/cql/types.html",
+  "categories": [
+    {
+      "category": "Numeric",
+      "types": [
+        { "name": "int", "aliases": [], "params": null, "default_expr": "int", "description": "Signed 32-bit integer.", "storage": "4 bytes" },
+        { "name": "bigint", "aliases": [], "params": null, "default_expr": "bigint", "description": "Signed 64-bit integer.", "storage": "8 bytes" },
+        { "name": "smallint", "aliases": [], "params": null, "default_expr": "smallint", "description": "Signed 16-bit integer.", "storage": "2 bytes" },
+        { "name": "decimal", "aliases": [], "params": null, "default_expr": "decimal", "description": "Variable-precision exact decimal number.", "storage": "variable" },
+        { "name": "double", "aliases": [], "params": null, "default_expr": "double", "description": "64-bit IEEE-754 floating point.", "storage": "8 bytes" },
+        { "name": "counter", "aliases": [], "params": null, "default_expr": "counter", "description": "Distributed counter column — can only be incremented/decremented, not set directly.", "storage": "8 bytes", "notes": "A table with a counter column may only contain counter columns besides its primary key." }
+      ]
+    },
+    {
+      "category": "Text",
+      "types": [
+        { "name": "text", "aliases": ["varchar"], "params": null, "default_expr": "text", "description": "UTF-8 encoded string.", "storage": "variable" },
+        { "name": "ascii", "aliases": [], "params": null, "default_expr": "ascii", "description": "US-ASCII character string.", "storage": "variable" }
+      ]
+    },
+    {
+      "category": "Date/Time",
+      "types": [
+        { "name": "timestamp", "aliases": [], "params": null, "default_expr": "timestamp", "description": "Date and time with millisecond precision, encoded as milliseconds since the epoch.", "storage": "8 bytes" },
+        { "name": "date", "aliases": [], "params": null, "default_expr": "date", "description": "Date only, no time component.", "storage": "4 bytes" },
+        { "name": "time", "aliases": [], "params": null, "default_expr": "time", "description": "Time of day with nanosecond precision.", "storage": "8 bytes" }
+      ]
+    },
+    {
+      "category": "Collections",
+      "types": [
+        { "name": "list", "aliases": [], "params": "<type>", "default_expr": "list<text>", "description": "Ordered collection of non-unique values.", "storage": "variable" },
+        { "name": "set", "aliases": [], "params": "<type>", "default_expr": "set<text>", "description": "Unordered collection of unique values.", "storage": "variable" },
+        { "name": "map", "aliases": [], "params": "<keytype,valuetype>", "default_expr": "map<text,text>", "description": "Collection of key-value pairs.", "storage": "variable" }
+      ]
+    },
+    {
+      "category": "Other",
+      "types": [
+        { "name": "boolean", "aliases": [], "params": null, "default_expr": "boolean", "description": "TRUE/FALSE value.", "storage": "1 byte" },
+        { "name": "uuid", "aliases": [], "params": null, "default_expr": "uuid", "description": "Standard 128-bit UUID.", "storage": "16 bytes" },
+        { "name": "timeuuid", "aliases": [], "params": null, "default_expr": "timeuuid", "description": "Version 1 UUID that includes a timestamp — sortable by creation time, often used for clustering columns.", "storage": "16 bytes" },
+        { "name": "blob", "aliases": [], "params": null, "default_expr": "blob", "description": "Arbitrary bytes, hex-encoded in CQL literals.", "storage": "variable" }
+      ]
+    }
+  ]
+}

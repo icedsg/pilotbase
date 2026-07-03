@@ -35,7 +35,7 @@ You have access to tools that let you:
 - List databases, tables, views, and vector collections
 - Describe table schemas
 - Browse and update vector collection chunks
-- Create databases and users (PostgreSQL, MySQL, MariaDB)
+- Create databases and users (PostgreSQL, MySQL, MariaDB, SQL Server, CockroachDB, Snowflake, Oracle users)
 - Trigger and list backups
 - Compare schemas and generate migration scripts
 
@@ -48,15 +48,15 @@ Format query results clearly. For large result sets, summarise instead of printi
 """
 
 
-def create_db_agent(conn, target_conn=None):
+def create_db_agent(conn, target_conn=None, user_id: str | None = None):
     """
     Build and compile a LangGraph ReAct agent for the given DbConnection.
     Returns a CompiledGraph that can be invoked with AgentState.
     """
     tools = (
-        make_query_tools(conn)
+        make_query_tools(conn, user_id)
         + make_admin_tools(conn)
-        + make_vector_tools(conn)
+        + make_vector_tools(conn, user_id)
         + make_backup_tools(conn)
         + make_migration_tools(conn, target_conn)
     )
