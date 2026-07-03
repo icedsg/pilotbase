@@ -23,6 +23,7 @@ import { useUserSession } from '../../hooks/useUserSession'
 import { apiExecuteQuery } from '../../api/client'
 import type { QueryResult } from '../../types'
 import TypeSelector from './TypeSelector'
+import { downloadBlob } from '../../utils/download'
 
 // ── CSV export ────────────────────────────────────────────────────────────────
 
@@ -35,13 +36,7 @@ function downloadCsv(columns: string[], rows: Record<string, unknown>[]) {
       return s.includes(',') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s
     }).join(',')
   ).join('\n')
-  const blob = new Blob([header + '\n' + body], { type: 'text/csv' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = 'pilotbase_result.csv'
-  a.click()
-  URL.revokeObjectURL(url)
+  downloadBlob(new Blob([header + '\n' + body], { type: 'text/csv' }), 'pilotbase_result.csv')
 }
 
 function rewriteQueryColumns(query: string, newColumns: string[], dbType: string): string {

@@ -5,6 +5,7 @@ import QueryEditor, { type QueryEditorHandle } from '../db/QueryEditor'
 import ResultsTable from '../db/ResultsTable'
 import VectorChunksView from '../db/VectorChunksView'
 import NoSQLDocumentView from '../db/NoSQLDocumentView'
+import MigrationCompareView from '../migration/MigrationCompareView'
 import { useStore } from '../../store'
 import { LogoIcon } from '../common/Logo'
 import DbTypeIcon from '../db/DbTypeIcon'
@@ -12,13 +13,20 @@ import DbTypeIcon from '../db/DbTypeIcon'
 export default function MainArea() {
   const {
     activeConnectionId, connections, activeDatabase, activeQuery, queryLoading,
-    vectorViewContext, nosqlViewContext,
+    vectorViewContext, nosqlViewContext, migrationViewContext,
+    setVectorViewContext, setNosqlViewContext, setMigrationViewContext,
   } = useStore()
   const activeConn = connections.find((c) => c.id === activeConnectionId)
   const queryEditorRef = useRef<QueryEditorHandle>(null)
 
-  const isSpecialView = !!(vectorViewContext || nosqlViewContext)
-  const specialLabel = vectorViewContext?.collection ?? nosqlViewContext?.collection
+  const isSpecialView = !!(vectorViewContext || nosqlViewContext || migrationViewContext)
+  const specialLabel = vectorViewContext?.collection ?? nosqlViewContext?.collection ?? (migrationViewContext ? 'Plan Migration' : undefined)
+
+  const resetToNormalView = () => {
+    setVectorViewContext(null)
+    setNosqlViewContext(null)
+    setMigrationViewContext(null)
+  }
 
   if (!activeConnectionId) {
     return (
@@ -38,7 +46,13 @@ export default function MainArea() {
       <div className="flex items-center justify-between px-3 py-1.5 bg-surface-300 border-b border-surface-50 flex-shrink-0">
         {/* Left: connection identity */}
         <div className="flex items-center gap-2 text-xs text-gray-400 min-w-0">
-          <LogoIcon size={16} className="flex-shrink-0" />
+          <button
+            onClick={resetToNormalView}
+            className={isSpecialView ? 'cursor-pointer flex-shrink-0' : 'flex-shrink-0 cursor-default'}
+            title={isSpecialView ? 'Return to the normal view' : undefined}
+          >
+            <LogoIcon size={16} />
+          </button>
           <span className="text-gray-700 dark:text-gray-300 font-medium truncate">{activeConn?.name}</span>
           <span className="text-gray-500">·</span>
           <span className="text-gray-500">{activeConn?.db_type}</span>
@@ -94,7 +108,7 @@ export default function MainArea() {
       {/* Main content */}
       {isSpecialView ? (
         <div className="flex-1 min-h-0">
-          {vectorViewContext ? <VectorChunksView /> : <NoSQLDocumentView />}
+          {vectorViewContext ? <VectorChunksView /> : migrationViewContext ? <MigrationCompareView /> : <NoSQLDocumentView />}
         </div>
       ) : (
         <PanelGroup direction="vertical" className="flex-1">

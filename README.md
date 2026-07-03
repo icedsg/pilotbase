@@ -127,6 +127,25 @@ The Vite dev server proxies `/api` to the backend automatically.
 
 ---
 
+## Setting Up Ollama (for the AI Agent)
+
+Pilotbase's AI agent talks to any OpenAI-compatible LLM endpoint, and defaults to Ollama. To run models locally instead of using Ollama's hosted cloud:
+
+1. Install Ollama from [ollama.com/download](https://ollama.com/download)
+2. Pull a model: `ollama pull gemma4:31b-cloud` (or any model you prefer)
+3. Confirm it's running: `ollama list`
+4. In `api/.env`, set:
+   ```env
+   OLLAMA_BASE_URL=http://localhost:11434/v1
+   OLLAMA_MODEL=<your model name>
+   OLLAMA_API_KEY=ollama
+   ```
+5. Restart the backend (or `docker compose up --build` again if running in Docker)
+
+No local GPU or Ollama install? Leave `OLLAMA_BASE_URL` at its default and the agent will use Ollama's hosted cloud models instead — just set a valid `OLLAMA_API_KEY`.
+
+---
+
 ## Configuration Reference
 
 All settings are read from environment variables or `api/.env`.
@@ -144,9 +163,7 @@ All settings are read from environment variables or `api/.env`.
 | `ENVIRONMENT` | `development` | Set to `production` for tighter CORS and security defaults |
 | `CORS_ORIGINS` | `http://localhost:5173,...` | Comma-separated allowed origins |
 
-**Using a local Ollama instance instead of the cloud:**
-
-Set `OLLAMA_BASE_URL` to `http://localhost:11434/v1`, set `OLLAMA_API_KEY` to `ollama`, and pick any model available in your local Ollama install.
+**Using a local Ollama instance instead of the cloud:** see [Setting Up Ollama](#setting-up-ollama-for-the-ai-agent) above.
 
 **Using a different hosted LLM:**
 
@@ -285,27 +302,14 @@ pilotbase/
 
 ## Contributing
 
-Contributions are welcome — and this codebase is genuinely easy to extend.
+Contributions are welcome.
 
-### Adding a new database takes about 30 minutes
+### Good first contributions
 
-Every database in Pilotbase is a single Python class that inherits from `BaseAdapter` in `api/app/services/db_service.py`. Implement five methods and you're done:
-
-```python
-class MyDbAdapter(BaseAdapter):
-    def test_connection(self) -> bool: ...
-    def list_databases(self) -> List[str]: ...
-    def list_objects(self, schema, database) -> List[Dict]: ...
-    def execute_query(self, query, params, limit) -> Dict: ...
-    def close(self) -> None: ...
-```
-
-No framework magic, no registration files to edit — just drop the class in and wire it to a new `db_type` string in the factory. The UI picks it up automatically.
-
-### Other good first contributions
-
-- **New UI panel** — React + TypeScript, Tailwind, Zustand for state. Components are small and isolated under `ui/src/components/`.
-- **Auth backend** — implement the `AuthBackend` abstract class to add JWT, OAuth2, LDAP, or API key auth.
+- **Testing supported databases** — try Pilotbase against the databases it claims to support and report what breaks.
+- **Test scripts** — add automated tests for adapters, auth backends, or UI components.
+- **UI improvements** — React + TypeScript, Tailwind, Zustand for state. Components are small and isolated under `ui/src/components/`.
+- **Security** — review auth flows, connection handling, and query execution for issues.
 - **Bug fixes and docs** — always welcome, no issue required.
 
 ### How to submit
@@ -332,3 +336,9 @@ No framework magic, no registration files to edit — just drop the class in and
 ## License
 
 [MIT](LICENSE) — free to use, modify, and self-host.
+
+---
+
+## Pilotbase.pro — Coming July 2026
+
+Don't want to run the stack yourself? **Pilotbase.pro** is a subscription service launching July 2026 that hosts Pilotbase for you — with a private, dedicated container provisioned near your databases, so you connect and query with zero infrastructure to manage. Same Pilotbase, fully managed.

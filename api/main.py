@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import init_db
-from app.routers import auth, connections, query, query_history, backup, migration, ai, vector
+from app.routers import auth, connections, query, query_history, backup, migration, ai, vector, papi
 from app.websocket.manager import ws_router, manager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
@@ -56,6 +56,7 @@ app.include_router(backup.router,      prefix="/api/v1/backup",       tags=["bac
 app.include_router(migration.router,   prefix="/api/v1/migration",    tags=["migration"])
 app.include_router(ai.router,          prefix="/api/v1/ai",           tags=["ai"])
 app.include_router(vector.router,      prefix="/api/v1/vector",        tags=["vector"])
+app.include_router(papi.router,        prefix="/api/v1/papi",          tags=["public-api"])
 
 # WebSocket
 app.include_router(ws_router, prefix="/ws", tags=["websocket"])

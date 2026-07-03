@@ -30,6 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         freetds-dev \
         freetds-bin \
+        libev-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

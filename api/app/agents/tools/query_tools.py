@@ -1,21 +1,45 @@
 import re
+from typing import Optional
 
 from langchain_core.tools import tool
-from app.services.db_service import db_service
+from app.services.db_service import check_agent_forbidden, db_service
 
-_DESTRUCTIVE = re.compile(r'^\s*(DROP|DELETE|TRUNCATE)\b', re.IGNORECASE | re.MULTILINE)
+_READ_ONLY_RE = re.compile(r"^\s*(SELECT|WITH|SHOW|EXPLAIN|DESCRIBE|DESC)\b", re.IGNORECASE)
 
 
-def make_query_tools(conn, user_id: str | None = None):
-    """Return query tools bound to a specific DbConnection instance."""
+def _is_read_only(query: str) -> bool:
+    import sqlparse
+    statements = [s.strip() for s in sqlparse.split(query) if s.strip()] or [query]
+    return all(_READ_ONLY_RE.match(s) for s in statements)
+
+
+def make_query_tools(
+    conn,
+    user_id: Optional[str] = None,
+    propose_only: bool = False,
+    plan_sink: Optional[list] = None,
+):
+    """Return query tools bound to a specific DbConnection instance.
+
+    Destructive/permission-changing statements (DROP, DELETE, TRUNCATE, GRANT,
+    REVOKE, CREATE|ALTER|DROP USER|ROLE, ...) are enforced centrally in
+    db_service.execute_query for source="agent" — not re-implemented here, so
+    the guard can't be bypassed by adding new tools. They're also rejected
+    right here at proposal time so they never even make it into a plan a user
+    could approve.
+
+    When propose_only is set, mutating statements (anything that isn't plainly
+    read-only) are appended to plan_sink instead of executed, and a "PLANNED"
+    placeholder is returned to the LLM so the ReAct loop can keep narrating.
+    Read-only statements always execute immediately so the agent can inspect
+    state before proposing a plan."""
 
     @tool
     def run_sql_query(query: str) -> str:
         """Execute a SQL query on the connected database and return results as a formatted string.
         Use for SELECT, INSERT, UPDATE, CREATE, and ALTER statements. Always LIMIT large result sets.
-        DROP, DELETE, and TRUNCATE are not permitted — direct the user to the UI for those."""
-        if _DESTRUCTIVE.search(query):
-            return "BLOCKED: DROP, DELETE, and TRUNCATE operations are secured to the UI. Please use the Pilotbase interface to perform this action."
+        DROP, DELETE, TRUNCATE, and permission changes (GRANT/REVOKE/CREATE|ALTER USER) are not
+        permitted — direct the user to the UI for those."""
         def _format_one(result: dict) -> str:
             if result.get("error"):
                 return f"ERROR: {result['error']}"
@@ -28,6 +52,15 @@ def make_query_tools(conn, user_id: str | None = None):
                 truncated = "\n(truncated to 50 rows)" if result.get("truncated") else ""
                 return f"{header}\n{sep}\n{rows_str}{truncated}"
             return f"Query executed. Rows affected: {result.get('affected', 0)}"
+
+        blocked = check_agent_forbidden(query)
+        if blocked:
+            return f"BLOCKED: {blocked} is not permitted through the AI agent. Use the Pilotbase UI for this."
+
+        if propose_only and not _is_read_only(query):
+            if plan_sink is not None:
+                plan_sink.append({"tool": "run_sql_query", "sql": query})
+            return f"PLANNED (awaiting user approval, not yet executed): {query}"
 
         try:
             result = db_service.execute_query(conn, query, user_id=user_id, source="agent")

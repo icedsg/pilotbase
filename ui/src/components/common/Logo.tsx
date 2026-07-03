@@ -1,5 +1,6 @@
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg'
+  onClick?: () => void
 }
 
 const sizes = {
@@ -24,10 +25,14 @@ export function LogoIcon({ size = 22, className }: { size?: number; className?: 
   )
 }
 
-export default function Logo({ size = 'md' }: LogoProps) {
+export default function Logo({ size = 'md', onClick }: LogoProps) {
   const { icon, text } = sizes[size]
   return (
-    <div className="flex items-center gap-2 select-none">
+    <div
+      className={`flex items-center gap-2 select-none ${onClick ? 'cursor-pointer' : ''}`}
+      onClick={onClick}
+      title={onClick ? 'Return to the normal view' : undefined}
+    >
       <LogoIcon size={icon} />
 
       <span

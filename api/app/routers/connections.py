@@ -8,9 +8,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.anon_auth import get_auth_backend
+from app.auth.permissions import require_admin
 from app.database import get_session
 from app.models.connection import ConnectionAccess, DbConnection
 from app.models.user import User, UserRole
+from app.routers._common import get_connection_or_404
+from app.services import papi_service
 from app.services.db_service import db_service
 
 log = logging.getLogger("pilotbase")
@@ -131,14 +134,6 @@ class CreateUserBody(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-async def _require_admin(user_anon_id: str, session: AsyncSession):
-    backend = get_auth_backend()
-    user = await backend.get_or_create_user(session, user_anon_id)
-    if user.role != UserRole.ADMIN:
-        raise HTTPException(status_code=403, detail="Admin access required.")
-    return user
-
-
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.get("/")
@@ -184,7 +179,7 @@ async def test_connection_params(
     body: ConnectionTestParams,
     session: AsyncSession = Depends(get_session),
 ):
-    await _require_admin(body.user_anon_id, session)
+    await require_admin(body.user_anon_id, session)
     ok, error, databases = db_service.test_connection_params(
         db_type=body.db_type,
         host=body.host,
@@ -203,7 +198,7 @@ async def create_connection(
     body: ConnectionCreate,
     session: AsyncSession = Depends(get_session),
 ):
-    user = await _require_admin(body.user_anon_id, session)
+    user = await require_admin(body.user_anon_id, session)
     conn_id = secrets.token_hex(16)
     encrypted_pw = db_service.encrypt_password(body.password) if body.password else None
 
@@ -242,7 +237,7 @@ async def update_connection(
     body: ConnectionUpdate,
     session: AsyncSession = Depends(get_session),
 ):
-    await _require_admin(body.user_anon_id, session)
+    await require_admin(body.user_anon_id, session)
     result = await session.execute(select(DbConnection).where(DbConnection.id == conn_id))
     conn = result.scalar_one_or_none()
     if not conn:
@@ -268,7 +263,7 @@ async def delete_connection(
     user_anon_id: str,
     session: AsyncSession = Depends(get_session),
 ):
-    await _require_admin(user_anon_id, session)
+    await require_admin(user_anon_id, session)
     result = await session.execute(select(DbConnection).where(DbConnection.id == conn_id))
     conn = result.scalar_one_or_none()
     if not conn:
@@ -291,8 +286,8 @@ async def test_connection(
     conn = result.scalar_one_or_none()
     if not conn:
         raise HTTPException(status_code=404, detail="Connection not found.")
-    ok = db_service.test_connection(conn)
-    return {"success": ok}
+    ok, error = db_service.test_connection_verbose(conn)
+    return {"success": ok, "error": error}
 
 
 @router.get("/{conn_id}/version")
@@ -319,7 +314,10 @@ async def list_databases(
     conn = result.scalar_one_or_none()
     if not conn:
         raise HTTPException(status_code=404, detail="Connection not found.")
-    dbs = db_service.list_databases(conn)
+    try:
+        dbs = db_service.list_databases(conn)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
     return {"databases": dbs}
 
 
@@ -335,7 +333,10 @@ async def list_objects(
     conn = result.scalar_one_or_none()
     if not conn:
         raise HTTPException(status_code=404, detail="Connection not found.")
-    objects = db_service.list_objects(conn, schema, database)
+    try:
+        objects = db_service.list_objects(conn, schema, database)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
     return {"objects": objects}
 
 
@@ -362,7 +363,7 @@ async def create_database(
     body: CreateDatabaseBody,
     session: AsyncSession = Depends(get_session),
 ):
-    await _require_admin(body.user_anon_id, session)
+    await require_admin(body.user_anon_id, session)
     result = await session.execute(select(DbConnection).where(DbConnection.id == conn_id))
     conn = result.scalar_one_or_none()
     if not conn:
@@ -380,7 +381,7 @@ async def create_db_user(
     body: CreateUserBody,
     session: AsyncSession = Depends(get_session),
 ):
-    await _require_admin(body.user_anon_id, session)
+    await require_admin(body.user_anon_id, session)
     result = await session.execute(select(DbConnection).where(DbConnection.id == conn_id))
     conn = result.scalar_one_or_none()
     if not conn:
@@ -390,3 +391,45 @@ async def create_db_user(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"message": f"User '{body.username}' created successfully."}
+
+
+# ── Generated CRUD API ("papi") enable/disable ────────────────────────────────
+# Provisioning is admin-gated through the normal Pilotbase session; the
+# generated API itself (app.routers.papi) uses a separate self-service JWT
+# auth model once enabled.
+
+@router.get("/{conn_id}/papi/status")
+async def papi_status(
+    conn_id: str,
+    user_anon_id: str,
+    session: AsyncSession = Depends(get_session),
+):
+    await get_connection_or_404(conn_id, session)
+    return await papi_service.get_status(session, conn_id)
+
+
+@router.post("/{conn_id}/papi/enable")
+async def enable_papi(
+    conn_id: str,
+    body: ConnectionRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    await require_admin(body.user_anon_id, session)
+    conn = await get_connection_or_404(conn_id, session)
+    try:
+        await papi_service.enable_for_connection(session, conn)
+    except papi_service.PapiError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return await papi_service.get_status(session, conn_id)
+
+
+@router.post("/{conn_id}/papi/disable")
+async def disable_papi(
+    conn_id: str,
+    body: ConnectionRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    await require_admin(body.user_anon_id, session)
+    await get_connection_or_404(conn_id, session)
+    await papi_service.disable_for_connection(session, conn_id)
+    return await papi_service.get_status(session, conn_id)

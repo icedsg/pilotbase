@@ -5,6 +5,7 @@ NoSQL/Vector: native client adapters (lazy imports so missing optional deps
               only fail at connection time, not at import time).
 """
 import json
+import re
 import time
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
@@ -14,6 +15,29 @@ from cryptography.fernet import Fernet
 from app.config import settings
 from app.models.connection import DbConnection
 from app.services import history_service
+
+
+# Statements the AI agent is never allowed to run, regardless of user approval:
+# destructive ops (DROP/DELETE/TRUNCATE) and permission changes (GRANT/REVOKE/
+# CREATE|ALTER|DROP USER|ROLE). Checked per-statement (not over the raw string)
+# so "SELECT 1; DELETE FROM x" on one line can't slip past a whole-string match.
+_AGENT_FORBIDDEN_RE = re.compile(
+    r"^\s*(DROP|DELETE|TRUNCATE|GRANT|REVOKE|CREATE\s+(?:USER|ROLE)|"
+    r"DROP\s+(?:USER|ROLE)|ALTER\s+(?:USER|ROLE)|SET\s+ROLE)\b",
+    re.IGNORECASE,
+)
+
+
+def check_agent_forbidden(query: str) -> Optional[str]:
+    """Returns the matched forbidden keyword if any statement in `query` is
+    forbidden for agent execution, else None."""
+    import sqlparse
+    statements = [s.strip() for s in sqlparse.split(query) if s.strip()] or [query]
+    for stmt in statements:
+        m = _AGENT_FORBIDDEN_RE.match(stmt)
+        if m:
+            return " ".join(m.group(1).upper().split())
+    return None
 
 
 # ── Base adapter ──────────────────────────────────────────────────────────────
@@ -338,6 +362,16 @@ class MongoAdapter(BaseAdapter):
         except Exception:
             return None
 
+    def get_client(self):
+        """Expose the underlying pymongo client for callers that need raw
+        collection access (e.g. backup_service's full-collection dump, which
+        can't go through execute_query's result-size limit)."""
+        return self._client
+
+    @property
+    def default_database(self) -> str:
+        return self._default_db
+
     def close(self) -> None:
         self._client.close()
 
@@ -413,6 +447,7 @@ class CassandraAdapter(BaseAdapter):
     def __init__(self, conn: DbConnection, extra: Dict):
         from cassandra.cluster import Cluster
         from cassandra.auth import PlainTextAuthProvider
+        from cassandra.io.asyncioreactor import AsyncioConnection
         auth_provider = None
         password = extra.get("_password")
         if conn.username and password:
@@ -421,6 +456,10 @@ class CassandraAdapter(BaseAdapter):
             contact_points=[conn.host or "localhost"],
             port=conn.port or 9042,
             auth_provider=auth_provider,
+            # The driver's default connection class needs either a libev C extension
+            # (not built by default) or the `asyncore` module (removed in Python 3.12+).
+            # AsyncioConnection works out of the box on modern Python with no extra deps.
+            connection_class=AsyncioConnection,
         )
         self._session = self._cluster.connect()
         self._default_keyspace = conn.database or None
@@ -1109,6 +1148,15 @@ class DatabaseService:
     def drop_engine(self, connection_id: str) -> None:
         self.drop_adapter(connection_id)
 
+    def get_mongo_client(self, conn: DbConnection):
+        """Returns (pymongo client, default database name) for callers that need
+        raw collection access beyond what execute_query's result-size limit allows
+        (full-collection backup dumps, generated CRUD passthrough)."""
+        adapter = self.get_adapter(conn)
+        if not isinstance(adapter, MongoAdapter):
+            raise ValueError(f"{conn.db_type} is not a MongoDB connection")
+        return adapter.get_client(), adapter.default_database
+
     # ── Public API (used by routers) ──────────────────────────────────────────
 
     def test_connection(self, conn: DbConnection) -> bool:
@@ -1116,6 +1164,15 @@ class DatabaseService:
             return self.get_adapter(conn).test_connection()
         except Exception:
             return False
+
+    def test_connection_verbose(self, conn: DbConnection) -> tuple:
+        """Like test_connection but returns (success, error) instead of swallowing the error."""
+        try:
+            adapter = self.get_adapter(conn)
+            ok = adapter.test_connection()
+            return ok, ("" if ok else "Connection test failed. Check your credentials.")
+        except Exception as e:
+            return False, str(e)
 
     def test_connection_params(
         self,
@@ -1197,6 +1254,22 @@ class DatabaseService:
         source: str = "user",
     ) -> Dict[str, Any]:
         start = time.perf_counter()
+
+        if source == "agent":
+            blocked = check_agent_forbidden(query)
+            if blocked:
+                error = f"BLOCKED: {blocked} is not permitted through the AI agent."
+                history_service.record_execution(
+                    connection_id=conn.id,
+                    user_id=user_id,
+                    source=source,
+                    query_text=query,
+                    duration_ms=round((time.perf_counter() - start) * 1000, 1),
+                    success=False,
+                    error=error,
+                )
+                return {"error": error, "rows": [], "columns": [], "row_count": 0}
+
         try:
             adapter = self.get_adapter(conn)
             if isinstance(adapter, SQLAdapter):
