@@ -28,6 +28,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         gcc \
         curl \
         ca-certificates \
+        freetds-dev \
+        freetds-bin \
+        libev-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -51,7 +54,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
       echo "══════════════════════════════════════════════════════════"; \
       echo "ERROR: pip install failed."; \
       echo "  • Ensure libpq-dev is available (needed for psycopg2)."; \
-      echo "  • For MSSQL support, pyodbc may need extra system libs."; \
+      echo "  • For MSSQL support, pymssql needs freetds-dev to build from source."; \
       echo "  • Check the error above for the specific package."; \
       echo "══════════════════════════════════════════════════════════"; \
       exit 1; }

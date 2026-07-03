@@ -1,5 +1,7 @@
 import { create } from 'zustand'
-import type { ChatMessage, DbConnection, QueryResult, UserSession } from '../types'
+import type { ChatMessage, DbConnection, QueryHistoryEntry, QueryResult, UserSession } from '../types'
+
+const MAX_QUERY_HISTORY = 500
 
 export interface ColumnViewContext {
   table: string
@@ -23,10 +25,29 @@ export interface NoSQLViewContext {
   dbType: string
 }
 
+export interface MigrationViewContext {
+  sourceConnId: string
+  sourceDb: string | null
+  targetConnId: string
+  targetDb: string | null
+}
+
 export interface AlterScriptEntry {
   ts: string
   sql: string
   executed?: boolean
+}
+
+export interface PlanStep {
+  tool: string
+  sql?: string
+  db_name?: string
+}
+
+export interface PendingPlan {
+  planId: string
+  steps: PlanStep[]
+  summary: string
 }
 
 interface PilotbaseStore {
@@ -68,12 +89,26 @@ interface PilotbaseStore {
   nosqlViewContext: NoSQLViewContext | null
   setNosqlViewContext: (ctx: NoSQLViewContext | null) => void
 
+  // ── Migration compare view ────────────────────────────────────────
+  migrationViewContext: MigrationViewContext | null
+  setMigrationViewContext: (ctx: MigrationViewContext | null) => void
+
+  // ── Query history (executed scripts, any source) ──────────────────
+  queryHistory: QueryHistoryEntry[]
+  setQueryHistory: (entries: QueryHistoryEntry[]) => void
+  addQueryHistoryEntry: (entry: QueryHistoryEntry) => void
+  clearQueryHistory: () => void
+
   // ── AI Chat ──────────────────────────────────────────────────────
   chatMessages: ChatMessage[]
   chatLoading: boolean
   addChatMessage: (m: ChatMessage) => void
   setChatLoading: (v: boolean) => void
   clearChat: () => void
+
+  // ── AI plan approval ───────────────────────────────────────────────
+  pendingPlan: PendingPlan | null
+  setPendingPlan: (p: PendingPlan | null) => void
 
   // ── WebSocket ────────────────────────────────────────────────────
   wsConnected: boolean
@@ -130,12 +165,29 @@ export const useStore = create<PilotbaseStore>((set) => ({
   nosqlViewContext: null,
   setNosqlViewContext: (nosqlViewContext) => set({ nosqlViewContext }),
 
+  // Migration compare view
+  migrationViewContext: null,
+  setMigrationViewContext: (migrationViewContext) => set({ migrationViewContext }),
+
+  // Query history
+  queryHistory: [],
+  setQueryHistory: (queryHistory) => set({ queryHistory }),
+  addQueryHistoryEntry: (entry) => set((s) => {
+    if (s.queryHistory.some((e) => e.id === entry.id)) return s
+    return { queryHistory: [entry, ...s.queryHistory].slice(0, MAX_QUERY_HISTORY) }
+  }),
+  clearQueryHistory: () => set({ queryHistory: [] }),
+
   // Chat
   chatMessages: [],
   chatLoading: false,
   addChatMessage: (m) => set((s) => ({ chatMessages: [...s.chatMessages, m] })),
   setChatLoading: (chatLoading) => set({ chatLoading }),
   clearChat: () => set({ chatMessages: [] }),
+
+  // AI plan approval
+  pendingPlan: null,
+  setPendingPlan: (pendingPlan) => set({ pendingPlan }),
 
   // WebSocket
   wsConnected: false,

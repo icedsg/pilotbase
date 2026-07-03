@@ -2,8 +2,8 @@ import { useEffect, useRef } from 'react'
 import { Rows3, Columns3, Eraser, Trash2, Layers, FileText, Hash } from 'lucide-react'
 import type { DbObject } from '../../types'
 
-const VECTOR_DB_TYPES = new Set(['qdrant', 'chroma', 'weaviate'])
-const NOSQL_DB_TYPES  = new Set(['mongodb'])
+const VECTOR_DB_TYPES = new Set(['qdrant', 'chroma', 'weaviate', 'pinecone', 'milvus'])
+const NOSQL_DB_TYPES  = new Set(['mongodb', 'dynamodb'])
 
 export interface ContextMenuTarget {
   connId: string

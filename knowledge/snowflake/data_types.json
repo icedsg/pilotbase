@@ -1,0 +1,47 @@
+{
+  "db_type": "snowflake",
+  "version_info": "Snowflake (cloud data warehouse, no fixed version numbering)",
+  "source": "https://docs.snowflake.com/en/sql-reference/data-types",
+  "categories": [
+    {
+      "category": "Numeric",
+      "types": [
+        { "name": "NUMBER", "aliases": ["NUMERIC", "DECIMAL"], "params": "(p,s)", "default_expr": "NUMBER(38,0)", "description": "Exact fixed-point number, precision up to 38 digits.", "storage": "variable" },
+        { "name": "FLOAT", "aliases": ["FLOAT8", "DOUBLE"], "params": null, "default_expr": "FLOAT", "description": "64-bit floating-point number.", "storage": "8 bytes" },
+        { "name": "INT", "aliases": ["INTEGER", "BIGINT", "SMALLINT"], "params": null, "default_expr": "INT", "description": "Alias for NUMBER(38,0) — all integer aliases share the same underlying representation.", "storage": "variable" }
+      ]
+    },
+    {
+      "category": "Character",
+      "types": [
+        { "name": "VARCHAR", "aliases": ["STRING", "TEXT"], "params": "(n)", "default_expr": "VARCHAR(16777216)", "description": "Variable-length Unicode string, max 16MB.", "storage": "variable" },
+        { "name": "CHAR", "aliases": ["CHARACTER"], "params": "(n)", "default_expr": "CHAR(1)", "description": "Alias for VARCHAR(n) — Snowflake does not blank-pad CHAR.", "storage": "variable" }
+      ]
+    },
+    {
+      "category": "Date/Time",
+      "types": [
+        { "name": "DATE", "aliases": [], "params": null, "default_expr": "DATE", "description": "Calendar date, no time component.", "storage": "variable" },
+        { "name": "TIMESTAMP_NTZ", "aliases": ["TIMESTAMP"], "params": "(p)", "default_expr": "TIMESTAMP_NTZ", "description": "Timestamp without time zone, wall-clock semantics.", "storage": "variable" },
+        { "name": "TIMESTAMP_TZ", "aliases": [], "params": "(p)", "default_expr": "TIMESTAMP_TZ", "description": "Timestamp with an explicit UTC offset.", "storage": "variable" },
+        { "name": "TIMESTAMP_LTZ", "aliases": [], "params": "(p)", "default_expr": "TIMESTAMP_LTZ", "description": "Timestamp stored in UTC, rendered in the session's local time zone.", "storage": "variable" }
+      ]
+    },
+    {
+      "category": "Semi-structured",
+      "types": [
+        { "name": "VARIANT", "aliases": [], "params": null, "default_expr": "VARIANT", "description": "Universal type that can hold a value of any other type, including semi-structured JSON/Avro/Parquet data.", "storage": "variable" },
+        { "name": "OBJECT", "aliases": [], "params": null, "default_expr": "OBJECT", "description": "Snowflake's key-value map type, similar to a JSON object.", "storage": "variable" },
+        { "name": "ARRAY", "aliases": [], "params": null, "default_expr": "ARRAY", "description": "Ordered list of VARIANT values.", "storage": "variable" }
+      ]
+    },
+    {
+      "category": "Other",
+      "types": [
+        { "name": "BOOLEAN", "aliases": [], "params": null, "default_expr": "BOOLEAN", "description": "TRUE/FALSE/NULL value.", "storage": "variable" },
+        { "name": "BINARY", "aliases": ["VARBINARY"], "params": "(n)", "default_expr": "BINARY", "description": "Variable-length binary data, max 8MB.", "storage": "variable" },
+        { "name": "GEOGRAPHY", "aliases": [], "params": null, "default_expr": "GEOGRAPHY", "description": "Points, lines, and polygons on the Earth's surface (WGS 84).", "storage": "variable" }
+      ]
+    }
+  ]
+}

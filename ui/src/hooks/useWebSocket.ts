@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useStore } from '../store'
-import type { WsMessage, ChatMessage } from '../types'
+import type { PendingPlan } from '../store'
+import type { WsMessage, ChatMessage, QueryHistoryEntry } from '../types'
 
 const BASE_WS = import.meta.env.VITE_API_URL
   ? import.meta.env.VITE_API_URL.replace(/^http/, 'ws')
@@ -10,7 +11,7 @@ export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>()
   const intentionalClose = useRef(false)
-  const { setWsConnected, addChatMessage, setChatLoading } = useStore()
+  const { setWsConnected, addChatMessage, setChatLoading, addQueryHistoryEntry, setPendingPlan } = useStore()
 
   const connect = useCallback((userId: string) => {
     const state = wsRef.current?.readyState
@@ -59,6 +60,33 @@ export function useWebSocket() {
           setChatLoading(false)
         }
 
+        if (msg.type === 'plan_proposed' && msg.payload) {
+          const summary = (msg.payload.summary as string) || ''
+          if (summary) {
+            addChatMessage({ id: crypto.randomUUID(), role: 'assistant', content: summary, timestamp: new Date() })
+          }
+          setPendingPlan({
+            planId: msg.payload.plan_id as string,
+            steps: (msg.payload.steps as PendingPlan['steps']) || [],
+            summary,
+          })
+          setChatLoading(false)
+        }
+
+        if (msg.type === 'plan_committed') {
+          addChatMessage({
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: 'Plan approved and applied.',
+            timestamp: new Date(),
+          })
+          setPendingPlan(null)
+        }
+
+        if (msg.type === 'plan_rejected') {
+          setPendingPlan(null)
+        }
+
         if (msg.type === 'error') {
           const chatMsg: ChatMessage = {
             id: crypto.randomUUID(),
@@ -69,11 +97,15 @@ export function useWebSocket() {
           addChatMessage(chatMsg)
           setChatLoading(false)
         }
+
+        if (msg.type === 'query_executed' && msg.payload) {
+          addQueryHistoryEntry(msg.payload as unknown as QueryHistoryEntry)
+        }
       } catch {
         // ignore parse errors
       }
     }
-  }, [setWsConnected, addChatMessage, setChatLoading])
+  }, [setWsConnected, addChatMessage, setChatLoading, addQueryHistoryEntry, setPendingPlan])
 
   const disconnect = useCallback(() => {
     intentionalClose.current = true

@@ -8,20 +8,29 @@ sqlalchemy>=2.0.35
 alembic>=1.13.3
 asyncpg>=0.29.0
 psycopg2-binary>=2.9.9
+sqlparse>=0.5.1          # splits multi-statement SQL scripts into individual statements
 
 # Supported external DB drivers — SQL
 pymysql>=1.1.1           # MySQL / MariaDB
 aiosqlite>=0.20.0        # SQLite (async)
-# pyodbc>=5.1.0          # MSSQL — uncomment + install unixodbc-dev system package
+pymssql>=2.3.0           # MSSQL — needs the freetds-dev system package to build
+oracledb>=2.4.0          # Oracle (pure-Python thin mode, no Instant Client needed)
+ibm_db_sa>=0.4.0         # DB2 (pulls in ibm_db)
+sqlalchemy-cockroachdb>=2.0.2  # CockroachDB
+snowflake-sqlalchemy>=1.6.1    # Snowflake
 
 # Supported external DB drivers — NoSQL
 pymongo>=4.8.0           # MongoDB
 redis>=5.0.0             # Redis
+cassandra-driver>=3.29.0 # Cassandra — needs the libev-dev system package to build its C extension
+boto3>=1.34.0            # DynamoDB
 
 # Supported external DB drivers — Vector
 qdrant-client>=1.10.0    # Qdrant
 chromadb>=0.5.0          # ChromaDB
 weaviate-client>=3.26.0,<4.0.0  # Weaviate (v3 API)
+pinecone>=5.0.0          # Pinecone
+pymilvus>=2.4.0          # Milvus
 
 # Settings & validation
 pydantic>=2.9.0

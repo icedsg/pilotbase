@@ -1,0 +1,49 @@
+{
+  "db_type": "db2",
+  "version_info": "Db2 for Linux, UNIX, and Windows (LUW) 11.5+",
+  "source": "https://www.ibm.com/docs/en/db2/11.5?topic=elements-data-types",
+  "categories": [
+    {
+      "category": "Numeric",
+      "types": [
+        { "name": "SMALLINT", "aliases": [], "params": null, "default_expr": "SMALLINT", "description": "Signed 2-byte integer. Range: -32768 to 32767.", "storage": "2 bytes" },
+        { "name": "INTEGER", "aliases": ["INT"], "params": null, "default_expr": "INTEGER", "description": "Signed 4-byte integer.", "storage": "4 bytes" },
+        { "name": "BIGINT", "aliases": [], "params": null, "default_expr": "BIGINT", "description": "Signed 8-byte integer.", "storage": "8 bytes" },
+        { "name": "DECIMAL", "aliases": ["DEC", "NUMERIC"], "params": "(p,s)", "default_expr": "DECIMAL(10,2)", "description": "Fixed-point decimal number with precision p and scale s.", "storage": "variable" },
+        { "name": "DOUBLE", "aliases": ["FLOAT"], "params": null, "default_expr": "DOUBLE", "description": "64-bit double-precision floating-point number.", "storage": "8 bytes" },
+        { "name": "DECFLOAT", "aliases": [], "params": "(p)", "default_expr": "DECFLOAT(16)", "description": "Decimal floating-point number, precision 16 or 34.", "storage": "8 or 16 bytes" }
+      ]
+    },
+    {
+      "category": "Character",
+      "types": [
+        { "name": "VARCHAR", "aliases": [], "params": "(n)", "default_expr": "VARCHAR(255)", "description": "Variable-length character string, max 32672 bytes.", "storage": "variable" },
+        { "name": "CHAR", "aliases": ["CHARACTER"], "params": "(n)", "default_expr": "CHAR(1)", "description": "Fixed-length character string, max 254 bytes.", "storage": "fixed" },
+        { "name": "CLOB", "aliases": [], "params": "(n)", "default_expr": "CLOB(1M)", "description": "Character large object, up to 2GB.", "storage": "variable" },
+        { "name": "GRAPHIC", "aliases": [], "params": "(n)", "default_expr": "GRAPHIC(1)", "description": "Fixed-length double-byte (Unicode) character string.", "storage": "fixed" }
+      ]
+    },
+    {
+      "category": "Date/Time",
+      "types": [
+        { "name": "DATE", "aliases": [], "params": null, "default_expr": "DATE", "description": "Date only (year, month, day).", "storage": "4 bytes" },
+        { "name": "TIME", "aliases": [], "params": null, "default_expr": "TIME", "description": "Time of day (hour, minute, second).", "storage": "3 bytes" },
+        { "name": "TIMESTAMP", "aliases": [], "params": "(p)", "default_expr": "TIMESTAMP", "description": "Date and time with fractional seconds precision p (0-12).", "storage": "variable" }
+      ]
+    },
+    {
+      "category": "Binary / LOB",
+      "types": [
+        { "name": "VARBINARY", "aliases": [], "params": "(n)", "default_expr": "VARBINARY(255)", "description": "Variable-length binary string.", "storage": "variable" },
+        { "name": "BLOB", "aliases": [], "params": "(n)", "default_expr": "BLOB(1M)", "description": "Binary large object, up to 2GB.", "storage": "variable" }
+      ]
+    },
+    {
+      "category": "Other",
+      "types": [
+        { "name": "BOOLEAN", "aliases": [], "params": null, "default_expr": "BOOLEAN", "description": "TRUE/FALSE/UNKNOWN value.", "storage": "1 byte" },
+        { "name": "XML", "aliases": [], "params": null, "default_expr": "XML", "description": "Native XML document storage.", "storage": "variable" }
+      ]
+    }
+  ]
+}

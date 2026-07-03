@@ -6,6 +6,9 @@ import type {
   TableInfo,
   UserSession,
   ChatMessage,
+  QueryHistoryEntry,
+  MigrationDiff,
+  PapiConfig,
 } from '../types'
 
 const BASE = import.meta.env.VITE_API_URL || ''
@@ -90,21 +93,51 @@ export const apiExecuteQuery = (userId: string, connId: string, query: string, d
 export const apiRunDdl = (userId: string, connId: string, action: string, objectName: string, objectType: string, database?: string) =>
   http.post('/query/ddl', { user_anon_id: userId, connection_id: connId, action, object_name: objectName, object_type: objectType, database }).then(r => r.data)
 
+export const apiGetQueryHistory = (limit = 200): Promise<{ entries: QueryHistoryEntry[] }> =>
+  http.get('/query/history', { params: { limit } }).then(r => r.data)
+
 // ── Backup ────────────────────────────────────────────────────────────────────
 
-export const apiRunBackup = (userId: string, connId: string) =>
-  http.post('/backup/run', { user_anon_id: userId, connection_id: connId }).then(r => r.data)
+export interface BackupRunResult {
+  message: string
+  file: string
+  filename: string
+  method: 'pg_dump' | 'mysqldump' | 'generic' | 'mongo'
+  object_count: number | null
+  database: string | null
+  warning?: string
+}
+
+export const apiRunBackup = (userId: string, connId: string, database?: string | null): Promise<BackupRunResult> =>
+  http.post('/backup/run', { user_anon_id: userId, connection_id: connId, database: database || undefined }).then(r => r.data)
 
 export const apiListBackups = (userId: string, connName?: string) =>
   http.get('/backup/list', { params: { user_anon_id: userId, connection_name: connName } }).then(r => r.data)
 
+export const apiDownloadBackup = (userId: string, filename: string): Promise<Blob> =>
+  http.get(`/backup/download/${encodeURIComponent(filename)}`, {
+    params: { user_anon_id: userId },
+    responseType: 'blob',
+  }).then(r => r.data)
+
 // ── Migration ─────────────────────────────────────────────────────────────────
 
-export const apiSchemaDiff = (userId: string, sourceId: string, targetId: string) =>
+export const apiSchemaDiff = (userId: string, sourceId: string, targetId: string): Promise<MigrationDiff> =>
   http.post('/migration/diff', { user_anon_id: userId, source_connection_id: sourceId, target_connection_id: targetId }).then(r => r.data)
 
-export const apiMigrationScript = (userId: string, sourceId: string, targetId: string) =>
+export const apiMigrationScript = (userId: string, sourceId: string, targetId: string): Promise<{ sql: string }> =>
   http.post('/migration/script', { user_anon_id: userId, source_connection_id: sourceId, target_connection_id: targetId }).then(r => r.data)
+
+// ── Generated CRUD API ("papi") ────────────────────────────────────────────────
+
+export const apiPapiStatus = (userId: string, connId: string): Promise<PapiConfig> =>
+  http.get(`/connections/${connId}/papi/status`, { params: { user_anon_id: userId } }).then(r => r.data)
+
+export const apiPapiEnable = (userId: string, connId: string): Promise<PapiConfig> =>
+  http.post(`/connections/${connId}/papi/enable`, { user_anon_id: userId }).then(r => r.data)
+
+export const apiPapiDisable = (userId: string, connId: string): Promise<PapiConfig> =>
+  http.post(`/connections/${connId}/papi/disable`, { user_anon_id: userId }).then(r => r.data)
 
 // ── Vector DB chunk management ────────────────────────────────────────────────
 
@@ -145,3 +178,9 @@ export const apiChatViaWs = (userId: string, connId: string, message: string) =>
 
 export const apiChatStreamUrl = (userId: string, connId: string) =>
   `${BASE}/api/v1/ai/chat/stream`
+
+export const apiCommitPlan = (userId: string, planId: string) =>
+  http.post('/ai/plan/commit', { user_anon_id: userId, plan_id: planId }).then(r => r.data)
+
+export const apiRejectPlan = (userId: string, planId: string) =>
+  http.post('/ai/plan/reject', { user_anon_id: userId, plan_id: planId }).then(r => r.data)

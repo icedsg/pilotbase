@@ -3,10 +3,10 @@ import json
 from langchain_core.tools import tool
 from app.services.db_service import db_service
 
-_VECTOR_TYPES = {"qdrant", "chroma", "weaviate"}
+_VECTOR_TYPES = {"qdrant", "chroma", "weaviate", "pinecone", "milvus"}
 
 
-def make_vector_tools(conn):
+def make_vector_tools(conn, user_id: str | None = None):
     """Return vector DB tools bound to a specific DbConnection. Empty list for non-vector connections."""
     if conn.db_type not in _VECTOR_TYPES:
         return []
@@ -32,7 +32,7 @@ def make_vector_tools(conn):
         Use offset to paginate through large collections."""
         try:
             query = json.dumps({"collection": collection, "scroll": True, "limit": limit, "offset": offset})
-            result = db_service.execute_query(conn, query)
+            result = db_service.execute_query(conn, query, user_id=user_id, source="agent")
             if not result.get("rows"):
                 return "No chunks found."
             lines = []

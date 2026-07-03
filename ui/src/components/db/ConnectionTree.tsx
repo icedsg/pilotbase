@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import {
   Table2, ChevronRight, ChevronDown,
   Eye, Loader2, Layers, Box, Key, Trash2, Settings2, Pencil, RefreshCw,
+  DatabaseBackup, GitMerge, Webhook,
 } from 'lucide-react'
 import DbTypeIcon from './DbTypeIcon'
 import { useStore } from '../../store'
@@ -12,6 +13,9 @@ import ConnectionForm from './ConnectionForm'
 import { LogoIcon } from '../common/Logo'
 import TableContextMenu, { type ContextMenuTarget } from './TableContextMenu'
 import ConfirmDialog from '../common/ConfirmDialog'
+import BackupModal from '../backup/BackupModal'
+import MigrationTargetPicker from '../migration/MigrationTargetPicker'
+import ApiConfigModal from '../papi/ApiConfigModal'
 import type { DbConnection, DbObject, QueryResult } from '../../types'
 
 interface TreeNode {
@@ -19,37 +23,59 @@ interface TreeNode {
   objects?: DbObject[]
   loading?: boolean
   open?: boolean
+  error?: string
+}
+
+function extractErrorMessage(err: any): string {
+  return err?.response?.data?.detail || err?.message || 'Failed to connect.'
 }
 
 type ConnectionState = Record<string, Record<string, TreeNode>>
 
-const VECTOR_DB_TYPES    = new Set(['qdrant', 'chroma', 'weaviate'])
-const ADMIN_CAPABLE_TYPES = new Set(['postgresql', 'mysql', 'mariadb'])
+const VECTOR_DB_TYPES    = new Set(['qdrant', 'chroma', 'weaviate', 'pinecone', 'milvus'])
+const ADMIN_CAPABLE_TYPES = new Set(['postgresql', 'mysql', 'mariadb', 'mssql', 'cockroachdb', 'snowflake', 'oracle'])
+const NOSQL_DOC_TYPES    = new Set(['mongodb', 'dynamodb'])
 
 const DB_TYPE_COLORS: Record<string, string> = {
-  postgresql: 'text-blue-400',
-  mysql:      'text-orange-400',
-  mariadb:    'text-orange-400',
-  sqlite:     'text-green-400',
-  mssql:      'text-red-400',
-  mongodb:    'text-emerald-400',
-  redis:      'text-rose-400',
-  qdrant:     'text-violet-400',
-  chroma:     'text-fuchsia-400',
-  weaviate:   'text-cyan-400',
+  postgresql:  'text-blue-400',
+  mysql:       'text-orange-400',
+  mariadb:     'text-orange-400',
+  sqlite:      'text-green-400',
+  mssql:       'text-red-400',
+  oracle:      'text-orange-500',
+  db2:         'text-blue-500',
+  cockroachdb: 'text-red-600',
+  snowflake:   'text-sky-400',
+  mongodb:     'text-emerald-400',
+  redis:       'text-rose-400',
+  cassandra:   'text-violet-300',
+  dynamodb:    'text-sky-400',
+  qdrant:      'text-violet-400',
+  chroma:      'text-fuchsia-400',
+  weaviate:    'text-cyan-400',
+  pinecone:    'text-green-400',
+  milvus:      'text-indigo-400',
 }
 
 const DB_TYPE_BADGE: Record<string, string> = {
-  postgresql: 'PG',
-  mysql:      'MY',
-  mariadb:    'MB',
-  sqlite:     'SL',
-  mssql:      'MS',
-  mongodb:    'MG',
-  redis:      'RD',
-  qdrant:     'QD',
-  chroma:     'CH',
-  weaviate:   'WV',
+  postgresql:  'PG',
+  mysql:       'MY',
+  mariadb:     'MB',
+  sqlite:      'SL',
+  mssql:       'MS',
+  oracle:      'OR',
+  db2:         'DB',
+  cockroachdb: 'CR',
+  snowflake:   'SF',
+  mongodb:     'MG',
+  redis:       'RD',
+  cassandra:   'CS',
+  dynamodb:    'DY',
+  qdrant:      'QD',
+  chroma:      'CH',
+  weaviate:    'WV',
+  pinecone:    'PC',
+  milvus:      'MV',
 }
 
 interface Props {
@@ -67,6 +93,7 @@ export default function ConnectionTree({ refreshKey }: Props) {
   const { connections, activeConnectionId, setActiveConnection, removeConnection, updateConnection, setActiveQuery, setQueryResult, setQueryLoading, setActiveDatabase, setColumnViewContext, appendAlterScript, setVectorViewContext, setNosqlViewContext } = useStore()
   const { userId } = useUserSession()
   const [state,      setState]      = useState<ConnectionState>({})
+  const [connErrors, setConnErrors] = useState<Record<string, string>>({})
   const [openConns,  setOpenConns]  = useState<Set<string>>(new Set())
   const [versions,   setVersions]   = useState<Record<string, string>>({})
   const fetchedVersions             = useRef<Set<string>>(new Set())
@@ -81,6 +108,9 @@ export default function ConnectionTree({ refreshKey }: Props) {
   >(null)
   const [dbCtxMenu,      setDbCtxMenu]      = useState<DbCtxMenu | null>(null)
   const dbCtxRef                            = useRef<HTMLDivElement>(null)
+  const [backupTarget,     setBackupTarget]     = useState<DbCtxMenu | null>(null)
+  const [migrationSource,  setMigrationSource]  = useState<DbCtxMenu | null>(null)
+  const [apiConfigTarget,  setApiConfigTarget]  = useState<string | null>(null)
 
   useEffect(() => {
     if (!userId) return
@@ -116,24 +146,26 @@ export default function ConnectionTree({ refreshKey }: Props) {
   const refreshDb = async (connId: string, db: string) => {
     const node = state[connId]?.[db]
     if (!node) return
-    setState(s => ({ ...s, [connId]: { ...s[connId], [db]: { ...node, loading: true, open: true } } }))
+    setState(s => ({ ...s, [connId]: { ...s[connId], [db]: { ...node, loading: true, open: true, error: undefined } } }))
     try {
       const { objects } = await apiListObjects(userId, connId, db)
-      setState(s => ({ ...s, [connId]: { ...s[connId], [db]: { ...node, loading: false, objects, open: true } } }))
-    } catch {
-      setState(s => ({ ...s, [connId]: { ...s[connId], [db]: { ...node, loading: false, open: true } } }))
+      setState(s => ({ ...s, [connId]: { ...s[connId], [db]: { ...node, loading: false, objects, open: true, error: undefined } } }))
+    } catch (err) {
+      setState(s => ({ ...s, [connId]: { ...s[connId], [db]: { ...node, loading: false, open: true, error: extractErrorMessage(err) } } }))
     }
   }
 
   const refreshConnDbs = async (connId: string) => {
     setState(s => ({ ...s, [connId]: { __loading: { loading: true } } }))
+    setConnErrors(e => ({ ...e, [connId]: '' }))
     try {
       const { databases } = await apiListDatabases(userId, connId)
       const dbMap: Record<string, TreeNode> = {}
       databases.forEach(db => { dbMap[db] = { database: db, objects: undefined, open: false } })
       setState(s => ({ ...s, [connId]: dbMap }))
-    } catch {
+    } catch (err) {
       setState(s => ({ ...s, [connId]: {} }))
+      setConnErrors(e => ({ ...e, [connId]: extractErrorMessage(err) }))
     }
   }
 
@@ -148,13 +180,15 @@ export default function ConnectionTree({ refreshKey }: Props) {
 
     if (!state[conn.id]) {
       setState((s) => ({ ...s, [conn.id]: { __loading: { loading: true } } }))
+      setConnErrors(e => ({ ...e, [conn.id]: '' }))
       try {
         const { databases } = await apiListDatabases(userId, conn.id)
         const dbMap: Record<string, TreeNode> = {}
         databases.forEach((db) => { dbMap[db] = { database: db, objects: undefined, open: false } })
         setState((s) => ({ ...s, [conn.id]: dbMap }))
-      } catch {
+      } catch (err) {
         setState((s) => ({ ...s, [conn.id]: {} }))
+        setConnErrors(e => ({ ...e, [conn.id]: extractErrorMessage(err) }))
       }
     }
   }
@@ -170,13 +204,13 @@ export default function ConnectionTree({ refreshKey }: Props) {
       return
     }
 
-    setState((s) => ({ ...s, [conn.id]: { ...s[conn.id], [db]: { ...node, open: true, loading: true } } }))
+    setState((s) => ({ ...s, [conn.id]: { ...s[conn.id], [db]: { ...node, open: true, loading: true, error: undefined } } }))
 
     try {
       const { objects } = await apiListObjects(userId, conn.id, db)
-      setState((s) => ({ ...s, [conn.id]: { ...s[conn.id], [db]: { ...node, open: true, loading: false, objects } } }))
-    } catch {
-      setState((s) => ({ ...s, [conn.id]: { ...s[conn.id], [db]: { ...node, open: true, loading: false, objects: [] } } }))
+      setState((s) => ({ ...s, [conn.id]: { ...s[conn.id], [db]: { ...node, open: true, loading: false, objects, error: undefined } } }))
+    } catch (err) {
+      setState((s) => ({ ...s, [conn.id]: { ...s[conn.id], [db]: { ...node, open: true, loading: false, objects: [], error: extractErrorMessage(err) } } }))
     }
   }
 
@@ -211,14 +245,14 @@ export default function ConnectionTree({ refreshKey }: Props) {
       return
     }
 
-    // MongoDB → dedicated document view
-    if (conn.db_type === 'mongodb') {
+    // MongoDB / DynamoDB → dedicated document view
+    if (NOSQL_DOC_TYPES.has(conn.db_type)) {
       setNosqlViewContext({ collection: target.name, connId: target.connId, db: target.db, dbType: conn.db_type })
       setVectorViewContext(null)
       return
     }
 
-    // SQL / Redis → query result table
+    // SQL / Redis / Cassandra → query result table
     setVectorViewContext(null)
     setNosqlViewContext(null)
 
@@ -228,6 +262,11 @@ export default function ConnectionTree({ refreshKey }: Props) {
       sql = `SELECT * FROM \`${target.db}\`.\`${target.name}\` LIMIT 500`
     } else if (conn.db_type === 'redis') {
       sql = `GET ${target.name}`
+    } else if (conn.db_type === 'mssql') {
+      sql = `SELECT TOP 500 * FROM [${target.name}]`
+      queryDb = target.db
+    } else if (conn.db_type === 'cassandra') {
+      sql = `SELECT * FROM ${target.db}.${target.name} LIMIT 500`
     } else {
       sql = `SELECT * FROM "${target.name}" LIMIT 500`
       queryDb = target.db
@@ -425,6 +464,17 @@ export default function ConnectionTree({ refreshKey }: Props) {
                       <Loader2 size={14} className="animate-spin" />
                       <span>Loading…</span>
                     </div>
+                  ) : connErrors[conn.id] ? (
+                    <div className="pl-8 pr-2 py-1.5 text-[13px] text-red-400 break-words flex items-start gap-1.5">
+                      <span className="flex-1">{connErrors[conn.id]}</span>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); refreshConnDbs(conn.id) }}
+                        className="btn-ghost p-0.5 flex-shrink-0"
+                        title="Retry"
+                      >
+                        <RefreshCw size={13} />
+                      </button>
+                    </div>
                   ) : (
                     Object.entries(dbNodes).map(([db, node]) => (
                       <div key={db}>
@@ -457,6 +507,17 @@ export default function ConnectionTree({ refreshKey }: Props) {
                               <div className="tree-item pl-12 text-gray-600">
                                 <Loader2 size={13} className="animate-spin" />
                                 <span>Loading…</span>
+                              </div>
+                            ) : node.error ? (
+                              <div className="pl-12 pr-2 py-1.5 text-[13px] text-red-400 break-words flex items-start gap-1.5">
+                                <span className="flex-1">{node.error}</span>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); refreshDb(conn.id, db) }}
+                                  className="btn-ghost p-0.5 flex-shrink-0"
+                                  title="Retry"
+                                >
+                                  <RefreshCw size={13} />
+                                </button>
                               </div>
                             ) : (
                               <>
@@ -570,6 +631,28 @@ export default function ConnectionTree({ refreshKey }: Props) {
           </button>
           <div className="border-t border-surface-50 my-1" />
           <button
+            className="ctx-item hover:text-gray-900 dark:hover:text-white"
+            onClick={() => { setBackupTarget(dbCtxMenu); setDbCtxMenu(null) }}
+          >
+            <DatabaseBackup size={15} />
+            <span>Run Backup</span>
+          </button>
+          <button
+            className="ctx-item hover:text-gray-900 dark:hover:text-white"
+            onClick={() => { setMigrationSource(dbCtxMenu); setDbCtxMenu(null) }}
+          >
+            <GitMerge size={15} />
+            <span>Plan Migration</span>
+          </button>
+          <button
+            className="ctx-item hover:text-gray-900 dark:hover:text-white"
+            onClick={() => { setApiConfigTarget(dbCtxMenu.connId); setDbCtxMenu(null) }}
+          >
+            <Webhook size={15} />
+            <span>Enable API</span>
+          </button>
+          <div className="border-t border-surface-50 my-1" />
+          <button
             className="ctx-item hover:text-red-600 dark:hover:text-red-400"
             onClick={() => { setConfirmAction({ type: 'drop_database', connId: dbCtxMenu.connId, db: dbCtxMenu.db }); setDbCtxMenu(null) }}
           >
@@ -577,6 +660,20 @@ export default function ConnectionTree({ refreshKey }: Props) {
             <span>Drop Database</span>
           </button>
         </div>
+      )}
+
+      {backupTarget && (
+        <BackupModal connId={backupTarget.connId} database={backupTarget.db} onClose={() => setBackupTarget(null)} />
+      )}
+      {migrationSource && (
+        <MigrationTargetPicker
+          sourceConnId={migrationSource.connId}
+          sourceDb={migrationSource.db}
+          onClose={() => setMigrationSource(null)}
+        />
+      )}
+      {apiConfigTarget && (
+        <ApiConfigModal connId={apiConfigTarget} onClose={() => setApiConfigTarget(null)} />
       )}
 
       {confirmAction && (() => {

@@ -5,34 +5,50 @@ import { useUserSession } from '../../hooks/useUserSession'
 import type { DbConnection } from '../../types'
 
 const DB_TYPES = [
-  { value: 'postgresql', label: 'PostgreSQL',  group: 'SQL' },
-  { value: 'mysql',      label: 'MySQL',        group: 'SQL' },
-  { value: 'mariadb',    label: 'MariaDB',      group: 'SQL' },
-  { value: 'sqlite',     label: 'SQLite',       group: 'SQL' },
-  { value: 'mssql',      label: 'SQL Server',   group: 'SQL' },
-  { value: 'mongodb',    label: 'MongoDB',      group: 'NoSQL' },
-  { value: 'redis',      label: 'Redis',        group: 'NoSQL' },
-  { value: 'qdrant',     label: 'Qdrant',       group: 'Vector' },
-  { value: 'chroma',     label: 'ChromaDB',     group: 'Vector' },
-  { value: 'weaviate',   label: 'Weaviate',     group: 'Vector' },
+  { value: 'postgresql',  label: 'PostgreSQL',  group: 'SQL' },
+  { value: 'mysql',       label: 'MySQL',        group: 'SQL' },
+  { value: 'mariadb',     label: 'MariaDB',      group: 'SQL' },
+  { value: 'sqlite',      label: 'SQLite',       group: 'SQL' },
+  { value: 'mssql',       label: 'SQL Server',   group: 'SQL' },
+  { value: 'oracle',      label: 'Oracle',       group: 'SQL' },
+  { value: 'db2',         label: 'Db2',          group: 'SQL' },
+  { value: 'cockroachdb', label: 'CockroachDB',  group: 'SQL' },
+  { value: 'snowflake',   label: 'Snowflake',    group: 'SQL' },
+  { value: 'mongodb',     label: 'MongoDB',      group: 'NoSQL' },
+  { value: 'redis',       label: 'Redis',        group: 'NoSQL' },
+  { value: 'cassandra',   label: 'Cassandra',    group: 'NoSQL' },
+  { value: 'dynamodb',    label: 'DynamoDB',     group: 'NoSQL' },
+  { value: 'qdrant',      label: 'Qdrant',       group: 'Vector' },
+  { value: 'chroma',      label: 'ChromaDB',     group: 'Vector' },
+  { value: 'weaviate',    label: 'Weaviate',     group: 'Vector' },
+  { value: 'pinecone',    label: 'Pinecone',     group: 'Vector' },
+  { value: 'milvus',      label: 'Milvus',       group: 'Vector' },
 ]
 
 const DEFAULT_PORTS: Record<string, number> = {
-  postgresql: 5432,
-  mysql:      3306,
-  mariadb:    3306,
-  mssql:      1433,
-  mongodb:    27017,
-  redis:      6379,
-  qdrant:     6333,
-  chroma:     8000,
-  weaviate:   8080,
+  postgresql:  5432,
+  mysql:       3306,
+  mariadb:     3306,
+  mssql:       1433,
+  oracle:      1521,
+  db2:         50000,
+  cockroachdb: 26257,
+  mongodb:     27017,
+  redis:       6379,
+  cassandra:   9042,
+  qdrant:      6333,
+  chroma:      8000,
+  weaviate:    8080,
+  milvus:      19530,
 }
 
-const API_KEY_TYPES = new Set(['qdrant', 'weaviate', 'chroma'])
+const API_KEY_TYPES = new Set(['qdrant', 'weaviate', 'chroma', 'pinecone', 'milvus'])
 const REDIS_TYPES   = new Set(['redis'])
 const FILE_TYPES    = new Set(['sqlite'])
-const CAN_LIST_DBS  = new Set(['postgresql', 'mysql', 'mariadb', 'mongodb'])
+const CAN_LIST_DBS  = new Set(['postgresql', 'mysql', 'mariadb', 'mongodb', 'cockroachdb', 'cassandra'])
+const NO_HOST_TYPES  = new Set(['pinecone'])
+const AWS_TYPES      = new Set(['dynamodb'])
+const SNOWFLAKE_TYPES = new Set(['snowflake'])
 
 type TestStatus = 'idle' | 'testing' | 'ok' | 'error'
 
@@ -57,6 +73,8 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
     username: connection?.username ?? '',
     password: '',
     api_key:  '',
+    warehouse: '',
+    role:      '',
     ssl_mode: connection?.ssl_mode ?? '',
   })
   const [saving,      setSaving]      = useState(false)
@@ -81,11 +99,21 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
     setDatabases([])
   }
 
+  const buildExtraParams = (): string | undefined => {
+    const extra: Record<string, string> = {}
+    if (form.api_key) extra.api_key = form.api_key
+    if (SNOWFLAKE_TYPES.has(form.db_type)) {
+      if (form.warehouse) extra.warehouse = form.warehouse
+      if (form.role) extra.role = form.role
+    }
+    return Object.keys(extra).length ? JSON.stringify(extra) : undefined
+  }
+
   const runTest = async () => {
     setTestStatus('testing')
     setTestMessage(null)
     try {
-      const extra_params = form.api_key ? JSON.stringify({ api_key: form.api_key }) : undefined
+      const extra_params = buildExtraParams()
       const res = await apiTestConnectionParams(userId, {
         db_type:      form.db_type,
         host:         form.host     || undefined,
@@ -116,7 +144,7 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
     setSaveError(null)
     try {
       if (isEdit) {
-        const extra_params = form.api_key ? JSON.stringify({ api_key: form.api_key }) : undefined
+        const extra_params = buildExtraParams()
         const updated = await apiUpdateConnection(userId, connection!.id, {
           name:       form.name     || undefined,
           host:       form.host     || undefined,
@@ -129,8 +157,8 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
         } as any)
         onSaved({ ...connection!, name: form.name, host: form.host as any, port: form.port as any, database: form.database as any, username: form.username as any, ssl_mode: form.ssl_mode as any })
       } else {
-        const extra_params = form.api_key ? JSON.stringify({ api_key: form.api_key }) : undefined
-        const { api_key: _discard, ...rest } = form
+        const extra_params = buildExtraParams()
+        const { api_key: _discard, warehouse: _discard2, role: _discard3, ...rest } = form
         await apiCreateConnection(userId, { ...rest, extra_params } as any)
         onSaved()
       }
@@ -144,6 +172,9 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
   const isFileBased  = FILE_TYPES.has(form.db_type)
   const isApiKeyAuth = API_KEY_TYPES.has(form.db_type)
   const isRedis      = REDIS_TYPES.has(form.db_type)
+  const isNoHost     = NO_HOST_TYPES.has(form.db_type)
+  const isAWS        = AWS_TYPES.has(form.db_type)
+  const isSnowflake  = SNOWFLAKE_TYPES.has(form.db_type)
   const canListDbs   = CAN_LIST_DBS.has(form.db_type)
   const showDbDropdown = canListDbs && testStatus === 'ok' && databases.length > 0
   const canSave = isEdit ? true : testStatus === 'ok'
@@ -208,33 +239,38 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
           )}
 
           {/* Host + Port for all networked DBs */}
-          {!isFileBased && (
+          {!isFileBased && !isNoHost && (
             <div className="grid grid-cols-3 gap-2">
-              <div className="col-span-2">
-                <label className="block text-xs text-gray-400 mb-1">Host</label>
+              <div className={isSnowflake ? 'col-span-3' : 'col-span-2'}>
+                <label className="block text-xs text-gray-400 mb-1">
+                  {isSnowflake ? 'Account Identifier' : isAWS ? 'Custom Endpoint (optional)' : 'Host'}
+                </label>
                 <input
                   value={form.host}
                   onChange={e => setAndResetTest('host', e.target.value)}
+                  placeholder={isAWS ? 'e.g. localhost — for DynamoDB Local' : undefined}
                   className={INPUT_CLS}
                 />
               </div>
-              <div>
-                <label className="block text-xs text-gray-400 mb-1">Port</label>
-                <input
-                  type="number"
-                  value={form.port}
-                  onChange={e => setAndResetTest('port', parseInt(e.target.value))}
-                  className={INPUT_CLS}
-                />
-              </div>
+              {!isSnowflake && (
+                <div>
+                  <label className="block text-xs text-gray-400 mb-1">Port</label>
+                  <input
+                    type="number"
+                    value={form.port}
+                    onChange={e => setAndResetTest('port', parseInt(e.target.value))}
+                    className={INPUT_CLS}
+                  />
+                </div>
+              )}
             </div>
           )}
 
-          {/* Database / keyspace / db-index */}
+          {/* Database / keyspace / db-index / region */}
           {!isFileBased && (
             <div>
               <label className="block text-xs text-gray-400 mb-1">
-                {isRedis ? 'DB Index (0–15)' : isApiKeyAuth ? 'Collection' : 'Database'}
+                {isRedis ? 'DB Index (0–15)' : isAWS ? 'Region' : isApiKeyAuth ? 'Collection' : 'Database'}
                 {canListDbs && <span className="text-gray-600 ml-1">(optional)</span>}
               </label>
               {showDbDropdown ? (
@@ -255,6 +291,7 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
                   placeholder={
                     canListDbs ? 'Leave blank — databases listed after test'
                     : isRedis  ? '0'
+                    : isAWS    ? 'us-east-1'
                     : ''
                   }
                   className={INPUT_CLS}
@@ -270,17 +307,17 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
               <input
                 value={form.api_key}
                 onChange={e => setAndResetTest('api_key', e.target.value)}
-                placeholder={isEdit ? 'leave blank to keep current' : 'optional'}
+                placeholder={isEdit ? 'leave blank to keep current' : form.db_type === 'pinecone' ? 'required' : 'optional'}
                 className={INPUT_CLS}
               />
             </div>
           )}
 
-          {/* Auth: username + password for SQL & MongoDB */}
+          {/* Auth: username + password for SQL, MongoDB, Cassandra & AWS creds for DynamoDB */}
           {!isFileBased && !isApiKeyAuth && !isRedis && (
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Username</label>
+                <label className="block text-xs text-gray-400 mb-1">{isAWS ? 'Access Key ID' : 'Username'}</label>
                 <input
                   value={form.username}
                   onChange={e => setAndResetTest('username', e.target.value)}
@@ -288,12 +325,34 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-400 mb-1">Password</label>
+                <label className="block text-xs text-gray-400 mb-1">{isAWS ? 'Secret Access Key' : 'Password'}</label>
                 <input
                   type="password"
                   value={form.password}
                   onChange={e => setAndResetTest('password', e.target.value)}
                   placeholder={isEdit ? 'leave blank to keep current' : ''}
+                  className={INPUT_CLS}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Snowflake: optional warehouse / role */}
+          {isSnowflake && (
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Warehouse <span className="text-gray-600">(optional)</span></label>
+                <input
+                  value={form.warehouse}
+                  onChange={e => setAndResetTest('warehouse', e.target.value)}
+                  className={INPUT_CLS}
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Role <span className="text-gray-600">(optional)</span></label>
+                <input
+                  value={form.role}
+                  onChange={e => setAndResetTest('role', e.target.value)}
                   className={INPUT_CLS}
                 />
               </div>

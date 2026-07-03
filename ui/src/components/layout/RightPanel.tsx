@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Trash2, Bot, X } from 'lucide-react'
+import { Send, Trash2, Bot, X, Check, Ban, Loader2 } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { useStore } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
-import { apiChatViaWs } from '../../api/client'
+import { apiChatViaWs, apiCommitPlan, apiRejectPlan } from '../../api/client'
 import type { ChatMessage } from '../../types'
 
 interface Props {
@@ -12,9 +12,13 @@ interface Props {
 
 export default function RightPanel({ onClose }: Props) {
   const { userId } = useUserSession()
-  const { chatMessages, chatLoading, addChatMessage, setChatLoading, clearChat, activeConnectionId, connections } = useStore()
+  const {
+    chatMessages, chatLoading, addChatMessage, setChatLoading, clearChat, activeConnectionId, connections,
+    pendingPlan, setPendingPlan,
+  } = useStore()
   const activeConnection = connections.find(c => c.id === activeConnectionId) ?? null
   const [input, setInput] = useState('')
+  const [planBusy, setPlanBusy] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -43,10 +47,34 @@ export default function RightPanel({ onClose }: Props) {
       addChatMessage({
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: 'Failed to reach the AI agent. Check that ANTHROPIC_API_KEY is set.',
+        content: 'AI agent unavailable. Check the server configuration.',
         timestamp: new Date(),
       })
       setChatLoading(false)
+    }
+  }
+
+  const approvePlan = async () => {
+    if (!pendingPlan) return
+    setPlanBusy(true)
+    try {
+      await apiCommitPlan(userId, pendingPlan.planId)
+    } catch {
+      addChatMessage({ id: crypto.randomUUID(), role: 'assistant', content: 'Failed to apply the plan.', timestamp: new Date() })
+      setPendingPlan(null)
+    } finally {
+      setPlanBusy(false)
+    }
+  }
+
+  const rejectPlan = async () => {
+    if (!pendingPlan) return
+    setPlanBusy(true)
+    try {
+      await apiRejectPlan(userId, pendingPlan.planId)
+    } finally {
+      setPlanBusy(false)
+      setPendingPlan(null)
     }
   }
 
@@ -110,6 +138,41 @@ export default function RightPanel({ onClose }: Props) {
               <span className="animate-pulse">●</span>
               <span className="animate-pulse delay-75">●</span>
               <span className="animate-pulse delay-150">●</span>
+            </div>
+          </div>
+        )}
+
+        {pendingPlan && (
+          <div className="border border-accent/40 bg-accent/5 rounded-lg p-3 space-y-2">
+            <div className="text-xs font-medium text-gray-700 dark:text-gray-300">
+              Proposed changes — nothing has run yet
+            </div>
+            <ul className="space-y-1">
+              {pendingPlan.steps.map((step, i) => (
+                <li key={i} className="text-[11px] font-mono bg-surface-300 rounded px-2 py-1 break-all">
+                  {step.tool === 'create_database'
+                    ? `create database '${step.db_name}'`
+                    : step.sql}
+                </li>
+              ))}
+            </ul>
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={approvePlan}
+                disabled={planBusy}
+                className="flex items-center gap-1 bg-accent hover:bg-accent-hover text-white px-2.5 py-1 rounded text-xs font-medium disabled:opacity-50"
+              >
+                {planBusy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                Approve &amp; commit
+              </button>
+              <button
+                onClick={rejectPlan}
+                disabled={planBusy}
+                className="flex items-center gap-1 bg-surface-300 hover:bg-surface-200 text-gray-700 dark:text-gray-300 px-2.5 py-1 rounded text-xs font-medium disabled:opacity-50"
+              >
+                <Ban size={13} />
+                Reject
+              </button>
             </div>
           </div>
         )}

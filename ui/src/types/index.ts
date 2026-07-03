@@ -59,6 +59,10 @@ export interface QueryResult {
   truncated?: boolean
   affected?: number
   next_offset?: string | null
+  error?: string
+  /** Set when the edited SQL contained multiple statements; `results` holds one entry per statement. */
+  multi?: boolean
+  results?: QueryResult[]
 }
 
 export interface ChatMessage {
@@ -68,10 +72,70 @@ export interface ChatMessage {
   timestamp: Date
 }
 
+export interface QueryHistoryEntry {
+  id: string
+  connection_id: string
+  user_id: string | null
+  query_text: string
+  source: 'user' | 'agent'
+  success: boolean
+  error: string | null
+  row_count: number | null
+  duration_ms: number
+  executed_at: string
+}
+
+export interface TableStat {
+  src_rows: number | null
+  tgt_rows: number | null
+  src_size: number | null
+  tgt_size: number | null
+}
+
+export interface ColumnChange {
+  added: string[]
+  dropped: string[]
+  modified: string[]
+}
+
+export interface IndexChange {
+  added: string[]
+  dropped: string[]
+  changed: string[]
+}
+
+export interface FkChange {
+  added: string[]
+  dropped: string[]
+}
+
+export interface MigrationDiff {
+  added_tables: string[]
+  dropped_tables: string[]
+  column_changes: Record<string, ColumnChange>
+  added_views: string[]
+  dropped_views: string[]
+  added_routines: string[]
+  dropped_routines: string[]
+  table_stats: Record<string, TableStat>
+  index_changes: Record<string, IndexChange>
+  fk_changes: Record<string, FkChange>
+}
+
+export interface PapiConfig {
+  connection_id: string
+  enabled: boolean
+  enabled_at: string | null
+}
+
 export type WsMessageType =
   | 'agent_token'
   | 'agent_done'
+  | 'plan_proposed'
+  | 'plan_committed'
+  | 'plan_rejected'
   | 'query_result'
+  | 'query_executed'
   | 'error'
   | 'ping'
   | 'pong'

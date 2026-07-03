@@ -1,3 +1,4 @@
+import asyncio
 import os
 import logging
 from contextlib import asynccontextmanager
@@ -10,8 +11,8 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.database import init_db
-from app.routers import auth, connections, query, backup, migration, ai, vector
-from app.websocket.manager import ws_router
+from app.routers import auth, connections, query, query_history, backup, migration, ai, vector, papi
+from app.websocket.manager import ws_router, manager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
 log = logging.getLogger("pilotbase")
@@ -20,6 +21,7 @@ log = logging.getLogger("pilotbase")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     log.info("Starting Pilotbase …")
+    manager.loop = asyncio.get_running_loop()
     await init_db()
     log.info("Database ready.")
     yield
@@ -49,10 +51,12 @@ app.add_middleware(
 app.include_router(auth.router,        prefix="/api/v1/auth",        tags=["auth"])
 app.include_router(connections.router, prefix="/api/v1/connections",  tags=["connections"])
 app.include_router(query.router,       prefix="/api/v1/query",        tags=["query"])
+app.include_router(query_history.router, prefix="/api/v1/query/history", tags=["query"])
 app.include_router(backup.router,      prefix="/api/v1/backup",       tags=["backup"])
 app.include_router(migration.router,   prefix="/api/v1/migration",    tags=["migration"])
 app.include_router(ai.router,          prefix="/api/v1/ai",           tags=["ai"])
 app.include_router(vector.router,      prefix="/api/v1/vector",        tags=["vector"])
+app.include_router(papi.router,        prefix="/api/v1/papi",          tags=["public-api"])
 
 # WebSocket
 app.include_router(ws_router, prefix="/ws", tags=["websocket"])

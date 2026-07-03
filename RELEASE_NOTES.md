@@ -7,9 +7,9 @@ The first public release of Pilotbase — an open-source database admin that con
 ## What's included
 
 **Database support**
-- SQL: PostgreSQL, MySQL/MariaDB, SQLite, Microsoft SQL Server
-- NoSQL: MongoDB (queries + aggregation), Redis (native commands)
-- Vector: Qdrant, ChromaDB, Weaviate — browse chunks, run similarity search, edit payloads
+- SQL: PostgreSQL, MySQL/MariaDB, SQLite, Microsoft SQL Server, Oracle, Db2, CockroachDB, Snowflake
+- NoSQL: MongoDB (queries + aggregation), Redis (native commands), Cassandra (CQL), DynamoDB (scan/get-item)
+- Vector: Qdrant, ChromaDB, Weaviate, Pinecone, Milvus — browse chunks, run similarity search, edit payloads
 
 **Query & Browse**
 - Monaco-based SQL editor with Ctrl+Enter to run
@@ -74,7 +74,7 @@ DEFAULT_CONNECTIONS = [
 ]
 ```
 
-Supported `db_type` values: `postgresql`, `mysql`, `mariadb`, `sqlite`, `mssql`, `mongodb`, `redis`, `qdrant`, `chromadb`, `weaviate`.
+Supported `db_type` values: `postgresql`, `mysql`, `mariadb`, `sqlite`, `mssql`, `oracle`, `db2`, `cockroachdb`, `snowflake`, `mongodb`, `redis`, `cassandra`, `dynamodb`, `qdrant`, `chroma`, `weaviate`, `pinecone`, `milvus`.
 
 **Option 2 — Add connections from the browser**
 

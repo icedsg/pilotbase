@@ -1,6 +1,9 @@
-import { GitMerge, Download, Sun, Moon, PanelLeft, PanelRight } from 'lucide-react'
+import { useState } from 'react'
+import { GitMerge, Download, History, Sun, Moon, PanelLeft, PanelRight } from 'lucide-react'
 import Logo from '../common/Logo'
 import { useStore } from '../../store'
+import QueryHistoryPanel from '../db/QueryHistoryPanel'
+import BackupModal from '../backup/BackupModal'
 
 interface Props {
   leftOpen: boolean
@@ -10,7 +13,18 @@ interface Props {
 }
 
 export default function TopBar({ leftOpen, rightOpen, onToggleLeft, onToggleRight }: Props) {
-  const { theme, toggleTheme } = useStore()
+  const {
+    theme, toggleTheme, activeConnectionId,
+    setVectorViewContext, setNosqlViewContext, setMigrationViewContext,
+  } = useStore()
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [backupOpen, setBackupOpen] = useState(false)
+
+  const resetToNormalView = () => {
+    setVectorViewContext(null)
+    setNosqlViewContext(null)
+    setMigrationViewContext(null)
+  }
 
   return (
     <header className="h-11 flex items-center justify-between px-2 bg-surface-300 border-b border-surface-50 flex-shrink-0">
@@ -23,14 +37,19 @@ export default function TopBar({ leftOpen, rightOpen, onToggleLeft, onToggleRigh
           <PanelLeft size={20} />
         </button>
 
-        <Logo size="sm" />
+        <Logo size="sm" onClick={resetToNormalView} />
 
         <nav className="hidden md:flex items-center gap-1">
           <button className="btn-ghost flex items-center gap-1.5">
             <GitMerge size={18} />
             <span>Migration</span>
           </button>
-          <button className="btn-ghost flex items-center gap-1.5">
+          <button
+            onClick={() => setBackupOpen(true)}
+            disabled={!activeConnectionId}
+            className="btn-ghost flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+            title={activeConnectionId ? 'Run or download backups for the active connection' : 'Select a connection first'}
+          >
             <Download size={18} />
             <span>Backups</span>
           </button>
@@ -38,6 +57,14 @@ export default function TopBar({ leftOpen, rightOpen, onToggleLeft, onToggleRigh
       </div>
 
       <div className="flex items-center gap-3">
+        <button
+          onClick={() => setHistoryOpen(true)}
+          className="btn-ghost p-1.5 rounded"
+          title="Query history — all scripts executed on the server"
+        >
+          <History size={20} />
+        </button>
+
         <button onClick={toggleTheme} className="btn-ghost p-1.5 rounded" title="Toggle theme">
           {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
         </button>
@@ -50,6 +77,9 @@ export default function TopBar({ leftOpen, rightOpen, onToggleLeft, onToggleRigh
           <PanelRight size={20} />
         </button>
       </div>
+
+      {historyOpen && <QueryHistoryPanel onClose={() => setHistoryOpen(false)} />}
+      {backupOpen && activeConnectionId && <BackupModal connId={activeConnectionId} onClose={() => setBackupOpen(false)} />}
     </header>
   )
 }
