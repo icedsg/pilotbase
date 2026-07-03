@@ -76,6 +76,8 @@ SECRET_KEY=<generate with: openssl rand -hex 32>
 ENCRYPTION_KEY=<generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())">
 ```
 
+> **Important:** `ENCRYPTION_KEY` must be a valid Fernet key set **before** you create any database connections, and it must never change afterward. Every stored connection password is encrypted with this key — if you change it later, Pilotbase can no longer decrypt existing passwords, and you'll need to re-enter credentials for every affected connection. Generate it once and keep it stable (e.g. in a secrets manager or a `.env` file that persists across deploys).
+
 Then start:
 
 ```bash
@@ -108,6 +110,8 @@ cp .env.example .env   # edit .env with your settings
 alembic upgrade head   # run migrations
 python main.py         # starts on http://localhost:8000
 ```
+
+Before your first run, set `ENCRYPTION_KEY` in `.env` to a real Fernet key (generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`) — the default value in `config.py` is only a placeholder and is not safe to use as-is. Once you've saved connections with a given key, don't change it (see the note in the Docker section above for why).
 
 ### Frontend (with hot reload)
 
