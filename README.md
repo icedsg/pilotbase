@@ -1,6 +1,6 @@
 # Pilotbase
 
-**The first open-source database admin that unifies relational, NoSQL, and vector databases in one interface.**
+**The first open-source universal database GUI — a single db browser and client that unifies relational, NoSQL, and vector databases in one interface.**
 
 Stop juggling pgAdmin, MongoDB Compass, RedisInsight, and separate vector DB dashboards. Pilotbase connects to your entire data stack — PostgreSQL, MySQL, SQLite, SQL Server, Oracle, Db2, CockroachDB, Snowflake, MongoDB, Redis, Cassandra, DynamoDB, Qdrant, ChromaDB, Weaviate, Pinecone, Milvus — and lets you query, browse, and manage everything from a single, modern web UI with an AI agent built in.
 
@@ -11,6 +11,7 @@ Stop juggling pgAdmin, MongoDB Compass, RedisInsight, and separate vector DB das
 ## Why Pilotbase?
 
 - **One tool for every database type** — SQL, document, key-value, and vector, with a consistent interface across all of them
+- **A true universal database client** — the kind of cross-engine database IDE and SQL client that tools like DBeaver or TablePlus offer per-engine, but with NoSQL and vector databases included too
 - **AI agent that understands your data** — ask questions in plain English, get query results, schema explanations, and insights powered by a local or hosted LLM
 - **Zero lock-in** — fully open source (MIT), self-hosted, runs in Docker in minutes
 - **Built for AI-era data stacks** — first-class support for vector databases and chunk-level browsing, built for teams that run RAG pipelines alongside traditional databases
@@ -65,7 +66,7 @@ Stop juggling pgAdmin, MongoDB Compass, RedisInsight, and separate vector DB das
 **Requirements:** Docker 24+ and Docker Compose v2+.
 
 ```bash
-git clone https://github.com/your-org/pilotbase.git
+git clone https://github.com/icedsg/pilotbase.git
 cd pilotbase
 ```
 
@@ -92,38 +93,7 @@ The first run builds the React frontend and installs all dependencies inside the
 
 ## Local Development Setup
 
-**Requirements:** Python 3.13+, Node.js 20+, PostgreSQL 14+ (for Pilotbase's internal metadata store).
-
-### Backend
-
-```bash
-cd api
-python3.13 -m venv venv
-
-# Windows:
-venv\Scripts\activate
-# macOS/Linux:
-source venv/bin/activate
-
-pip install -r requirements.txt
-cp .env.example .env   # edit .env with your settings
-alembic upgrade head   # run migrations
-python main.py         # starts on http://localhost:8000
-```
-
-Before your first run, set `ENCRYPTION_KEY` in `.env` to a real Fernet key (generate with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`) — the default value in `config.py` is only a placeholder and is not safe to use as-is. Once you've saved connections with a given key, don't change it (see the note in the Docker section above for why).
-
-### Frontend (with hot reload)
-
-In a separate terminal:
-
-```bash
-cd ui
-npm install
-npm run dev   # starts on http://localhost:5173
-```
-
-The Vite dev server proxies `/api` to the backend automatically.
+Prefer running the backend and frontend separately with hot reload instead of Docker? See the full **[Local Development Setup guide](docs/local-development.md)** (Python venv, Alembic migrations, Vite dev server).
 
 ---
 
@@ -148,79 +118,37 @@ No local GPU or Ollama install? Leave `OLLAMA_BASE_URL` at its default and the a
 
 ## Configuration Reference
 
-All settings are read from environment variables or `api/.env`.
-
-| Variable | Default | Description |
-|---|---|---|
-| `DATABASE_URL` | `postgresql+psycopg2://pilotbase:pilotbase_secret@localhost:5432/pilotbase` | Pilotbase's own internal store |
-| `SECRET_KEY` | `change-me` | JWT signing secret — **always override in production** |
-| `ENCRYPTION_KEY` | `change-me-must-be-valid-fernet-key=` | Fernet key for stored DB credentials — **always override in production** |
-| `OLLAMA_BASE_URL` | `https://ollama.com/v1` | OpenAI-compatible LLM base URL (use `http://localhost:11434/v1` for local Ollama) |
-| `OLLAMA_MODEL` | `gemma4:31b-cloud` | Primary reasoning model for the AI agent |
-| `OLLAMA_FLASH_MODEL` | `gemma4:cloud` | Faster model for lightweight agent steps |
-| `OLLAMA_API_KEY` | `ollama` | API key (`ollama` for local, real key for hosted providers) |
-| `AUTH_BACKEND` | `anon` | `anon` for single-user/anonymous, or dotted path to a custom `AuthBackend` class |
-| `ENVIRONMENT` | `development` | Set to `production` for tighter CORS and security defaults |
-| `CORS_ORIGINS` | `http://localhost:5173,...` | Comma-separated allowed origins |
-
-**Using a local Ollama instance instead of the cloud:** see [Setting Up Ollama](#setting-up-ollama-for-the-ai-agent) above.
-
-**Using a different hosted LLM:**
-
-Set `OLLAMA_BASE_URL` to any OpenAI-compatible endpoint and provide the appropriate `OLLAMA_API_KEY`. Works with OpenAI, Groq, Together AI, Anthropic (via proxy), and others.
+All settings are read from environment variables or `api/.env`. Full list of variables, defaults, and descriptions: **[Configuration Reference](docs/configuration.md)**.
 
 ---
 
 ## Supported Databases
 
-*Feature support current as of `v0.1.0-beta.2`.*
+Full feature matrix (create/drop DB, migration, backups, AI agent query support, per-engine notes) across all 17 supported engines: **[Supported Databases](docs/supported-databases.md)**.
 
-| Database | Type | Create/Drop DB | Create Tables | Create Views | Querying | Migration | AI Agent Query | Backups | Notes |
-|---|---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|---|
-| PostgreSQL | SQL | ✅¹ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Multi-database, schema browsing, user/DB creation |
-| MySQL / MariaDB | SQL | ✅¹ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Full database listing, user management |
-| SQLite | SQL | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅² | Provide the file path as the database field |
-| Microsoft SQL Server | SQL | ✅¹ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅² | Uses `pymssql` (FreeTDS) — no proprietary ODBC driver needed |
-| Oracle Database | SQL | ❌⁴ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅² | `oracledb` thin mode — no Instant Client install required |
-| Db2 (LUW) | SQL | ❌⁴ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅² | Query/browse parity; no SQL-level database/user creation |
-| CockroachDB | SQL | ✅¹ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅² | Postgres wire-compatible, dedicated retry-aware dialect |
-| Snowflake | SQL | ✅¹ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅² | Connects via account identifier + optional warehouse/role |
-| MongoDB | NoSQL | ❌ | ❌ | ❌ | ✅³ | ❌ | ✅³ | ❌ | JSON find queries and aggregation pipelines |
-| Redis | Key-Value | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | Native Redis command interface (KEYS, GET, HGETALL, etc.) |
-| Cassandra | NoSQL | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | Raw CQL queries, keyspace/table browsing |
-| DynamoDB | NoSQL | ❌ | ❌ | ❌ | ✅³ | ❌ | ✅³ | ❌ | Scan/get-item queries; AWS creds or DynamoDB Local endpoint |
-| Qdrant | Vector | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ANN similarity search, scroll-based browsing, payload editing |
-| ChromaDB | Vector | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | Text and embedding queries, document browsing |
-| Weaviate | Vector | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | GraphQL queries and scroll browsing |
-| Pinecone | Vector | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | Similarity search and vector browsing by index |
-| Milvus | Vector | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ANN search and scroll-based browsing by collection |
+---
 
-¹ Create only — dropping a database isn't a dedicated action yet; run a raw `DROP DATABASE` query if your credentials allow it.
-² No native dump utility for this engine — falls back to a portable SQL `INSERT`-based dump.
-³ Read-only: `find`/scan-style queries. Writes (insert/update/delete) aren't exposed through the query editor or AI agent yet.
-⁴ Database creation isn't a plain SQL statement on this engine (it's an instance-level DBA operation) — user creation is still supported via the AI agent's admin tools where applicable.
+## Database Comparisons
 
-### Looking for an admin UI for a specific database?
+Honest, detailed write-ups on how Pilotbase compares to the admin tool you're probably already using for each engine — including where the other tool still wins:
 
-Pilotbase is a single tool that covers all of these — no separate installs needed.
-
-- **PostgreSQL** — pgAdmin alternative, PostgreSQL web UI, Postgres admin panel, Postgres query browser
-- **MySQL / MariaDB** — phpMyAdmin alternative, MySQL admin UI, MariaDB web interface, MySQL query tool
-- **SQLite** — SQLite admin, SQLite browser, SQLite GUI, SQLite web viewer, SQLite editor online
-- **SQL Server** — MSSQL admin UI, SQL Server web client, SQL Server query tool, SSMS alternative
-- **Oracle** — Oracle SQL Developer alternative, Oracle web admin, Oracle query tool
-- **Db2** — Db2 admin UI, Db2 web client, Db2 query tool
-- **CockroachDB** — CockroachDB admin UI, CockroachDB web console alternative
-- **Snowflake** — Snowsight alternative, Snowflake web query tool, Snowflake admin UI
-- **MongoDB** — MongoDB admin, MongoDB Compass alternative, MongoDB web UI, Mongo document browser
-- **Redis** — RedisInsight alternative, Redis web UI, Redis admin panel, Redis key browser, Redis GUI
-- **Cassandra** — Cassandra admin UI, CQL query tool, Cassandra web client
-- **DynamoDB** — DynamoDB admin UI, DynamoDB web client, DynamoDB table browser
-- **Qdrant** — Qdrant UI, Qdrant admin panel, Qdrant web interface, vector database GUI
-- **ChromaDB** — ChromaDB admin, ChromaDB UI, ChromaDB web viewer, Chroma vector browser
-- **Weaviate** — Weaviate admin, Weaviate UI, Weaviate web interface, Weaviate console alternative
-- **Pinecone** — Pinecone admin UI, Pinecone web client, Pinecone vector browser
-- **Milvus** — Milvus admin UI, Milvus web client, Milvus vector browser
+- [PostgreSQL](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/postgresql.md) — best Postgres admin UIs compared (pgAdmin, DBeaver, TablePlus, Postico, Beekeeper Studio)
+- [MySQL / MariaDB](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/mysql.md) — best MySQL admin UIs compared (MySQL Workbench, phpMyAdmin, DBeaver, HeidiSQL, TablePlus)
+- [SQLite](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/sqlite.md) — vs DB Browser for SQLite
+- [SQL Server](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/sql-server.md) — vs SQL Server Management Studio (SSMS)
+- [Oracle](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/oracle.md) — vs Oracle SQL Developer
+- [Db2](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/db2.md) — vs IBM Db2 Data Studio / web console
+- [CockroachDB](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/cockroachdb.md) — vs CockroachDB's built-in DB Console
+- [Snowflake](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/snowflake.md) — vs Snowsight
+- [MongoDB](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/mongodb.md) — vs MongoDB Compass
+- [Redis](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/redis.md) — vs RedisInsight
+- [Cassandra](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/cassandra.md) — the best admin UI for Cassandra
+- [DynamoDB](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/dynamodb.md) — the best admin UI for DynamoDB
+- [Qdrant](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/qdrant.md) — vs Qdrant's built-in Web UI
+- [ChromaDB](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/chromadb.md) — the best admin UI for ChromaDB
+- [Weaviate](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/weaviate.md) — vs Weaviate Cloud Console
+- [Pinecone](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/pinecone.md) — vs Pinecone Console
+- [Milvus](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/milvus.md) — vs Attu
 
 ---
 

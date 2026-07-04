@@ -4,11 +4,12 @@ SQL: SQLAlchemy (synchronous, pooled).
 NoSQL/Vector: native client adapters (lazy imports so missing optional deps
               only fail at connection time, not at import time).
 """
+import asyncio
 import json
 import re
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 from cryptography.fernet import Fernet
 
@@ -43,6 +44,28 @@ def check_agent_forbidden(query: str) -> Optional[str]:
 # ── Base adapter ──────────────────────────────────────────────────────────────
 
 class BaseAdapter(ABC):
+    """
+    Every adapter wraps one engine's native client library, and every one of
+    those libraries is synchronous (no async DB driver is used anywhere here).
+    DatabaseService.run_off_loop is what keeps a call into one of these from
+    ever blocking the FastAPI event loop.
+
+    CONNECT_TIMEOUT_SECONDS is the other half of that defense: each subclass
+    MUST apply it to its own client library's connect/timeout mechanism in
+    __init__ (every library names this differently — see each subclass for
+    how). That's what makes an unreachable-but-resolvable host fail in ~10s
+    instead of whatever the driver's own default is (often 30-60s, sometimes
+    unbounded). It can't cover everything on its own — DNS resolution in
+    Python's stdlib socket layer has no timeout at all — which is exactly why
+    run_off_loop exists as a second, unconditional line of defense.
+    """
+
+    #: Defaults to the DB_CONNECT_TIMEOUT_SECONDS setting (see app.config /
+    #: .env.example), shared across every engine. Override on a specific
+    #: subclass if one engine's handshake is naturally slower or faster than
+    #: the rest (e.g. a cloud API doing auth vs. a local socket).
+    CONNECT_TIMEOUT_SECONDS: float = settings.db_connect_timeout_seconds
+
     @abstractmethod
     def test_connection(self) -> bool: ...
 
@@ -65,9 +88,31 @@ class BaseAdapter(ABC):
 # ── SQL (SQLAlchemy) ──────────────────────────────────────────────────────────
 
 class SQLAdapter(BaseAdapter):
+    @staticmethod
+    def _connect_args(db_type: str, timeout: float) -> Dict[str, Any]:
+        """Every DBAPI driver names its own connect-timeout kwarg differently —
+        this is the one place that maps db_type -> the right one."""
+        t = int(timeout)
+        if db_type in ("postgresql", "cockroachdb"):   # psycopg2
+            return {"connect_timeout": t}
+        if db_type in ("mysql", "mariadb"):             # pymysql
+            return {"connect_timeout": t}
+        if db_type == "mssql":                          # pymssql
+            return {"login_timeout": t}
+        if db_type == "oracle":                          # oracledb (thin mode)
+            return {"tcp_connect_timeout": timeout}
+        if db_type == "snowflake":                       # snowflake-connector-python
+            return {"login_timeout": t, "network_timeout": t}
+        # sqlite: local file, no network hang possible.
+        # db2 (ibm_db_sa): ibm_db exposes no connect-timeout kwarg through
+        # SQLAlchemy's connect_args — DatabaseService.run_off_loop is the only
+        # protection against a hung db2 connection.
+        return {}
+
     def __init__(self, conn: DbConnection, url: str):
         from sqlalchemy import create_engine
-        self._engine = create_engine(url, pool_pre_ping=True, pool_size=3, max_overflow=5)
+        connect_args = self._connect_args(conn.db_type, self.CONNECT_TIMEOUT_SECONDS)
+        self._engine = create_engine(url, pool_pre_ping=True, pool_size=3, max_overflow=5, connect_args=connect_args)
         self._db_type = conn.db_type
         self._database = conn.database
 
@@ -299,9 +344,12 @@ class MongoAdapter(BaseAdapter):
     """
     def __init__(self, conn: DbConnection, extra: Dict):
         import pymongo
+        timeout_ms = int(self.CONNECT_TIMEOUT_SECONDS * 1000)
         kwargs: Dict[str, Any] = {
             "host": conn.host or "localhost",
             "port": conn.port or 27017,
+            "serverSelectionTimeoutMS": timeout_ms,
+            "connectTimeoutMS": timeout_ms,
         }
         if conn.username:
             kwargs["username"] = conn.username
@@ -390,6 +438,7 @@ class RedisAdapter(BaseAdapter):
             db=int(conn.database or 0),
             password=extra.get("_password") or None,
             decode_responses=True,
+            socket_connect_timeout=self.CONNECT_TIMEOUT_SECONDS,
         )
 
     def test_connection(self) -> bool:
@@ -456,6 +505,7 @@ class CassandraAdapter(BaseAdapter):
             contact_points=[conn.host or "localhost"],
             port=conn.port or 9042,
             auth_provider=auth_provider,
+            connect_timeout=self.CONNECT_TIMEOUT_SECONDS,
             # The driver's default connection class needs either a libev C extension
             # (not built by default) or the `asyncore` module (removed in Python 3.12+).
             # AsyncioConnection works out of the box on modern Python with no extra deps.
@@ -543,7 +593,11 @@ class DynamoDBAdapter(BaseAdapter):
     """
     def __init__(self, conn: DbConnection, extra: Dict):
         import boto3
-        kwargs: Dict[str, Any] = {"region_name": conn.database or "us-east-1"}
+        from botocore.config import Config
+        kwargs: Dict[str, Any] = {
+            "region_name": conn.database or "us-east-1",
+            "config": Config(connect_timeout=self.CONNECT_TIMEOUT_SECONDS, read_timeout=self.CONNECT_TIMEOUT_SECONDS),
+        }
         if conn.username:
             kwargs["aws_access_key_id"] = conn.username
         password = extra.get("_password")
@@ -621,6 +675,7 @@ class QdrantAdapter(BaseAdapter):
             port=conn.port or 6333,
             api_key=extra.get("api_key") or None,
             https=https,
+            timeout=int(self.CONNECT_TIMEOUT_SECONDS),
         )
 
     def test_connection(self) -> bool:
@@ -692,6 +747,9 @@ class ChromaAdapter(BaseAdapter):
       {"collection": "my_col"}                                         ← list first N ids
     """
     def __init__(self, conn: DbConnection, extra: Dict):
+        # chromadb.HttpClient exposes no connect-timeout parameter of its own —
+        # DatabaseService.run_off_loop is the only protection for a hung Chroma
+        # connection.
         import chromadb
         kwargs: Dict[str, Any] = {"host": conn.host or "localhost", "port": conn.port or 8000}
         api_key = extra.get("api_key")
@@ -808,7 +866,7 @@ class WeaviateAdapter(BaseAdapter):
         auth = weaviate.auth.AuthApiKey(api_key=api_key) if api_key else None
         scheme = "https" if conn.ssl_mode in ("require", "verify-full", "true", "on") else "http"
         url = f"{scheme}://{conn.host or 'localhost'}:{conn.port or 8080}"
-        self._client = weaviate.Client(url, auth_client_secret=auth)
+        self._client = weaviate.Client(url, auth_client_secret=auth, timeout_config=(self.CONNECT_TIMEOUT_SECONDS, 60))
 
     def test_connection(self) -> bool:
         try:
@@ -911,7 +969,10 @@ class PineconeAdapter(BaseAdapter):
     """
     def __init__(self, conn: DbConnection, extra: Dict):
         from pinecone import Pinecone
-        self._client = Pinecone(api_key=extra.get("api_key") or extra.get("_password") or "")
+        self._client = Pinecone(
+            api_key=extra.get("api_key") or extra.get("_password") or "",
+            timeout=self.CONNECT_TIMEOUT_SECONDS,
+        )
 
     def test_connection(self) -> bool:
         try:
@@ -986,7 +1047,10 @@ class MilvusAdapter(BaseAdapter):
         scheme = "https" if conn.ssl_mode in ("require", "verify-full", "true", "on") else "http"
         uri = f"{scheme}://{conn.host or 'localhost'}:{conn.port or 19530}"
         token = extra.get("api_key") or extra.get("_password") or ""
-        self._client = MilvusClient(uri=uri, token=token) if token else MilvusClient(uri=uri)
+        client_kwargs: Dict[str, Any] = {"uri": uri, "timeout": self.CONNECT_TIMEOUT_SECONDS}
+        if token:
+            client_kwargs["token"] = token
+        self._client = MilvusClient(**client_kwargs)
 
     def test_connection(self) -> bool:
         try:
@@ -1078,10 +1142,38 @@ _SQL_DRIVERS = {
 }
 
 
+_T = TypeVar("_T")
+
+
 class DatabaseService:
     def __init__(self):
         self._adapters: Dict[str, BaseAdapter] = {}
         self._cipher = Fernet(settings.encryption_key.encode())
+
+    # ── Async safety ─────────────────────────────────────────────────────────
+    #
+    # Every method below (and every BaseAdapter method it calls into) is
+    # synchronous, because every engine's client library here is synchronous —
+    # there's no async DB driver anywhere in this file. That's fine as long as
+    # callers never invoke them directly from an `async def` FastAPI route
+    # handler: doing so runs the blocking call straight on the event loop and
+    # freezes every other request this server is handling for however long a
+    # slow/unreachable database takes to fail (which per-adapter
+    # CONNECT_TIMEOUT_SECONDS bounds in the common case, but not always — e.g.
+    # DNS resolution has no timeout at all in Python's stdlib socket layer).
+    #
+    # run_off_loop is the fix: wrap any db_service call a route handler makes
+    # with `await db_service.run_off_loop(db_service.some_method, ...)` and it
+    # runs in a worker thread instead. (The AI agent's tool layer doesn't need
+    # this — routers/ai.py already runs the whole agent graph, tool calls
+    # included, via run_in_executor.)
+
+    @staticmethod
+    async def run_off_loop(fn: Callable[..., _T], *args: Any, **kwargs: Any) -> _T:
+        """Run a blocking db_service/adapter call in a worker thread instead of
+        on the asyncio event loop. Use this from any async route handler that
+        calls a DatabaseService method."""
+        return await asyncio.to_thread(fn, *args, **kwargs)
 
     # ── Encryption ────────────────────────────────────────────────────────────
 

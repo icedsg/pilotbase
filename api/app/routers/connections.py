@@ -180,7 +180,8 @@ async def test_connection_params(
     session: AsyncSession = Depends(get_session),
 ):
     await require_admin(body.user_anon_id, session)
-    ok, error, databases = db_service.test_connection_params(
+    ok, error, databases = await db_service.run_off_loop(
+        db_service.test_connection_params,
         db_type=body.db_type,
         host=body.host,
         port=body.port,
@@ -286,7 +287,7 @@ async def test_connection(
     conn = result.scalar_one_or_none()
     if not conn:
         raise HTTPException(status_code=404, detail="Connection not found.")
-    ok, error = db_service.test_connection_verbose(conn)
+    ok, error = await db_service.run_off_loop(db_service.test_connection_verbose, conn)
     return {"success": ok, "error": error}
 
 
@@ -300,7 +301,7 @@ async def get_db_version(
     conn = result.scalar_one_or_none()
     if not conn:
         raise HTTPException(status_code=404, detail="Connection not found.")
-    version = db_service.get_version(conn)
+    version = await db_service.run_off_loop(db_service.get_version, conn)
     return {"version": version}
 
 
@@ -315,7 +316,7 @@ async def list_databases(
     if not conn:
         raise HTTPException(status_code=404, detail="Connection not found.")
     try:
-        dbs = db_service.list_databases(conn)
+        dbs = await db_service.run_off_loop(db_service.list_databases, conn)
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
     return {"databases": dbs}
@@ -334,7 +335,7 @@ async def list_objects(
     if not conn:
         raise HTTPException(status_code=404, detail="Connection not found.")
     try:
-        objects = db_service.list_objects(conn, schema, database)
+        objects = await db_service.run_off_loop(db_service.list_objects, conn, schema, database)
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
     return {"objects": objects}
@@ -353,7 +354,7 @@ async def describe_table(
     conn = result.scalar_one_or_none()
     if not conn:
         raise HTTPException(status_code=404, detail="Connection not found.")
-    info = db_service.describe_table(conn, table_name, schema, database)
+    info = await db_service.run_off_loop(db_service.describe_table, conn, table_name, schema, database)
     return info
 
 
@@ -369,7 +370,7 @@ async def create_database(
     if not conn:
         raise HTTPException(status_code=404, detail="Connection not found.")
     try:
-        db_service.create_database(conn, body.db_name)
+        await db_service.run_off_loop(db_service.create_database, conn, body.db_name)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"message": f"Database '{body.db_name}' created successfully."}
@@ -387,7 +388,7 @@ async def create_db_user(
     if not conn:
         raise HTTPException(status_code=404, detail="Connection not found.")
     try:
-        db_service.create_db_user(conn, body.username, body.password, body.database)
+        await db_service.run_off_loop(db_service.create_db_user, conn, body.username, body.password, body.database)
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"message": f"User '{body.username}' created successfully."}

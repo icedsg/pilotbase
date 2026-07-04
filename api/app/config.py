@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     static_dir: str = "./static"
     backups_dir: str = "./backups"
 
+    # External database connections — how long (seconds) to wait when
+    # establishing a connection to a user-added database before giving up.
+    # Applies to every engine adapter in app.services.db_service.
+    db_connect_timeout_seconds: float = 10.0
+
     # Auth backend identifier — "anon" or a dotted Python path to a custom AuthBackend subclass
     auth_backend: str = "anon"
 
