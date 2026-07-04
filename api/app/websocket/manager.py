@@ -48,7 +48,7 @@ class ConnectionManager:
 
     async def send(self, user_id: str, msg_type: str, payload: dict) -> None:
         sockets = self._connections.get(user_id, [])
-        message = json.dumps({"type": msg_type, "payload": payload})
+        message = json.dumps({"type": msg_type, "payload": payload}, default=str)
         dead: list[WebSocket] = []
         for ws in sockets:
             try:

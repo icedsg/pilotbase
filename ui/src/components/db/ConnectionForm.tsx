@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { X, CheckCircle, XCircle, Loader2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { X, CheckCircle, XCircle, Loader2, ChevronDown } from 'lucide-react'
 import { apiCreateConnection, apiUpdateConnection, apiTestConnectionParams } from '../../api/client'
 import { useUserSession } from '../../hooks/useUserSession'
+import DbTypeIcon from './DbTypeIcon'
 import type { DbConnection } from '../../types'
 
 const DB_TYPES = [
@@ -81,6 +82,17 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
     ssl_mode: connection?.ssl_mode ?? '',
   })
   const [saving,      setSaving]      = useState(false)
+  const [typeOpen,    setTypeOpen]    = useState(false)
+  const typeRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!typeOpen) return
+    const onMouseDown = (e: MouseEvent) => {
+      if (typeRef.current && !typeRef.current.contains(e.target as Node)) setTypeOpen(false)
+    }
+    document.addEventListener('mousedown', onMouseDown)
+    return () => document.removeEventListener('mousedown', onMouseDown)
+  }, [typeOpen])
   const [saveError,   setSaveError]   = useState<string | null>(null)
   const [testStatus,  setTestStatus]  = useState<TestStatus>('idle')
   const [testMessage, setTestMessage] = useState<string | null>(null)
@@ -210,21 +222,45 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
           <div>
             <label className="block text-xs text-gray-400 mb-1">Database Type</label>
             {isEdit ? (
-              <input value={DB_TYPES.find(d => d.value === form.db_type)?.label ?? form.db_type} disabled className={INPUT_CLS + ' opacity-50 cursor-not-allowed'} />
+              <div className={INPUT_CLS + ' flex items-center gap-2 opacity-50 cursor-not-allowed'}>
+                <DbTypeIcon dbType={form.db_type} size={16} />
+                <span>{DB_TYPES.find(d => d.value === form.db_type)?.label ?? form.db_type}</span>
+              </div>
             ) : (
-              <select
-                value={form.db_type}
-                onChange={e => handleDbTypeChange(e.target.value)}
-                className={INPUT_CLS}
-              >
-                {groups.map(g => (
-                  <optgroup key={g} label={g}>
-                    {DB_TYPES.filter(d => d.group === g).map(d => (
-                      <option key={d.value} value={d.value}>{d.label}</option>
+              <div className="relative" ref={typeRef}>
+                <button
+                  type="button"
+                  onClick={() => setTypeOpen(o => !o)}
+                  className={INPUT_CLS + ' flex items-center gap-2 text-left'}
+                >
+                  <DbTypeIcon dbType={form.db_type} size={16} />
+                  <span className="flex-1">{DB_TYPES.find(d => d.value === form.db_type)?.label ?? form.db_type}</span>
+                  <ChevronDown size={14} className={'text-gray-500 transition-transform ' + (typeOpen ? 'rotate-180' : '')} />
+                </button>
+                {typeOpen && (
+                  <div className="absolute z-10 mt-1 w-full max-h-64 overflow-y-auto bg-surface-100 border border-surface-50 rounded shadow-xl">
+                    {groups.map(g => (
+                      <div key={g}>
+                        <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">{g}</div>
+                        {DB_TYPES.filter(d => d.group === g).map(d => (
+                          <button
+                            key={d.value}
+                            type="button"
+                            onClick={() => { handleDbTypeChange(d.value); setTypeOpen(false) }}
+                            className={
+                              'w-full flex items-center gap-2 px-3 py-1.5 text-left text-gray-800 dark:text-gray-200 hover:bg-surface-300 '
+                              + (d.value === form.db_type ? 'bg-surface-300' : '')
+                            }
+                          >
+                            <DbTypeIcon dbType={d.value} size={16} />
+                            <span>{d.label}</span>
+                          </button>
+                        ))}
+                      </div>
                     ))}
-                  </optgroup>
-                ))}
-              </select>
+                  </div>
+                )}
+              </div>
             )}
           </div>
 

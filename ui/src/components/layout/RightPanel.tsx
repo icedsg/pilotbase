@@ -161,8 +161,8 @@ export default function RightPanel({ onClose }: Props) {
 
     try {
       const ack = await apiChatViaWs(userId, tab.connectionId, text, tab.sessionId, requestId, buildUiContext())
-      if (!tab.title) bindTabSession(tabId, ack.session_id, text.slice(0, 80))
-      else if (!tab.sessionId) bindTabSession(tabId, ack.session_id, null)
+      const fresh = useStore.getState().chatTabs.find((t) => t.tabId === tabId)
+      bindTabSession(tabId, ack.session_id, fresh?.title ? null : text.slice(0, 80))
     } catch {
       addTabMessage(tabId, {
         id: crypto.randomUUID(),
@@ -227,7 +227,7 @@ export default function RightPanel({ onClose }: Props) {
       </div>
 
       <div className="flex items-center gap-1 px-2 py-1 border-b border-surface-50 flex-shrink-0 overflow-x-auto">
-        {chatTabs.length > 1 && chatTabs.map((tab) => (
+        {chatTabs.map((tab) => (
           <div
             key={tab.tabId}
             onClick={() => setActiveChatTab(tab.tabId)}
@@ -235,6 +235,7 @@ export default function RightPanel({ onClose }: Props) {
               tab.tabId === activeTabId ? 'bg-accent/20 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-surface-300'
             }`}
           >
+            <Bot size={12} className="flex-shrink-0" />
             <span className="truncate">{tab.title ?? 'New chat'}</span>
             <button
               onClick={(e) => { e.stopPropagation(); closeChatTab(tab.tabId) }}

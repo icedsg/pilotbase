@@ -246,7 +246,7 @@ export const useStore = create<PilotbaseStore>((set, get) => ({
     chatTabs: s.chatTabs.map((t) => t.tabId === tabId ? { ...t, connectionId } : t),
   })),
   bindTabSession: (tabId, sessionId, title) => set((s) => ({
-    chatTabs: s.chatTabs.map((t) => t.tabId === tabId ? { ...t, sessionId, title: t.title ?? title } : t),
+    chatTabs: s.chatTabs.map((t) => t.tabId === tabId ? { ...t, sessionId: t.sessionId ?? sessionId, title: t.title ?? title } : t),
   })),
   clearTabMessages: (tabId) => set((s) => ({
     chatTabs: s.chatTabs.map((t) => t.tabId === tabId ? { ...t, messages: [] } : t),

@@ -3,7 +3,7 @@ import {
   siMongodb, siRedis, siApachecouchdb, siQdrant,
   siSnowflake, siCockroachlabs, siApachecassandra, siMilvus,
 } from 'simple-icons'
-import { Server } from 'lucide-react'
+import { Database } from 'lucide-react'
 
 // Dark-mode-friendly hex colors keyed by db_type
 const FILL_COLORS: Record<string, string> = {
@@ -70,5 +70,5 @@ export default function DbTypeIcon({ dbType, size = 18 }: Props) {
   }
 
   // Fallback for db types not in simple-icons (mssql, weaviate, chroma, oracle, db2, dynamodb, pinecone)
-  return <Server size={size} className="flex-shrink-0" style={{ color }} />
+  return <Database size={size} className="flex-shrink-0" style={{ color }} />
 }
