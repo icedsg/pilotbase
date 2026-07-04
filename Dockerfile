@@ -62,6 +62,10 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy API source
 COPY api/ ./api/
 
+# Docs bundled into the image so the agent's docs_tools can read them at runtime
+COPY docs/ ./docs/
+COPY README.md ./README.md
+
 # Copy built frontend into the location FastAPI serves static files from
 COPY --from=frontend-builder /build/ui/dist ./api/static/
 
