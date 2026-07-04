@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from 'react-resizable-panels'
 import TopBar from './components/layout/TopBar'
+import ActivityBar from './components/layout/ActivityBar'
 import LeftPanel from './components/layout/LeftPanel'
 import RightPanel from './components/layout/RightPanel'
 import MainArea from './components/layout/MainArea'
@@ -45,13 +46,14 @@ export default function App() {
 
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-surface">
-      <TopBar
-        leftOpen={leftOpen}
-        rightOpen={rightOpen}
-        onToggleLeft={toggleLeft}
-        onToggleRight={toggleRight}
-      />
+      <TopBar />
       <div className="flex-1 flex overflow-hidden">
+        <ActivityBar
+          leftOpen={leftOpen}
+          rightOpen={rightOpen}
+          onToggleLeft={toggleLeft}
+          onToggleRight={toggleRight}
+        />
         <PanelGroup direction="horizontal" autoSaveId="pilotbase-panels">
           <Panel
             ref={leftPanelRef}

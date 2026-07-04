@@ -11,7 +11,10 @@ export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout>>()
   const intentionalClose = useRef(false)
-  const { setWsConnected, addChatMessage, setChatLoading, addQueryHistoryEntry, setPendingPlan } = useStore()
+  const {
+    setWsConnected, addTabMessage, setTabLoading, addQueryHistoryEntry, setTabPendingPlan,
+    resolveTabForRequest, bindTabSession,
+  } = useStore()
 
   const connect = useCallback((userId: string) => {
     const state = wsRef.current?.readyState
@@ -47,65 +50,72 @@ export function useWebSocket() {
     ws.onmessage = (event) => {
       try {
         const msg: WsMessage = JSON.parse(event.data)
+        const payload = msg.payload
+        const sessionId = (payload?.session_id as string) || null
+        const requestId = (payload?.request_id as string) || null
 
-        if (msg.type === 'agent_done') {
-          const content = (msg.payload?.response as string) || ''
-          const chatMsg: ChatMessage = {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content,
-            timestamp: new Date(),
-          }
-          addChatMessage(chatMsg)
-          setChatLoading(false)
-        }
+        if (msg.type === 'agent_done' || msg.type === 'plan_proposed' || msg.type === 'error') {
+          const tabId = resolveTabForRequest(requestId, sessionId)
+          if (!tabId) return
+          if (sessionId) bindTabSession(tabId, sessionId, null)
 
-        if (msg.type === 'plan_proposed' && msg.payload) {
-          const summary = (msg.payload.summary as string) || ''
-          if (summary) {
-            addChatMessage({ id: crypto.randomUUID(), role: 'assistant', content: summary, timestamp: new Date() })
+          if (msg.type === 'agent_done') {
+            const content = (payload?.response as string) || ''
+            const chatMsg: ChatMessage = {
+              id: crypto.randomUUID(), role: 'assistant', content, timestamp: new Date(),
+            }
+            addTabMessage(tabId, chatMsg)
+            setTabLoading(tabId, false)
           }
-          setPendingPlan({
-            planId: msg.payload.plan_id as string,
-            steps: (msg.payload.steps as PendingPlan['steps']) || [],
-            summary,
-          })
-          setChatLoading(false)
+
+          if (msg.type === 'plan_proposed' && payload) {
+            const summary = (payload.summary as string) || ''
+            if (summary) {
+              addTabMessage(tabId, { id: crypto.randomUUID(), role: 'assistant', content: summary, timestamp: new Date() })
+            }
+            setTabPendingPlan(tabId, {
+              planId: payload.plan_id as string,
+              steps: (payload.steps as PendingPlan['steps']) || [],
+              summary,
+            })
+            setTabLoading(tabId, false)
+          }
+
+          if (msg.type === 'error') {
+            const chatMsg: ChatMessage = {
+              id: crypto.randomUUID(),
+              role: 'assistant',
+              content: `Error: ${(payload?.message as string) || 'Unknown error'}`,
+              timestamp: new Date(),
+            }
+            addTabMessage(tabId, chatMsg)
+            setTabLoading(tabId, false)
+          }
         }
 
         if (msg.type === 'plan_committed') {
-          addChatMessage({
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content: 'Plan approved and applied.',
-            timestamp: new Date(),
-          })
-          setPendingPlan(null)
+          const tabId = resolveTabForRequest(requestId, sessionId)
+          if (tabId) {
+            addTabMessage(tabId, {
+              id: crypto.randomUUID(), role: 'assistant', content: 'Plan approved and applied.', timestamp: new Date(),
+            })
+            setTabPendingPlan(tabId, null)
+          }
         }
 
         if (msg.type === 'plan_rejected') {
-          setPendingPlan(null)
+          const tabId = resolveTabForRequest(requestId, sessionId)
+          if (tabId) setTabPendingPlan(tabId, null)
         }
 
-        if (msg.type === 'error') {
-          const chatMsg: ChatMessage = {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content: `Error: ${(msg.payload?.message as string) || 'Unknown error'}`,
-            timestamp: new Date(),
-          }
-          addChatMessage(chatMsg)
-          setChatLoading(false)
-        }
-
-        if (msg.type === 'query_executed' && msg.payload) {
-          addQueryHistoryEntry(msg.payload as unknown as QueryHistoryEntry)
+        if (msg.type === 'query_executed' && payload) {
+          addQueryHistoryEntry(payload as unknown as QueryHistoryEntry)
         }
       } catch {
         // ignore parse errors
       }
     }
-  }, [setWsConnected, addChatMessage, setChatLoading, addQueryHistoryEntry, setPendingPlan])
+  }, [setWsConnected, addTabMessage, setTabLoading, addQueryHistoryEntry, setTabPendingPlan, resolveTabForRequest, bindTabSession])
 
   const disconnect = useCallback(() => {
     intentionalClose.current = true

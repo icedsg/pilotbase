@@ -50,6 +50,18 @@ export interface PendingPlan {
   summary: string
 }
 
+export const MAX_CHAT_TABS = 3
+
+export interface ChatTab {
+  tabId: string                 // client-generated, stable for the tab's lifetime
+  sessionId: string | null      // null until the server resolves/creates one on first message
+  connectionId: string | null   // captured at tab-open time
+  title: string | null          // mirrors ChatSession.title; UI falls back to 'New chat' while null
+  messages: ChatMessage[]
+  loading: boolean
+  pendingPlan: PendingPlan | null
+}
+
 interface PilotbaseStore {
   // ── User session ─────────────────────────────────────────────────
   session: UserSession | null
@@ -69,10 +81,12 @@ interface PilotbaseStore {
   activeDatabase: string | null
   queryResult: QueryResult | null
   queryLoading: boolean
+  sqlPanelOpen: boolean
   setActiveQuery: (q: string) => void
   setActiveDatabase: (db: string | null) => void
   setQueryResult: (r: QueryResult | null) => void
   setQueryLoading: (v: boolean) => void
+  setSqlPanelOpen: (v: boolean) => void
 
   // ── Column view / ALTER TABLE ─────────────────────────────────────
   columnViewContext: ColumnViewContext | null
@@ -80,6 +94,8 @@ interface PilotbaseStore {
   alterScriptLog: AlterScriptEntry[]
   appendAlterScript: (sql: string, executed?: boolean) => void
   clearAlterScripts: () => void
+  sqlLogPanelOpen: boolean
+  setSqlLogPanelOpen: (v: boolean) => void
 
   // ── Vector DB view ────────────────────────────────────────────────
   vectorViewContext: VectorViewContext | null
@@ -99,16 +115,21 @@ interface PilotbaseStore {
   addQueryHistoryEntry: (entry: QueryHistoryEntry) => void
   clearQueryHistory: () => void
 
-  // ── AI Chat ──────────────────────────────────────────────────────
-  chatMessages: ChatMessage[]
-  chatLoading: boolean
-  addChatMessage: (m: ChatMessage) => void
-  setChatLoading: (v: boolean) => void
-  clearChat: () => void
-
-  // ── AI plan approval ───────────────────────────────────────────────
-  pendingPlan: PendingPlan | null
-  setPendingPlan: (p: PendingPlan | null) => void
+  // ── AI Chat (multi-tab, max MAX_CHAT_TABS open at once) ────────────
+  chatTabs: ChatTab[]
+  activeTabId: string | null
+  pendingRequests: Record<string, string>   // request_id -> tabId, for WS routing
+  openNewChatTab: (connectionId: string | null) => string | null   // null if already at MAX_CHAT_TABS
+  closeChatTab: (tabId: string) => void
+  setActiveChatTab: (tabId: string) => void
+  addTabMessage: (tabId: string, m: ChatMessage) => void
+  setTabMessages: (tabId: string, messages: ChatMessage[]) => void
+  setTabLoading: (tabId: string, v: boolean) => void
+  setTabPendingPlan: (tabId: string, p: PendingPlan | null) => void
+  bindTabSession: (tabId: string, sessionId: string, title: string | null) => void
+  clearTabMessages: (tabId: string) => void
+  registerPendingRequest: (requestId: string, tabId: string) => void
+  resolveTabForRequest: (requestId: string | null | undefined, sessionId: string | null | undefined) => string | null
 
   // ── WebSocket ────────────────────────────────────────────────────
   wsConnected: boolean
@@ -119,7 +140,7 @@ interface PilotbaseStore {
   toggleTheme: () => void
 }
 
-export const useStore = create<PilotbaseStore>((set) => ({
+export const useStore = create<PilotbaseStore>((set, get) => ({
   // Session
   session: null,
   setSession: (session) => set({ session }),
@@ -143,10 +164,12 @@ export const useStore = create<PilotbaseStore>((set) => ({
   activeDatabase: null,
   queryResult: null,
   queryLoading: false,
+  sqlPanelOpen: false,
   setActiveQuery: (activeQuery) => set({ activeQuery }),
   setActiveDatabase: (activeDatabase) => set({ activeDatabase }),
   setQueryResult: (queryResult) => set({ queryResult }),
-  setQueryLoading: (queryLoading) => set({ queryLoading }),
+  setQueryLoading: (queryLoading) => set((s) => ({ queryLoading, sqlPanelOpen: queryLoading || s.sqlPanelOpen })),
+  setSqlPanelOpen: (sqlPanelOpen) => set({ sqlPanelOpen }),
 
   // Column view / ALTER TABLE
   columnViewContext: null,
@@ -154,8 +177,11 @@ export const useStore = create<PilotbaseStore>((set) => ({
   alterScriptLog: [],
   appendAlterScript: (sql, executed) => set((s) => ({
     alterScriptLog: [...s.alterScriptLog, { ts: new Date().toLocaleTimeString(), sql, executed }],
+    sqlLogPanelOpen: true,
   })),
   clearAlterScripts: () => set({ alterScriptLog: [] }),
+  sqlLogPanelOpen: false,
+  setSqlLogPanelOpen: (sqlLogPanelOpen) => set({ sqlLogPanelOpen }),
 
   // Vector DB view
   vectorViewContext: null,
@@ -178,16 +204,66 @@ export const useStore = create<PilotbaseStore>((set) => ({
   }),
   clearQueryHistory: () => set({ queryHistory: [] }),
 
-  // Chat
-  chatMessages: [],
-  chatLoading: false,
-  addChatMessage: (m) => set((s) => ({ chatMessages: [...s.chatMessages, m] })),
-  setChatLoading: (chatLoading) => set({ chatLoading }),
-  clearChat: () => set({ chatMessages: [] }),
-
-  // AI plan approval
-  pendingPlan: null,
-  setPendingPlan: (pendingPlan) => set({ pendingPlan }),
+  // Chat (multi-tab)
+  chatTabs: [],
+  activeTabId: null,
+  pendingRequests: {},
+  openNewChatTab: (connectionId) => {
+    let newTabId: string | null = null
+    set((s) => {
+      if (s.chatTabs.length >= MAX_CHAT_TABS) return s
+      newTabId = crypto.randomUUID()
+      const tab: ChatTab = {
+        tabId: newTabId, sessionId: null, connectionId, title: null,
+        messages: [], loading: false, pendingPlan: null,
+      }
+      return { chatTabs: [...s.chatTabs, tab], activeTabId: newTabId }
+    })
+    return newTabId
+  },
+  closeChatTab: (tabId) => set((s) => {
+    const chatTabs = s.chatTabs.filter((t) => t.tabId !== tabId)
+    const activeTabId = s.activeTabId === tabId
+      ? (chatTabs[chatTabs.length - 1]?.tabId ?? null)
+      : s.activeTabId
+    return { chatTabs, activeTabId }
+  }),
+  setActiveChatTab: (tabId) => set({ activeTabId: tabId }),
+  addTabMessage: (tabId, m) => set((s) => ({
+    chatTabs: s.chatTabs.map((t) => t.tabId === tabId ? { ...t, messages: [...t.messages, m] } : t),
+  })),
+  setTabMessages: (tabId, messages) => set((s) => ({
+    chatTabs: s.chatTabs.map((t) => t.tabId === tabId ? { ...t, messages } : t),
+  })),
+  setTabLoading: (tabId, loading) => set((s) => ({
+    chatTabs: s.chatTabs.map((t) => t.tabId === tabId ? { ...t, loading } : t),
+  })),
+  setTabPendingPlan: (tabId, pendingPlan) => set((s) => ({
+    chatTabs: s.chatTabs.map((t) => t.tabId === tabId ? { ...t, pendingPlan } : t),
+  })),
+  bindTabSession: (tabId, sessionId, title) => set((s) => ({
+    chatTabs: s.chatTabs.map((t) => t.tabId === tabId ? { ...t, sessionId, title: t.title ?? title } : t),
+  })),
+  clearTabMessages: (tabId) => set((s) => ({
+    chatTabs: s.chatTabs.map((t) => t.tabId === tabId ? { ...t, messages: [] } : t),
+  })),
+  registerPendingRequest: (requestId, tabId) => set((s) => ({
+    pendingRequests: { ...s.pendingRequests, [requestId]: tabId },
+  })),
+  resolveTabForRequest: (requestId, sessionId) => {
+    const s = get()
+    if (requestId && s.pendingRequests[requestId]) {
+      const tabId = s.pendingRequests[requestId]
+      const { [requestId]: _discard, ...rest } = s.pendingRequests
+      set({ pendingRequests: rest })
+      return tabId
+    }
+    if (sessionId) {
+      const tab = s.chatTabs.find((t) => t.sessionId === sessionId)
+      if (tab) return tab.tabId
+    }
+    return null
+  },
 
   // WebSocket
   wsConnected: false,

@@ -1,6 +1,14 @@
 """
 AI chat router — streams LangGraph agent responses over HTTP SSE and WebSocket.
 
+Chat turns are persisted per-session (see app.services.chat_history_service)
+so a session's prior turns are replayed into the agent's context on every
+new message, and a lightweight keyword+recency heuristic
+(app.services.chat_relevance) surfaces relevant snippets from the user's
+OTHER sessions as an extra system message when applicable. db_agent.py stays
+stateless/checkpointer-free — all persistence and context assembly happens
+here in the router.
+
 Mutating tool calls run in "propose only" mode (see app.agents.db_agent) and
 are surfaced to the user as a plan requiring explicit approval — see
 pending_plans / commit_plan / reject_plan below.
@@ -12,14 +20,16 @@ from typing import AsyncGenerator, Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.db_agent import create_db_agent
 from app.config import settings
-from app.database import get_session
+from app.database import AsyncSessionLocal, get_session
+from app.models.chat_session import ChatSession
 from app.routers._common import get_connection_or_404
+from app.services import chat_history_service, chat_relevance
 from app.services.db_service import db_service
 from app.websocket.manager import manager
 
@@ -34,9 +44,9 @@ _MAX_PENDING_PLANS = 500
 _pending_plans: "OrderedDict[str, Dict[str, Any]]" = OrderedDict()
 
 
-def _store_plan(conn, steps: list, user_id: str) -> str:
+def _store_plan(conn, steps: list, user_id: str, session_id: str) -> str:
     plan_id = str(uuid.uuid4())
-    _pending_plans[plan_id] = {"conn": conn, "steps": steps, "user_id": user_id}
+    _pending_plans[plan_id] = {"conn": conn, "steps": steps, "user_id": user_id, "session_id": session_id}
     while len(_pending_plans) > _MAX_PENDING_PLANS:
         _pending_plans.popitem(last=False)
     return plan_id
@@ -51,11 +61,36 @@ async def _execute_plan_step(conn, step: Dict[str, Any], user_id: str) -> Dict[s
     return {"error": f"Unknown plan step tool: {step['tool']}"}
 
 
+async def _build_agent_messages(
+    session: AsyncSession, *, chat_session: ChatSession, user_id: str, message: str,
+) -> list[BaseMessage]:
+    """Prior turns of this session, plus (if relevant) a digest of the user's
+    other sessions, plus the new message — this is the full input handed to
+    the agent's LangGraph state."""
+    history_records = await chat_history_service.list_messages(session, session_id=chat_session.id)
+    history: list[BaseMessage] = [
+        HumanMessage(content=r.content) if r.role == "user" else AIMessage(content=r.content)
+        for r in history_records
+    ]
+
+    digest = await chat_relevance.build_context_digest(
+        session, user_id=user_id, current_session_id=chat_session.id, query_text=message,
+    )
+
+    messages: list[BaseMessage] = list(history)
+    if digest:
+        messages.append(SystemMessage(content=digest))
+    messages.append(HumanMessage(content=message))
+    return messages
+
+
 class ChatRequest(BaseModel):
     user_anon_id: str
     connection_id: str
     message: str
     target_connection_id: Optional[str] = None
+    session_id: Optional[str] = None
+    request_id: Optional[str] = None
 
 
 class PlanActionRequest(BaseModel):
@@ -76,11 +111,21 @@ async def chat(
     conn = await get_connection_or_404(body.connection_id, session)
     target_conn = await get_connection_or_404(body.target_connection_id, session) if body.target_connection_id else None
 
+    chat_session = await chat_history_service.resolve_or_create_session(
+        session, session_id=body.session_id, user_id=body.user_anon_id, connection_id=body.connection_id,
+    )
+    messages = await _build_agent_messages(
+        session, chat_session=chat_session, user_id=body.user_anon_id, message=body.message,
+    )
+    await chat_history_service.persist_user_message(
+        session, chat_session=chat_session, user_id=body.user_anon_id, content=body.message,
+    )
+
     plan_sink: list = []
     agent = create_db_agent(conn, target_conn, user_id=body.user_anon_id, propose_only=True, plan_sink=plan_sink)
 
     state = {
-        "messages": [HumanMessage(content=body.message)],
+        "messages": messages,
         "connection_id": body.connection_id,
         "user_id": body.user_anon_id,
     }
@@ -89,9 +134,11 @@ async def chat(
         result = await asyncio.get_event_loop().run_in_executor(None, lambda: agent.invoke(state))
         last_msg = result["messages"][-1]
         content = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
-        response: Dict[str, Any] = {"response": content}
+        await chat_history_service.persist_assistant_message(session, chat_session=chat_session, content=content)
+
+        response: Dict[str, Any] = {"response": content, "session_id": chat_session.id}
         if plan_sink:
-            response["plan_id"] = _store_plan(conn, plan_sink, body.user_anon_id)
+            response["plan_id"] = _store_plan(conn, plan_sink, body.user_anon_id, chat_session.id)
             response["steps"] = plan_sink
         return response
     except Exception as e:
@@ -104,22 +151,34 @@ async def chat_stream(
     session: AsyncSession = Depends(get_session),
 ):
     """SSE streaming chat endpoint — streams tokens as they arrive. Note: plan
-    proposals aren't surfaced over SSE today; use /chat or /chat/ws for that."""
+    proposals aren't surfaced over SSE today; use /chat or /chat/ws for that.
+    Not used by the current frontend (which uses /chat/ws exclusively)."""
     if not settings.ollama_api_key:
         raise HTTPException(status_code=503, detail="AI agent is not configured.")
 
     conn = await get_connection_or_404(body.connection_id, session)
     target_conn = await get_connection_or_404(body.target_connection_id, session) if body.target_connection_id else None
 
+    chat_session = await chat_history_service.resolve_or_create_session(
+        session, session_id=body.session_id, user_id=body.user_anon_id, connection_id=body.connection_id,
+    )
+    messages = await _build_agent_messages(
+        session, chat_session=chat_session, user_id=body.user_anon_id, message=body.message,
+    )
+    await chat_history_service.persist_user_message(
+        session, chat_session=chat_session, user_id=body.user_anon_id, content=body.message,
+    )
+
     agent = create_db_agent(conn, target_conn, user_id=body.user_anon_id, propose_only=True, plan_sink=[])
 
     state = {
-        "messages": [HumanMessage(content=body.message)],
+        "messages": messages,
         "connection_id": body.connection_id,
         "user_id": body.user_anon_id,
     }
 
     async def generate() -> AsyncGenerator[str, None]:
+        final_content = ""
         try:
             for chunk in agent.stream(state, stream_mode="values"):
                 msgs = chunk.get("messages", [])
@@ -127,12 +186,19 @@ async def chat_stream(
                     last = msgs[-1]
                     content = getattr(last, "content", "")
                     if content:
+                        final_content = content
                         yield f"data: {content}\n\n"
+            if final_content:
+                await chat_history_service.persist_assistant_message(
+                    session, chat_session=chat_session, content=final_content,
+                )
         except Exception as e:
             yield f"data: [ERROR] {e}\n\n"
         yield "data: [DONE]\n\n"
 
-    return StreamingResponse(generate(), media_type="text/event-stream")
+    return StreamingResponse(
+        generate(), media_type="text/event-stream", headers={"X-Session-Id": chat_session.id},
+    )
 
 
 @router.post("/chat/ws")
@@ -152,8 +218,21 @@ async def chat_via_ws(
     conn = await get_connection_or_404(body.connection_id, session)
     target_conn = await get_connection_or_404(body.target_connection_id, session) if body.target_connection_id else None
 
+    chat_session = await chat_history_service.resolve_or_create_session(
+        session, session_id=body.session_id, user_id=body.user_anon_id, connection_id=body.connection_id,
+    )
+    messages = await _build_agent_messages(
+        session, chat_session=chat_session, user_id=body.user_anon_id, message=body.message,
+    )
+    await chat_history_service.persist_user_message(
+        session, chat_session=chat_session, user_id=body.user_anon_id, content=body.message,
+    )
+
+    session_id = chat_session.id
+    request_id = body.request_id
+
     state = {
-        "messages": [HumanMessage(content=body.message)],
+        "messages": messages,
         "connection_id": body.connection_id,
         "user_id": body.user_anon_id,
     }
@@ -168,18 +247,33 @@ async def chat_via_ws(
             last_msg = result["messages"][-1]
             content = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
 
+            # The request-scoped `session` is closed by the time this background
+            # task runs — use a fresh one to persist the assistant's reply.
+            async with AsyncSessionLocal() as bg_session:
+                bg_chat_session = await chat_history_service.get_owned_session_or_404(
+                    bg_session, session_id, body.user_anon_id,
+                )
+                await chat_history_service.persist_assistant_message(
+                    bg_session, chat_session=bg_chat_session, content=content,
+                )
+
             if plan_sink:
-                plan_id = _store_plan(conn, plan_sink, body.user_anon_id)
+                plan_id = _store_plan(conn, plan_sink, body.user_anon_id, session_id)
                 await manager.send(body.user_anon_id, "plan_proposed", {
                     "plan_id": plan_id, "steps": plan_sink, "summary": content,
+                    "session_id": session_id, "request_id": request_id,
                 })
             else:
-                await manager.send(body.user_anon_id, "agent_done", {"response": content})
+                await manager.send(body.user_anon_id, "agent_done", {
+                    "response": content, "session_id": session_id, "request_id": request_id,
+                })
         except Exception as e:
-            await manager.send(body.user_anon_id, "error", {"message": str(e)})
+            await manager.send(body.user_anon_id, "error", {
+                "message": str(e), "session_id": session_id, "request_id": request_id,
+            })
 
     asyncio.create_task(run_agent())
-    return {"message": "Agent started. Response will arrive via WebSocket."}
+    return {"message": "Agent started. Response will arrive via WebSocket.", "session_id": session_id}
 
 
 @router.post("/plan/commit")
@@ -198,7 +292,9 @@ async def commit_plan(body: PlanActionRequest):
         except Exception as e:
             results.append({"step": step, "result": {"error": str(e)}})
 
-    await manager.send(body.user_anon_id, "plan_committed", {"plan_id": body.plan_id, "results": results})
+    await manager.send(body.user_anon_id, "plan_committed", {
+        "plan_id": body.plan_id, "results": results, "session_id": entry.get("session_id"),
+    })
     return {"message": "Plan committed.", "results": results}
 
 
@@ -206,5 +302,7 @@ async def commit_plan(body: PlanActionRequest):
 async def reject_plan(body: PlanActionRequest):
     entry = _pending_plans.pop(body.plan_id, None)
     if entry and entry["user_id"] == body.user_anon_id:
-        await manager.send(body.user_anon_id, "plan_rejected", {"plan_id": body.plan_id})
+        await manager.send(body.user_anon_id, "plan_rejected", {
+            "plan_id": body.plan_id, "session_id": entry.get("session_id"),
+        })
     return {"message": "Plan rejected."}

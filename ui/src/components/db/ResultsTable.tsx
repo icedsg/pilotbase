@@ -244,6 +244,7 @@ export default function ResultsTable() {
     activeConnectionId, connections,
     columnViewContext,
     alterScriptLog, appendAlterScript, clearAlterScripts,
+    sqlLogPanelOpen, setSqlLogPanelOpen,
   } = useStore()
   const { userId } = useUserSession()
 
@@ -413,84 +414,11 @@ export default function ResultsTable() {
     navigator.clipboard.writeText(text)
   }
 
-  // ── Loading / error / empty states ───────────────────────────────────────────
-
-  if (queryLoading) {
-    return (
-      <div className="h-full flex items-center justify-center text-xs text-gray-500">
-        <span className="animate-pulse">Running query…</span>
-      </div>
-    )
-  }
-
-  if (!queryResult) {
-    return (
-      <div className="h-full flex items-center justify-center text-xs text-gray-600">
-        Results will appear here
-      </div>
-    )
-  }
-
-  // ── Multiple statements: pick out the active tab's result ────────────────────
-
-  const isMulti = queryResult.multi === true && Array.isArray(queryResult.results)
-  const multiResults = isMulti ? queryResult.results! : null
-  const activeIdx = isMulti ? Math.min(activeResultTab, multiResults!.length - 1) : 0
-  const active: QueryResult = isMulti ? multiResults![activeIdx] : queryResult
-
-  const resultTabs = isMulti && multiResults!.length > 1 ? (
-    <div className="flex items-center gap-1 px-2 pt-1 bg-surface-300 border-b border-surface-50 flex-shrink-0 overflow-x-auto">
-      {multiResults!.map((r, i) => (
-        <button
-          key={i}
-          onClick={() => setActiveResultTab(i)}
-          className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium border-b-2 flex-shrink-0 transition-colors ${
-            i === activeIdx
-              ? 'text-accent border-accent'
-              : 'text-gray-500 border-transparent hover:text-gray-300'
-          }`}
-        >
-          Query {i + 1}
-          {r.error && <AlertCircle size={11} className="text-red-400" />}
-        </button>
-      ))}
-    </div>
-  ) : null
-
-  const hasError = active.error
-  if (hasError) {
-    return (
-      <div className="h-full flex flex-col bg-surface-200">
-        {resultTabs}
-        <div className="p-4">
-          <div className="flex items-start gap-2 text-red-400 text-xs">
-            <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
-            <pre className="whitespace-pre-wrap font-mono">{active.error}</pre>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  if (active.columns.length === 0) {
-    return (
-      <div className="h-full flex flex-col bg-surface-200">
-        {resultTabs}
-        <div className="flex-1 flex items-center gap-2 justify-center text-xs text-green-400">
-          <CheckCircle size={18} />
-          <span>
-            Query executed.{active.affected !== undefined ? ` ${active.affected} row(s) affected.` : ''}
-          </span>
-        </div>
-      </div>
-    )
-  }
-
   // ── Shared SQL log panel ──────────────────────────────────────────────────────
 
   const pendingScripts = alterScriptLog.filter(e => !e.executed)
 
-  const sqlLogPanel = (
+  const sqlLogPanel = !sqlLogPanelOpen ? null : (
     <div className="h-44 flex-shrink-0 border-t-2 border-surface-50 flex flex-col bg-surface-300">
       <div className="flex items-center justify-between px-3 py-1 border-b border-surface-50 flex-shrink-0">
         <span className="text-xs font-medium text-gray-400">
@@ -532,6 +460,13 @@ export default function ResultsTable() {
               </button>
             </>
           )}
+          <button
+            onClick={() => setSqlLogPanelOpen(false)}
+            className="btn-ghost p-0.5 text-gray-500 hover:text-gray-300 transition-colors"
+            title="Close panel"
+          >
+            <X size={13} />
+          </button>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-3 font-mono text-xs">
@@ -567,6 +502,87 @@ export default function ResultsTable() {
       </div>
     </div>
   )
+
+  // ── Loading / error / empty states ───────────────────────────────────────────
+
+  if (queryLoading) {
+    return (
+      <div className="h-full flex flex-col bg-surface-200">
+        <div className="flex-1 flex items-center justify-center text-xs text-gray-500">
+          <span className="animate-pulse">Running query…</span>
+        </div>
+        {sqlLogPanel}
+      </div>
+    )
+  }
+
+  if (!queryResult) {
+    return (
+      <div className="h-full flex flex-col bg-surface-200">
+        <div className="flex-1 flex items-center justify-center text-xs text-gray-600">
+          Results will appear here
+        </div>
+        {sqlLogPanel}
+      </div>
+    )
+  }
+
+  // ── Multiple statements: pick out the active tab's result ────────────────────
+
+  const isMulti = queryResult.multi === true && Array.isArray(queryResult.results)
+  const multiResults = isMulti ? queryResult.results! : null
+  const activeIdx = isMulti ? Math.min(activeResultTab, multiResults!.length - 1) : 0
+  const active: QueryResult = isMulti ? multiResults![activeIdx] : queryResult
+
+  const resultTabs = isMulti && multiResults!.length > 1 ? (
+    <div className="flex items-center gap-1 px-2 pt-1 bg-surface-300 border-b border-surface-50 flex-shrink-0 overflow-x-auto">
+      {multiResults!.map((r, i) => (
+        <button
+          key={i}
+          onClick={() => setActiveResultTab(i)}
+          className={`flex items-center gap-1 px-2.5 py-1 text-xs font-medium border-b-2 flex-shrink-0 transition-colors ${
+            i === activeIdx
+              ? 'text-accent border-accent'
+              : 'text-gray-500 border-transparent hover:text-gray-300'
+          }`}
+        >
+          Query {i + 1}
+          {r.error && <AlertCircle size={11} className="text-red-400" />}
+        </button>
+      ))}
+    </div>
+  ) : null
+
+  const hasError = active.error
+  if (hasError) {
+    return (
+      <div className="h-full flex flex-col bg-surface-200">
+        {resultTabs}
+        <div className="p-4">
+          <div className="flex items-start gap-2 text-red-400 text-xs">
+            <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
+            <pre className="whitespace-pre-wrap font-mono">{active.error}</pre>
+          </div>
+        </div>
+        {sqlLogPanel}
+      </div>
+    )
+  }
+
+  if (active.columns.length === 0) {
+    return (
+      <div className="h-full flex flex-col bg-surface-200">
+        {resultTabs}
+        <div className="flex-1 flex items-center gap-2 justify-center text-xs text-green-400">
+          <CheckCircle size={18} />
+          <span>
+            Query executed.{active.affected !== undefined ? ` ${active.affected} row(s) affected.` : ''}
+          </span>
+        </div>
+        {sqlLogPanel}
+      </div>
+    )
+  }
 
   // ── Column view (editable) ────────────────────────────────────────────────────
 

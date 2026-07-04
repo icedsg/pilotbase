@@ -1,10 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Trash2, Bot, X, Check, Ban, Loader2 } from 'lucide-react'
+import { Send, Trash2, Bot, X, Check, Ban, Loader2, Plus, Clock } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
-import { useStore } from '../../store'
+import { useStore, MAX_CHAT_TABS } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
-import { apiChatViaWs, apiCommitPlan, apiRejectPlan } from '../../api/client'
-import type { ChatMessage } from '../../types'
+import {
+  apiChatViaWs, apiCommitPlan, apiRejectPlan,
+  apiListChatSessions, apiGetChatSessionMessages,
+} from '../../api/client'
+import { formatChatTimestamp } from '../../lib/formatTimestamp'
+import type { ChatMessage, ChatSessionSummary } from '../../types'
 
 interface Props {
   onClose: () => void
@@ -13,68 +17,142 @@ interface Props {
 export default function RightPanel({ onClose }: Props) {
   const { userId } = useUserSession()
   const {
-    chatMessages, chatLoading, addChatMessage, setChatLoading, clearChat, activeConnectionId, connections,
-    pendingPlan, setPendingPlan,
+    chatTabs, activeTabId, connections, activeConnectionId,
+    openNewChatTab, closeChatTab, setActiveChatTab,
+    addTabMessage, setTabMessages, setTabLoading, setTabPendingPlan, bindTabSession, clearTabMessages,
+    registerPendingRequest,
   } = useStore()
-  const activeConnection = connections.find(c => c.id === activeConnectionId) ?? null
+
+  const activeTab = chatTabs.find((t) => t.tabId === activeTabId) ?? null
+  const activeConnection = connections.find((c) => c.id === activeTab?.connectionId) ?? null
+
   const [input, setInput] = useState('')
   const [planBusy, setPlanBusy] = useState(false)
+  const [banner, setBanner] = useState<string | null>(null)
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [historySessions, setHistorySessions] = useState<ChatSessionSummary[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
+  // Ensure there's always at least one open tab.
+  useEffect(() => {
+    if (chatTabs.length === 0) openNewChatTab(activeConnectionId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-    if (!chatLoading) inputRef.current?.focus()
-  }, [chatMessages, chatLoading])
+    if (activeTab && !activeTab.loading) inputRef.current?.focus()
+  }, [activeTab?.messages, activeTab?.loading])
+
+  useEffect(() => {
+    if (!banner) return
+    const t = setTimeout(() => setBanner(null), 4000)
+    return () => clearTimeout(t)
+  }, [banner])
+
+  const handleNewTab = () => {
+    const tabId = openNewChatTab(activeConnectionId)
+    if (!tabId) setBanner('Maximum 3 chats open — close one first.')
+  }
+
+  const openHistory = async () => {
+    const next = !historyOpen
+    setHistoryOpen(next)
+    if (next) {
+      setHistoryLoading(true)
+      try {
+        const { sessions } = await apiListChatSessions(userId)
+        setHistorySessions(sessions)
+      } catch {
+        setHistorySessions([])
+      } finally {
+        setHistoryLoading(false)
+      }
+    }
+  }
+
+  const openPastSession = async (s: ChatSessionSummary) => {
+    setHistoryOpen(false)
+    const existing = chatTabs.find((t) => t.sessionId === s.id)
+    if (existing) {
+      setActiveChatTab(existing.tabId)
+      return
+    }
+    const tabId = openNewChatTab(s.connection_id)
+    if (!tabId) {
+      setBanner('Maximum 3 chats open — close one first.')
+      return
+    }
+    bindTabSession(tabId, s.id, s.title)
+    try {
+      const { messages } = await apiGetChatSessionMessages(userId, s.id)
+      setTabMessages(tabId, messages.map((m): ChatMessage => ({
+        id: m.id, role: m.role, content: m.content, timestamp: new Date(m.created_at),
+      })))
+    } catch {
+      // leave the tab empty if history couldn't be fetched
+    }
+  }
 
   const sendMessage = async () => {
     const text = input.trim()
-    if (!text || !activeConnectionId || chatLoading) return
+    const tab = activeTab
+    if (!text || !tab || !tab.connectionId || tab.loading) return
 
+    const tabId = tab.tabId
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
       content: text,
       timestamp: new Date(),
     }
-    addChatMessage(userMsg)
+    addTabMessage(tabId, userMsg)
     setInput('')
-    setChatLoading(true)
+    setTabLoading(tabId, true)
+
+    const requestId = crypto.randomUUID()
+    registerPendingRequest(requestId, tabId)
 
     try {
-      await apiChatViaWs(userId, activeConnectionId, text)
+      const ack = await apiChatViaWs(userId, tab.connectionId, text, tab.sessionId, requestId)
+      if (!tab.title) bindTabSession(tabId, ack.session_id, text.slice(0, 80))
+      else if (!tab.sessionId) bindTabSession(tabId, ack.session_id, null)
     } catch {
-      addChatMessage({
+      addTabMessage(tabId, {
         id: crypto.randomUUID(),
         role: 'assistant',
         content: 'AI agent unavailable. Check the server configuration.',
         timestamp: new Date(),
       })
-      setChatLoading(false)
+      setTabLoading(tabId, false)
     }
   }
 
   const approvePlan = async () => {
-    if (!pendingPlan) return
+    const tab = activeTab
+    if (!tab?.pendingPlan) return
     setPlanBusy(true)
     try {
-      await apiCommitPlan(userId, pendingPlan.planId)
+      await apiCommitPlan(userId, tab.pendingPlan.planId)
     } catch {
-      addChatMessage({ id: crypto.randomUUID(), role: 'assistant', content: 'Failed to apply the plan.', timestamp: new Date() })
-      setPendingPlan(null)
+      addTabMessage(tab.tabId, { id: crypto.randomUUID(), role: 'assistant', content: 'Failed to apply the plan.', timestamp: new Date() })
+      setTabPendingPlan(tab.tabId, null)
     } finally {
       setPlanBusy(false)
     }
   }
 
   const rejectPlan = async () => {
-    if (!pendingPlan) return
+    const tab = activeTab
+    if (!tab?.pendingPlan) return
     setPlanBusy(true)
     try {
-      await apiRejectPlan(userId, pendingPlan.planId)
+      await apiRejectPlan(userId, tab.pendingPlan.planId)
     } finally {
       setPlanBusy(false)
-      setPendingPlan(null)
+      setTabPendingPlan(tab.tabId, null)
     }
   }
 
@@ -91,7 +169,11 @@ export default function RightPanel({ onClose }: Props) {
           )}
         </div>
         <div className="flex items-center gap-0.5">
-          <button onClick={clearChat} className="btn-ghost p-1" title="Clear chat">
+          <button
+            onClick={() => activeTab && clearTabMessages(activeTab.tabId)}
+            className="btn-ghost p-1"
+            title="Clear chat"
+          >
             <Trash2 size={16} />
           </button>
           <button onClick={onClose} className="btn-ghost p-1" title="Close panel">
@@ -100,8 +182,66 @@ export default function RightPanel({ onClose }: Props) {
         </div>
       </div>
 
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-surface-50 flex-shrink-0 overflow-x-auto">
+        {chatTabs.map((tab) => (
+          <div
+            key={tab.tabId}
+            onClick={() => setActiveChatTab(tab.tabId)}
+            className={`group flex items-center gap-1 pl-2 pr-1 py-1 rounded text-xs max-w-[120px] flex-shrink-0 cursor-pointer ${
+              tab.tabId === activeTabId ? 'bg-accent/20 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-surface-300'
+            }`}
+          >
+            <span className="truncate">{tab.title ?? 'New chat'}</span>
+            <button
+              onClick={(e) => { e.stopPropagation(); closeChatTab(tab.tabId) }}
+              className="opacity-0 group-hover:opacity-100 flex-shrink-0 hover:text-red-500"
+              title="Close chat"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        ))}
+
+        <button
+          onClick={handleNewTab}
+          disabled={chatTabs.length >= MAX_CHAT_TABS}
+          className="btn-ghost p-1 flex-shrink-0 disabled:opacity-30 disabled:cursor-not-allowed"
+          title={chatTabs.length >= MAX_CHAT_TABS ? 'Maximum 3 chats open' : 'New chat'}
+        >
+          <Plus size={14} />
+        </button>
+
+        <div className="relative flex-shrink-0">
+          <button onClick={openHistory} className={`btn-ghost p-1 ${historyOpen ? 'text-accent' : ''}`} title="Past chats">
+            <Clock size={14} />
+          </button>
+          {historyOpen && (
+            <div className="absolute right-0 top-full mt-1 w-56 max-h-72 overflow-y-auto bg-surface-200 border border-surface-50 rounded shadow-lg z-20">
+              {historyLoading && <div className="p-2 text-[11px] text-gray-500">Loading…</div>}
+              {!historyLoading && historySessions.length === 0 && (
+                <div className="p-2 text-[11px] text-gray-500">No past chats yet.</div>
+              )}
+              {!historyLoading && historySessions.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => openPastSession(s)}
+                  className="w-full text-left px-2 py-1.5 text-[11px] hover:bg-surface-300 truncate block"
+                  title={s.title ?? 'New chat'}
+                >
+                  {s.title ?? 'New chat'}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {banner && (
+        <div className="text-[11px] text-amber-600 bg-amber-500/10 px-2 py-1 flex-shrink-0">{banner}</div>
+      )}
+
       <div className="flex-1 overflow-y-auto p-2 space-y-2 text-xs">
-        {chatMessages.length === 0 && (
+        {activeTab && activeTab.messages.length === 0 && (
           <div className="text-center text-gray-600 mt-4 px-4">
             <Bot size={31} className="mx-auto mb-2 text-gray-700" />
             {activeConnection
@@ -110,7 +250,7 @@ export default function RightPanel({ onClose }: Props) {
             }
           </div>
         )}
-        {chatMessages.map((msg) => (
+        {activeTab?.messages.map((msg) => (
           <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
             <div
               className={`max-w-[85%] rounded-lg px-3 py-2 ${
@@ -119,20 +259,23 @@ export default function RightPanel({ onClose }: Props) {
                   : 'bg-surface-300 text-gray-700 dark:text-gray-300'
               }`}
             >
+              <p className="text-[11px] text-gray-600 mb-1">{formatChatTimestamp(msg.timestamp)}</p>
               {msg.role === 'assistant' ? (
-                <div className="prose prose-xs dark:prose-invert max-w-none leading-relaxed
-                  prose-p:my-1 prose-pre:my-1 prose-pre:text-[11px] prose-code:text-[11px]
-                  prose-headings:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0">
-                  <ReactMarkdown>{msg.content}</ReactMarkdown>
+                <div className="flex items-start gap-1.5">
+                  <Bot size={14} className="flex-shrink-0 mt-0.5 text-gray-500" />
+                  <div className="prose dark:prose-invert max-w-none leading-relaxed text-[9.6px]
+                    prose-p:my-1 prose-pre:my-1 prose-pre:text-[8.8px] prose-code:text-[8.8px]
+                    prose-headings:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0">
+                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  </div>
                 </div>
               ) : (
                 <p className="whitespace-pre-wrap break-words leading-relaxed">{msg.content}</p>
               )}
-              <p className="text-[13px] text-gray-600 mt-1">{msg.timestamp.toLocaleTimeString()}</p>
             </div>
           </div>
         ))}
-        {chatLoading && (
+        {activeTab?.loading && (
           <div className="flex justify-start">
             <div className="bg-surface-300 rounded-lg px-3 py-2 text-gray-500 flex items-center gap-1">
               <span className="animate-pulse">●</span>
@@ -142,13 +285,13 @@ export default function RightPanel({ onClose }: Props) {
           </div>
         )}
 
-        {pendingPlan && (
+        {activeTab?.pendingPlan && (
           <div className="border border-accent/40 bg-accent/5 rounded-lg p-3 space-y-2">
             <div className="text-xs font-medium text-gray-700 dark:text-gray-300">
               Proposed changes — nothing has run yet
             </div>
             <ul className="space-y-1">
-              {pendingPlan.steps.map((step, i) => (
+              {activeTab.pendingPlan.steps.map((step, i) => (
                 <li key={i} className="text-[11px] font-mono bg-surface-300 rounded px-2 py-1 break-all">
                   {step.tool === 'create_database'
                     ? `create database '${step.db_name}'`
@@ -186,13 +329,13 @@ export default function RightPanel({ onClose }: Props) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-            placeholder={activeConnectionId ? 'Ask about your data…' : 'Select a connection first'}
-            disabled={!activeConnectionId || chatLoading}
+            placeholder={activeTab?.connectionId ? 'Ask about your data…' : 'Select a connection first'}
+            disabled={!activeTab?.connectionId || !!activeTab?.loading}
             className="flex-1 bg-surface-300 text-gray-800 dark:text-gray-200 text-xs rounded px-2 py-1.5 border border-surface-50 focus:outline-none focus:border-accent disabled:opacity-50 placeholder-gray-500 dark:placeholder-gray-600"
           />
           <button
             onClick={sendMessage}
-            disabled={!input.trim() || !activeConnectionId || chatLoading}
+            disabled={!input.trim() || !activeTab?.connectionId || !!activeTab?.loading}
             className="btn-primary px-2 py-1.5"
           >
             <Send size={17} />

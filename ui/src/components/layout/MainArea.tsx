@@ -13,7 +13,7 @@ import DbTypeIcon from '../db/DbTypeIcon'
 export default function MainArea() {
   const {
     activeConnectionId, connections, activeDatabase, activeQuery, queryLoading,
-    vectorViewContext, nosqlViewContext, migrationViewContext,
+    vectorViewContext, nosqlViewContext, migrationViewContext, sqlPanelOpen,
     setVectorViewContext, setNosqlViewContext, setMigrationViewContext,
   } = useStore()
   const activeConn = connections.find((c) => c.id === activeConnectionId)
@@ -72,8 +72,8 @@ export default function MainArea() {
           )}
         </div>
 
-        {/* Right: SQL controls only when not in special view */}
-        {!isSpecialView && (
+        {/* Right: SQL controls only when the query editor panel is open */}
+        {!isSpecialView && sqlPanelOpen && (
           <div className="flex items-center gap-2 flex-shrink-0 ml-4">
             <button
               onClick={() => queryEditorRef.current?.run()}
@@ -110,7 +110,7 @@ export default function MainArea() {
         <div className="flex-1 min-h-0">
           {vectorViewContext ? <VectorChunksView /> : migrationViewContext ? <MigrationCompareView /> : <NoSQLDocumentView />}
         </div>
-      ) : (
+      ) : sqlPanelOpen ? (
         <PanelGroup direction="vertical" className="flex-1">
           <Panel defaultSize={40} minSize={20}>
             <QueryEditor ref={queryEditorRef} />
@@ -120,6 +120,10 @@ export default function MainArea() {
             <ResultsTable />
           </Panel>
         </PanelGroup>
+      ) : (
+        <div className="flex-1 min-h-0">
+          <ResultsTable />
+        </div>
       )}
     </div>
   )

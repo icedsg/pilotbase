@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import {
   Table2, ChevronRight, ChevronDown,
   Eye, Loader2, Layers, Box, Key, Trash2, Settings2, Pencil, RefreshCw,
-  DatabaseBackup, GitMerge, Webhook,
+  DatabaseBackup, GitMerge, Webhook, FileCode,
 } from 'lucide-react'
 import DbTypeIcon from './DbTypeIcon'
 import { useStore } from '../../store'
@@ -16,6 +16,7 @@ import ConfirmDialog from '../common/ConfirmDialog'
 import BackupModal from '../backup/BackupModal'
 import MigrationTargetPicker from '../migration/MigrationTargetPicker'
 import ApiConfigModal from '../papi/ApiConfigModal'
+import ExportSqlModal from './ExportSqlModal'
 import type { DbConnection, DbObject, QueryResult } from '../../types'
 
 interface TreeNode {
@@ -111,6 +112,7 @@ export default function ConnectionTree({ refreshKey }: Props) {
   const [backupTarget,     setBackupTarget]     = useState<DbCtxMenu | null>(null)
   const [migrationSource,  setMigrationSource]  = useState<DbCtxMenu | null>(null)
   const [apiConfigTarget,  setApiConfigTarget]  = useState<string | null>(null)
+  const [exportSqlTarget,  setExportSqlTarget]  = useState<{ connId: string; db: string; table?: string } | null>(null)
 
   useEffect(() => {
     if (!userId) return
@@ -315,6 +317,10 @@ export default function ConnectionTree({ refreshKey }: Props) {
     } finally {
       setQueryLoading(false)
     }
+  }
+
+  const handleExportSql = (target: ContextMenuTarget) => {
+    setExportSqlTarget({ connId: target.connId, db: target.db, table: target.name })
   }
 
   const handleTruncate = (target: ContextMenuTarget) => {
@@ -522,7 +528,7 @@ export default function ConnectionTree({ refreshKey }: Props) {
                             ) : (
                               <>
                                 {(['table', 'view', 'collection', 'key'] as const).map((type) => {
-                                  const items = (node.objects || []).filter((o) => o.type === type)
+                                  const items = (node.objects || []).filter((o) => o.type === type).sort((a, b) => a.name.localeCompare(b.name))
                                   if (!items.length) return null
                                   const Icon  = type === 'table' ? Table2 : type === 'view' ? Eye : type === 'collection' ? Box : Key
                                   const label = type === 'table' ? 'Tables' : type === 'view' ? 'Views' : type === 'collection' ? 'Collections' : 'Keys'
@@ -605,13 +611,17 @@ export default function ConnectionTree({ refreshKey }: Props) {
           target={ctxMenu}
           onViewRows={() => handleViewRows(ctxMenu)}
           onViewColumns={() => handleViewColumns(ctxMenu)}
+          onExportSql={() => handleExportSql(ctxMenu)}
           onTruncate={() => handleTruncate(ctxMenu)}
           onDrop={() => handleDrop(ctxMenu)}
           onClose={() => setCtxMenu(null)}
         />
       )}
 
-      {dbCtxMenu && (
+      {dbCtxMenu && (() => {
+        const dbCtxConnType = connections.find(c => c.id === dbCtxMenu.connId)?.db_type || ''
+        const canExportSql = !VECTOR_DB_TYPES.has(dbCtxConnType) && !NOSQL_DOC_TYPES.has(dbCtxConnType) && dbCtxConnType !== 'redis'
+        return (
         <div
           ref={dbCtxRef}
           style={{ position: 'fixed', left: Math.min(dbCtxMenu.x + 2, window.innerWidth - 220), top: Math.min(dbCtxMenu.y, window.innerHeight - 120), zIndex: 9999 }}
@@ -651,6 +661,15 @@ export default function ConnectionTree({ refreshKey }: Props) {
             <Webhook size={15} />
             <span>Enable API</span>
           </button>
+          {canExportSql && (
+            <button
+              className="ctx-item hover:text-gray-900 dark:hover:text-white"
+              onClick={() => { setExportSqlTarget({ connId: dbCtxMenu.connId, db: dbCtxMenu.db }); setDbCtxMenu(null) }}
+            >
+              <FileCode size={15} />
+              <span>Export as SQL</span>
+            </button>
+          )}
           <div className="border-t border-surface-50 my-1" />
           <button
             className="ctx-item hover:text-red-600 dark:hover:text-red-400"
@@ -660,7 +679,8 @@ export default function ConnectionTree({ refreshKey }: Props) {
             <span>Drop Database</span>
           </button>
         </div>
-      )}
+        )
+      })()}
 
       {backupTarget && (
         <BackupModal connId={backupTarget.connId} database={backupTarget.db} onClose={() => setBackupTarget(null)} />
@@ -674,6 +694,14 @@ export default function ConnectionTree({ refreshKey }: Props) {
       )}
       {apiConfigTarget && (
         <ApiConfigModal connId={apiConfigTarget} onClose={() => setApiConfigTarget(null)} />
+      )}
+      {exportSqlTarget && (
+        <ExportSqlModal
+          connId={exportSqlTarget.connId}
+          database={exportSqlTarget.db}
+          table={exportSqlTarget.table}
+          onClose={() => setExportSqlTarget(null)}
+        />
       )}
 
       {confirmAction && (() => {

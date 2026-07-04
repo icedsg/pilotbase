@@ -5,7 +5,7 @@ import type {
   QueryResult,
   TableInfo,
   UserSession,
-  ChatMessage,
+  ChatSessionSummary,
   QueryHistoryEntry,
   MigrationDiff,
   PapiConfig,
@@ -128,6 +128,23 @@ export const apiSchemaDiff = (userId: string, sourceId: string, targetId: string
 export const apiMigrationScript = (userId: string, sourceId: string, targetId: string): Promise<{ sql: string }> =>
   http.post('/migration/script', { user_anon_id: userId, source_connection_id: sourceId, target_connection_id: targetId }).then(r => r.data)
 
+// ── Export as SQL ─────────────────────────────────────────────────────────────
+
+export interface ExportSqlOptions {
+  create_table: boolean
+  drop_if_exists: boolean
+  include_inserts: boolean
+}
+
+export const apiExportSql = (
+  userId: string,
+  connId: string,
+  database: string | undefined,
+  tables: string[],
+  options: ExportSqlOptions
+): Promise<{ sql: string }> =>
+  http.post('/export/sql', { user_anon_id: userId, connection_id: connId, database, tables, ...options }).then(r => r.data)
+
 // ── Generated CRUD API ("papi") ────────────────────────────────────────────────
 
 export const apiPapiStatus = (userId: string, connId: string): Promise<PapiConfig> =>
@@ -173,8 +190,12 @@ export const apiUploadVectorChunks = (
 export const apiChat = (userId: string, connId: string, message: string): Promise<{ response: string }> =>
   http.post('/ai/chat', { user_anon_id: userId, connection_id: connId, message }).then(r => r.data)
 
-export const apiChatViaWs = (userId: string, connId: string, message: string) =>
-  http.post('/ai/chat/ws', { user_anon_id: userId, connection_id: connId, message }).then(r => r.data)
+export const apiChatViaWs = (
+  userId: string, connId: string, message: string, sessionId: string | null, requestId: string,
+): Promise<{ message: string; session_id: string }> =>
+  http.post('/ai/chat/ws', {
+    user_anon_id: userId, connection_id: connId, message, session_id: sessionId, request_id: requestId,
+  }).then(r => r.data)
 
 export const apiChatStreamUrl = (userId: string, connId: string) =>
   `${BASE}/api/v1/ai/chat/stream`
@@ -184,3 +205,23 @@ export const apiCommitPlan = (userId: string, planId: string) =>
 
 export const apiRejectPlan = (userId: string, planId: string) =>
   http.post('/ai/plan/reject', { user_anon_id: userId, plan_id: planId }).then(r => r.data)
+
+// ── AI chat sessions ─────────────────────────────────────────────────────────
+
+export const apiListChatSessions = (userId: string): Promise<{ sessions: ChatSessionSummary[] }> =>
+  http.get('/ai/sessions/', { params: { user_anon_id: userId } }).then(r => r.data)
+
+export interface RawSessionMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  created_at: string
+}
+
+export const apiGetChatSessionMessages = (
+  userId: string, sessionId: string,
+): Promise<{ session: ChatSessionSummary; messages: RawSessionMessage[] }> =>
+  http.get(`/ai/sessions/${sessionId}/messages`, { params: { user_anon_id: userId } }).then(r => r.data)
+
+export const apiDeleteChatSession = (userId: string, sessionId: string): Promise<{ message: string }> =>
+  http.delete(`/ai/sessions/${sessionId}`, { params: { user_anon_id: userId } }).then(r => r.data)

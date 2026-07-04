@@ -72,6 +72,14 @@ export interface ChatMessage {
   timestamp: Date
 }
 
+export interface ChatSessionSummary {
+  id: string
+  title: string | null
+  connection_id: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface QueryHistoryEntry {
   id: string
   connection_id: string

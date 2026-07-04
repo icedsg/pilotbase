@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Rows3, Columns3, Eraser, Trash2, Layers, FileText, Hash } from 'lucide-react'
+import { Rows3, Columns3, Eraser, Trash2, Layers, FileText, Hash, FileCode } from 'lucide-react'
 import type { DbObject } from '../../types'
 
 const VECTOR_DB_TYPES = new Set(['qdrant', 'chroma', 'weaviate', 'pinecone', 'milvus'])
@@ -19,12 +19,13 @@ interface Props {
   target: ContextMenuTarget
   onViewRows: () => void
   onViewColumns: () => void
+  onExportSql: () => void
   onTruncate: () => void
   onDrop: () => void
   onClose: () => void
 }
 
-export default function TableContextMenu({ target, onViewRows, onViewColumns, onTruncate, onDrop, onClose }: Props) {
+export default function TableContextMenu({ target, onViewRows, onViewColumns, onExportSql, onTruncate, onDrop, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -79,6 +80,13 @@ export default function TableContextMenu({ target, onViewRows, onViewColumns, on
         <button className="ctx-item hover:text-gray-900 dark:hover:text-white" onClick={() => { onViewColumns(); onClose() }}>
           <Columns3 size={16} />
           <span>View Columns</span>
+        </button>
+      )}
+
+      {(isTable || isView) && (
+        <button className="ctx-item hover:text-gray-900 dark:hover:text-white" onClick={() => { onExportSql(); onClose() }}>
+          <FileCode size={16} />
+          <span>Export as SQL</span>
         </button>
       )}
 
