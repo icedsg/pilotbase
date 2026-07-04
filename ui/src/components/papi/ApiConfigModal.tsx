@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
 import { X, Webhook, Loader2, Copy, Check } from 'lucide-react'
-import { apiPapiStatus, apiPapiEnable, apiPapiDisable } from '../../api/client'
+import {
+  apiPapiStatus, apiPapiEnable, apiPapiDisable,
+  apiPapiListTables, apiPapiEnableTable, apiPapiDisableTable, type PapiTableStatus,
+} from '../../api/client'
 import { useUserSession } from '../../hooks/useUserSession'
 import { useStore } from '../../store'
 
@@ -21,8 +24,19 @@ export default function ApiConfigModal({ connId, onClose }: Props) {
   const [toggling, setToggling] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
+  const [tables, setTables] = useState<PapiTableStatus[]>([])
+  const [tablesLoading, setTablesLoading] = useState(false)
+  const [togglingTable, setTogglingTable] = useState<string | null>(null)
 
   const baseUrl = `${BASE}/api/v1/papi/${connId}`
+
+  const loadTables = () => {
+    setTablesLoading(true)
+    apiPapiListTables(userId, connId)
+      .then((r) => setTables(r.tables))
+      .catch(() => {})
+      .finally(() => setTablesLoading(false))
+  }
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -36,6 +50,25 @@ export default function ApiConfigModal({ connId, onClose }: Props) {
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [connId, userId])
+
+  useEffect(() => {
+    if (enabled) loadTables()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled])
+
+  const toggleTable = async (table: string, currentlyEnabled: boolean) => {
+    setTogglingTable(table)
+    try {
+      const r = currentlyEnabled
+        ? await apiPapiDisableTable(userId, connId, table)
+        : await apiPapiEnableTable(userId, connId, table)
+      setTables((prev) => prev.map((t) => t.table === table ? { ...t, enabled: r.enabled } : t))
+    } catch {
+      // leave state unchanged on failure
+    } finally {
+      setTogglingTable(null)
+    }
+  }
 
   const toggle = async () => {
     setToggling(true)
@@ -116,6 +149,39 @@ export default function ApiConfigModal({ connId, onClose }: Props) {
                     (<code className="font-mono">GET/POST/PUT/DELETE {'{base}'}/{'{table}'}</code>). No FK or data
                     validation is performed — bring your own on the client.
                   </p>
+
+                  <div className="pt-2 space-y-1">
+                    <label className="block text-xs text-gray-500">
+                      Tables — only checked tables are actually reachable through the API
+                    </label>
+                    {tablesLoading ? (
+                      <div className="flex items-center gap-2 text-xs text-gray-500 py-2">
+                        <Loader2 size={14} className="animate-spin" /> Loading tables…
+                      </div>
+                    ) : (
+                      <div className="max-h-40 overflow-y-auto space-y-0.5 border border-surface-50 rounded">
+                        {tables.length === 0 && (
+                          <div className="text-[13px] text-gray-500 px-2 py-1.5">No tables found on this connection.</div>
+                        )}
+                        {tables.map((t) => (
+                          <label
+                            key={t.table}
+                            className="flex items-center gap-2 px-2 py-1.5 text-xs hover:bg-surface-300 cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={t.enabled}
+                              disabled={togglingTable === t.table}
+                              onChange={() => toggleTable(t.table, t.enabled)}
+                              className="accent-accent"
+                            />
+                            <span className="flex-1 font-mono truncate text-gray-700 dark:text-gray-300">{t.table}</span>
+                            {togglingTable === t.table && <Loader2 size={12} className="animate-spin text-gray-500" />}
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </>

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, type ReactNode } from 'react'
 import { Send, Trash2, Bot, X, Check, Ban, Loader2, Plus, Clock } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import { useStore, MAX_CHAT_TABS } from '../../store'
@@ -8,7 +8,39 @@ import {
   apiListChatSessions, apiGetChatSessionMessages,
 } from '../../api/client'
 import { formatChatTimestamp } from '../../lib/formatTimestamp'
+import ChatCodeBlock from './ChatCodeBlock'
 import type { ChatMessage, ChatSessionSummary } from '../../types'
+
+// Snapshot of the OTHER open panels (never the AI chat panel itself) sent
+// along with each message so the agent's get_ui_state tool has something to
+// read — see api/app/agents/tools/ui_context_tools.py.
+function buildUiContext(): Record<string, unknown> {
+  const s = useStore.getState()
+  const ctx: Record<string, unknown> = {}
+  if (s.activeDatabase) ctx.activeDatabase = s.activeDatabase
+  if (s.activeQuery.trim()) ctx.activeQuery = s.activeQuery
+  if (s.queryResult) {
+    ctx.queryResult = {
+      row_count: s.queryResult.row_count,
+      columns: s.queryResult.columns,
+      truncated: s.queryResult.truncated,
+    }
+  }
+  if (s.columnViewContext) ctx.columnViewContext = s.columnViewContext
+  if (s.vectorViewContext) ctx.vectorViewContext = s.vectorViewContext
+  if (s.nosqlViewContext) ctx.nosqlViewContext = s.nosqlViewContext
+  if (s.migrationViewContext) ctx.migrationViewContext = s.migrationViewContext
+  return ctx
+}
+
+const markdownComponents = {
+  code({ className, children }: { className?: string; children?: ReactNode }) {
+    const match = /language-(\w+)/.exec(className || '')
+    const code = String(children).replace(/\n$/, '')
+    if (match) return <ChatCodeBlock language={match[1]} code={code} />
+    return <code className="bg-black text-gray-200 rounded px-1 py-0.5 text-[12px]">{children}</code>
+  },
+}
 
 interface Props {
   onClose: () => void
@@ -20,7 +52,7 @@ export default function RightPanel({ onClose }: Props) {
     chatTabs, activeTabId, connections, activeConnectionId,
     openNewChatTab, closeChatTab, setActiveChatTab,
     addTabMessage, setTabMessages, setTabLoading, setTabPendingPlan, bindTabSession, clearTabMessages,
-    registerPendingRequest,
+    registerPendingRequest, setTabConnection,
   } = useStore()
 
   const activeTab = chatTabs.find((t) => t.tabId === activeTabId) ?? null
@@ -35,11 +67,23 @@ export default function RightPanel({ onClose }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Ensure there's always at least one open tab.
+  // Ensure there's always at least one open tab. Reads fresh state (not the
+  // render-time closure) so React StrictMode's double-invoke in dev can't
+  // open two tabs.
   useEffect(() => {
-    if (chatTabs.length === 0) openNewChatTab(activeConnectionId)
+    if (useStore.getState().chatTabs.length === 0) openNewChatTab(activeConnectionId)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Keep the current chat's connection in sync with whatever the user picks
+  // in the left sidebar, as long as the chat hasn't started yet — once a
+  // conversation exists we don't want to silently switch its target db.
+  useEffect(() => {
+    const tab = activeTab
+    if (!tab || tab.connectionId === activeConnectionId) return
+    if (tab.messages.length === 0 && !tab.sessionId) setTabConnection(tab.tabId, activeConnectionId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConnectionId])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -116,7 +160,7 @@ export default function RightPanel({ onClose }: Props) {
     registerPendingRequest(requestId, tabId)
 
     try {
-      const ack = await apiChatViaWs(userId, tab.connectionId, text, tab.sessionId, requestId)
+      const ack = await apiChatViaWs(userId, tab.connectionId, text, tab.sessionId, requestId, buildUiContext())
       if (!tab.title) bindTabSession(tabId, ack.session_id, text.slice(0, 80))
       else if (!tab.sessionId) bindTabSession(tabId, ack.session_id, null)
     } catch {
@@ -183,7 +227,7 @@ export default function RightPanel({ onClose }: Props) {
       </div>
 
       <div className="flex items-center gap-1 px-2 py-1 border-b border-surface-50 flex-shrink-0 overflow-x-auto">
-        {chatTabs.map((tab) => (
+        {chatTabs.length > 1 && chatTabs.map((tab) => (
           <div
             key={tab.tabId}
             onClick={() => setActiveChatTab(tab.tabId)}
@@ -263,10 +307,10 @@ export default function RightPanel({ onClose }: Props) {
               {msg.role === 'assistant' ? (
                 <div className="flex items-start gap-1.5">
                   <Bot size={14} className="flex-shrink-0 mt-0.5 text-gray-500" />
-                  <div className="prose dark:prose-invert max-w-none leading-relaxed text-[9.6px]
-                    prose-p:my-1 prose-pre:my-1 prose-pre:text-[8.8px] prose-code:text-[8.8px]
+                  <div className="prose dark:prose-invert max-w-none leading-relaxed text-[13px]
+                    prose-p:my-1 prose-pre:my-1 prose-pre:bg-transparent prose-pre:p-0
                     prose-headings:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    <ReactMarkdown components={markdownComponents}>{msg.content}</ReactMarkdown>
                   </div>
                 </div>
               ) : (

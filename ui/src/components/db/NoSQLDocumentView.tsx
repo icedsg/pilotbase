@@ -1,8 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Search, RefreshCw, Loader2, X, FileText, ChevronRight } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo, type MouseEvent } from 'react'
+import { Search, RefreshCw, Loader2, X, FileText, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
 import { useStore } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
 import { apiExecuteQuery } from '../../api/client'
+import { sortByDirection, type SortDirection } from '../../utils/sort'
+import SortContextMenu, { type SortMenuTarget } from './SortContextMenu'
 
 interface Doc {
   id: string
@@ -58,7 +60,11 @@ function ExpandableString({ value }: { value: string }) {
   )
 }
 
-function JsonView({ data, depth = 0 }: { data: unknown; depth?: number }) {
+function JsonView({ data, depth = 0, onKeyContextMenu }: {
+  data: unknown
+  depth?: number
+  onKeyContextMenu?: (key: string, e: MouseEvent) => void
+}) {
   const [collapsed, setCollapsed] = useState(depth > 1)
 
   if (data === null || data === undefined) return <span className="text-gray-500 italic">null</span>
@@ -92,8 +98,14 @@ function JsonView({ data, depth = 0 }: { data: unknown; depth?: number }) {
       <div className={depth > 0 ? 'ml-3 border-l border-surface-50 pl-2' : ''}>
         {(collapsed ? entries.slice(0, 5) : entries).map(([key, val]) => (
           <div key={key} className="text-xs py-0.5 flex gap-1 flex-wrap">
-            <span className="text-sky-400 font-medium flex-shrink-0">{key}:</span>
-            <div className="flex-1 min-w-0"><JsonView data={val} depth={depth + 1} /></div>
+            <span
+              className={`text-sky-400 font-medium flex-shrink-0 ${depth === 0 && onKeyContextMenu ? 'cursor-context-menu' : ''}`}
+              title={depth === 0 && onKeyContextMenu ? 'Right-click to sort documents by this field' : undefined}
+              onContextMenu={depth === 0 && onKeyContextMenu ? (e) => { e.preventDefault(); onKeyContextMenu(key, e) } : undefined}
+            >
+              {key}:
+            </span>
+            <div className="flex-1 min-w-0"><JsonView data={val} depth={depth + 1} onKeyContextMenu={onKeyContextMenu} /></div>
           </div>
         ))}
         {collapsed && entries.length > 5 && (
@@ -118,6 +130,9 @@ export default function NoSQLDocumentView() {
   const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [sortField, setSortField]         = useState<string | null>(null)
+  const [sortDirection, setSortDirection] = useState<SortDirection>(null)
+  const [sortMenuTarget, setSortMenuTarget] = useState<(SortMenuTarget & { field: string }) | null>(null)
 
   const fetch = useCallback(async () => {
     if (!nosqlViewContext || !userId) return
@@ -142,10 +157,30 @@ export default function NoSQLDocumentView() {
   }, [nosqlViewContext, userId])
 
   useEffect(() => { fetch() }, [fetch])
-  useEffect(() => { setSearchTerm('') }, [nosqlViewContext?.collection])
+  useEffect(() => {
+    setSearchTerm('')
+    setSortField(null)
+    setSortDirection(null)
+  }, [nosqlViewContext?.collection])
+
+  const availableFields = useMemo(() => {
+    const keys = new Set<string>()
+    for (const d of docs) {
+      for (const k of Object.keys(d.fields)) {
+        if (!['_id', 'id', '_key'].includes(k)) keys.add(k)
+      }
+    }
+    return [...keys].sort((a, b) => a.localeCompare(b))
+  }, [docs])
 
   const filtered = docs.filter(d => matchesSearch(d, searchTerm))
+  const sorted = sortField ? sortByDirection(filtered, d => d.fields[sortField], sortDirection) : filtered
   const selected = selectedId != null ? docs.find(d => d.id === selectedId) ?? null : null
+
+  const applyFieldSort = (field: string, dir: SortDirection) => {
+    setSortField(dir ? field : null)
+    setSortDirection(dir)
+  }
 
   if (!nosqlViewContext) return null
 
@@ -173,6 +208,23 @@ export default function NoSQLDocumentView() {
         <span className="text-[11px] text-gray-600 flex-shrink-0 tabular-nums">
           {loading ? '…' : `${filtered.length} / ${docs.length}`}
         </span>
+        <select
+          className="bg-surface-200 text-gray-400 px-1.5 py-1 rounded text-xs outline-none border border-surface-50 focus:border-accent flex-shrink-0 max-w-[110px]"
+          value={sortField ?? ''}
+          onChange={e => applyFieldSort(e.target.value, e.target.value ? (sortDirection ?? 'asc') : null)}
+          title="Sort documents by field"
+        >
+          <option value="">Sort by…</option>
+          {availableFields.map(f => <option key={f} value={f}>{f}</option>)}
+        </select>
+        <button
+          onClick={() => sortField && setSortDirection(d => d === 'asc' ? 'desc' : 'asc')}
+          disabled={!sortField}
+          className="btn-ghost p-1 flex-shrink-0 disabled:opacity-30 text-accent"
+          title={sortDirection === 'desc' ? 'Sort descending' : 'Sort ascending'}
+        >
+          {sortDirection === 'desc' ? <ArrowDown size={13} /> : sortDirection === 'asc' ? <ArrowUp size={13} /> : <ArrowUpDown size={13} />}
+        </button>
         <button
           onClick={fetch}
           disabled={loading}
@@ -200,12 +252,12 @@ export default function NoSQLDocumentView() {
               <div className="flex items-center justify-center gap-2 h-20 text-xs text-gray-600">
                 <Loader2 size={13} className="animate-spin" /> Loading…
               </div>
-            ) : filtered.length === 0 ? (
+            ) : sorted.length === 0 ? (
               <div className="flex items-center justify-center h-20 text-xs text-gray-600">
                 {docs.length === 0 ? 'No documents found' : 'No matches'}
               </div>
             ) : (
-              filtered.map(doc => {
+              sorted.map(doc => {
                 const preview = extractPreview(doc.fields)
                 const isSelected = selectedId === doc.id
                 return (
@@ -247,12 +299,26 @@ export default function NoSQLDocumentView() {
                 <span className="text-xs font-mono text-gray-400 break-all">{selected.id}</span>
               </div>
               <div className="font-mono text-xs space-y-1">
-                <JsonView data={selected.fields} depth={0} />
+                <JsonView
+                  data={selected.fields}
+                  depth={0}
+                  onKeyContextMenu={(key, e) => setSortMenuTarget({ field: key, label: key, x: e.clientX, y: e.clientY })}
+                />
               </div>
             </div>
           )}
         </div>
       </div>
+      {sortMenuTarget && (
+        <SortContextMenu
+          target={sortMenuTarget}
+          hasSort={sortField === sortMenuTarget.field}
+          onSortAsc={() => applyFieldSort(sortMenuTarget.field, 'asc')}
+          onSortDesc={() => applyFieldSort(sortMenuTarget.field, 'desc')}
+          onClearSort={() => applyFieldSort(sortMenuTarget.field, null)}
+          onClose={() => setSortMenuTarget(null)}
+        />
+      )}
     </div>
   )
 }

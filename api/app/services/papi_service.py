@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.connection import DbConnection
 from app.models.papi_config import PapiConfig
+from app.models.papi_table_config import PapiTableConfig
 from app.services.db_service import MongoAdapter, SQLAdapter, db_service
 
 _JWT_ALGO = "HS256"
@@ -185,6 +186,58 @@ async def disable_for_connection(session: AsyncSession, connection_id: str) -> N
 def list_exposed_tables(conn: DbConnection) -> List[str]:
     objects = db_service.list_objects(conn)
     return sorted(o["name"] for o in objects if o["type"] in ("table", "collection") and o["name"] != "apitokens")
+
+
+# ── Per-table registry ───────────────────────────────────────────────────────────
+# Enabling papi for a connection (above) provisions every table so any of them
+# CAN be served, but doesn't mean any of them SHOULD be — this registry is the
+# record of which tables were actually, deliberately activated, and is what
+# papi.py's CRUD routes check before serving a table.
+
+async def _get_table_config(session: AsyncSession, connection_id: str, table_name: str) -> Optional[PapiTableConfig]:
+    result = await session.execute(
+        select(PapiTableConfig).where(
+            PapiTableConfig.connection_id == connection_id, PapiTableConfig.table_name == table_name,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def enable_table(
+    session: AsyncSession, conn: DbConnection, table_name: str, activated_by: Optional[str],
+) -> PapiTableConfig:
+    _validate_ident(table_name)
+    if table_name not in list_exposed_tables(conn):
+        raise PapiError(f"Table '{table_name}' not found on this connection.")
+
+    cfg = await _get_table_config(session, conn.id, table_name)
+    if cfg:
+        cfg.enabled = True
+    else:
+        cfg = PapiTableConfig(connection_id=conn.id, table_name=table_name, enabled=True, activated_by=activated_by)
+        session.add(cfg)
+    await session.commit()
+    await session.refresh(cfg)
+    return cfg
+
+
+async def disable_table(session: AsyncSession, connection_id: str, table_name: str) -> None:
+    cfg = await _get_table_config(session, connection_id, table_name)
+    if cfg:
+        cfg.enabled = False
+        await session.commit()
+
+
+async def list_table_configs(session: AsyncSession, connection_id: str) -> List[PapiTableConfig]:
+    result = await session.execute(
+        select(PapiTableConfig).where(PapiTableConfig.connection_id == connection_id)
+    )
+    return list(result.scalars().all())
+
+
+async def is_table_enabled(session: AsyncSession, connection_id: str, table_name: str) -> bool:
+    cfg = await _get_table_config(session, connection_id, table_name)
+    return bool(cfg and cfg.enabled)
 
 
 # ── Auth: create_token / validate_token ──────────────────────────────────────────

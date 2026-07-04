@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, type MouseEvent } from 'react'
 import {
   Search, RefreshCw, Loader2, X, Package, ChevronRight, ChevronLeft,
-  Trash2, Pencil, Check, Upload, AlertCircle,
+  Trash2, Pencil, Check, Upload, AlertCircle, ArrowUp, ArrowDown, ArrowUpDown,
 } from 'lucide-react'
 import { useStore } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
@@ -9,12 +9,15 @@ import {
   apiExecuteQuery, apiGetVectorSchema, apiDeleteVectorChunk,
   apiUpdateVectorChunk, apiUploadVectorChunks,
 } from '../../api/client'
+import { sortByDirection, type SortDirection } from '../../utils/sort'
+import SortContextMenu, { type SortMenuTarget } from './SortContextMenu'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface Chunk {
   id: string
   payload: Record<string, unknown>
+  score?: number
 }
 
 interface SchemaProperty {
@@ -97,6 +100,10 @@ function findMatchContext(chunk: Chunk, term: string): { field: string; snippet:
   return findIn(chunk.payload, '')
 }
 
+function getChunkFieldValue(chunk: Chunk, field: string): unknown {
+  return field === 'score' ? chunk.score : chunk.payload[field]
+}
+
 function findTextField(schema: SchemaProperty[]): string {
   for (const p of schema) {
     if (['text', 'content', 'body', 'page_content', 'document'].includes(p.name)) return p.name
@@ -107,7 +114,11 @@ function findTextField(schema: SchemaProperty[]): string {
 
 // ── JSON viewer ───────────────────────────────────────────────────────────────
 
-function JsonView({ data, depth = 0 }: { data: unknown; depth?: number }) {
+function JsonView({ data, depth = 0, onKeyContextMenu }: {
+  data: unknown
+  depth?: number
+  onKeyContextMenu?: (key: string, e: MouseEvent) => void
+}) {
   const [collapsed, setCollapsed] = useState(depth > 1)
   if (data === null || data === undefined) return <span className="text-gray-500 italic">null</span>
   if (typeof data === 'boolean') return <span className="text-blue-600 dark:text-blue-400">{String(data)}</span>
@@ -143,8 +154,14 @@ function JsonView({ data, depth = 0 }: { data: unknown; depth?: number }) {
       <div className={depth > 0 ? 'ml-3 border-l border-surface-50 pl-2' : ''}>
         {(collapsed ? entries.slice(0, 4) : entries).map(([k, v]) => (
           <div key={k} className="text-xs py-0.5 flex gap-1 flex-wrap">
-            <span className="text-sky-700 dark:text-sky-400 font-medium flex-shrink-0">{k}:</span>
-            <div className="flex-1 min-w-0"><JsonView data={v} depth={depth + 1} /></div>
+            <span
+              className={`text-sky-700 dark:text-sky-400 font-medium flex-shrink-0 ${depth === 0 && onKeyContextMenu ? 'cursor-context-menu' : ''}`}
+              title={depth === 0 && onKeyContextMenu ? 'Right-click to sort chunks by this field' : undefined}
+              onContextMenu={depth === 0 && onKeyContextMenu ? (e) => { e.preventDefault(); onKeyContextMenu(k, e) } : undefined}
+            >
+              {k}:
+            </span>
+            <div className="flex-1 min-w-0"><JsonView data={v} depth={depth + 1} onKeyContextMenu={onKeyContextMenu} /></div>
           </div>
         ))}
         {collapsed && entries.length > 4 && (
@@ -286,6 +303,11 @@ export default function VectorChunksView() {
   // Upload state
   const [showUpload, setShowUpload]     = useState(false)
 
+  // Sort state (applies to the currently loaded page only)
+  const [sortField, setSortField]           = useState<string | null>(null)
+  const [sortDirection, setSortDirection]   = useState<SortDirection>(null)
+  const [sortMenuTarget, setSortMenuTarget] = useState<(SortMenuTarget & { field: string }) | null>(null)
+
   const textField = findTextField(schema)
   const totalCount = vectorViewContext?.totalCount
 
@@ -306,6 +328,7 @@ export default function VectorChunksView() {
       const loaded: Chunk[] = (result.rows || []).map(row => ({
         id: String(row.id ?? (row._additional as any)?.id ?? Object.values(row)[0] ?? '?'),
         payload: parsePayload(row),
+        score: typeof row.score === 'number' ? row.score : undefined,
       }))
       setChunks(loaded)
       setNextOffset(result.next_offset ?? null)
@@ -331,7 +354,11 @@ export default function VectorChunksView() {
       .catch(() => setSchema([]))
   }, [vectorViewContext?.collection, vectorViewContext?.connId, userId])  // eslint-disable-line
 
-  useEffect(() => { setSearchTerm('') }, [vectorViewContext?.collection])
+  useEffect(() => {
+    setSearchTerm('')
+    setSortField(null)
+    setSortDirection(null)
+  }, [vectorViewContext?.collection])
 
   const handleNextPage = () => {
     if (!nextOffset || loading) return
@@ -404,12 +431,29 @@ export default function VectorChunksView() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
+  const availableFields = useMemo(() => {
+    const keys = new Set<string>()
+    let hasScore = false
+    for (const c of chunks) {
+      if (c.score != null) hasScore = true
+      for (const k of Object.keys(c.payload)) keys.add(k)
+    }
+    const fields = [...keys].sort((a, b) => a.localeCompare(b))
+    return hasScore ? ['score', ...fields] : fields
+  }, [chunks])
+
   if (!vectorViewContext) return null
 
   const filtered = chunks.filter(c => matchesSearch(c, searchTerm))
+  const sorted = sortField ? sortByDirection(filtered, c => getChunkFieldValue(c, sortField), sortDirection) : filtered
   const selected = selectedId ? chunks.find(c => c.id === selectedId) ?? null : null
   const pageStart = pageIdx * PAGE_SIZE + 1
   const pageEnd   = pageIdx * PAGE_SIZE + chunks.length
+
+  const applyFieldSort = (field: string, dir: SortDirection) => {
+    setSortField(dir ? field : null)
+    setSortDirection(dir)
+  }
 
   return (
     <div className="h-full flex flex-col bg-surface-200">
@@ -435,6 +479,23 @@ export default function VectorChunksView() {
             {filtered.length} match{filtered.length !== 1 ? 'es' : ''}
           </span>
         )}
+        <select
+          className="bg-surface-200 text-gray-700 dark:text-gray-400 px-1.5 py-1 rounded text-xs outline-none border border-surface-50 focus:border-accent flex-shrink-0 max-w-[110px]"
+          value={sortField ?? ''}
+          onChange={e => applyFieldSort(e.target.value, e.target.value ? (sortDirection ?? 'asc') : null)}
+          title="Sort chunks by field (current page only)"
+        >
+          <option value="">Sort by…</option>
+          {availableFields.map(f => <option key={f} value={f}>{f}</option>)}
+        </select>
+        <button
+          onClick={() => sortField && setSortDirection(d => d === 'asc' ? 'desc' : 'asc')}
+          disabled={!sortField}
+          className="btn-ghost p-1 flex-shrink-0 disabled:opacity-30 text-accent"
+          title={sortDirection === 'desc' ? 'Sort descending' : 'Sort ascending'}
+        >
+          {sortDirection === 'desc' ? <ArrowDown size={13} /> : sortDirection === 'asc' ? <ArrowUp size={13} /> : <ArrowUpDown size={13} />}
+        </button>
         <button
           onClick={() => setShowUpload(true)}
           className="btn-ghost p-1 flex-shrink-0 text-accent hover:text-accent-hover"
@@ -472,13 +533,13 @@ export default function VectorChunksView() {
               <div className="flex items-center justify-center gap-2 h-20 text-xs text-gray-600">
                 <Loader2 size={13} className="animate-spin" /> Loading…
               </div>
-            ) : filtered.length === 0 ? (
+            ) : sorted.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-2 h-24 text-xs text-gray-600 dark:text-gray-400">
                 <Package size={20} className="text-gray-500 dark:text-gray-500" />
                 {chunks.length === 0 ? 'No chunks found' : 'No matches'}
               </div>
             ) : (
-              filtered.map(chunk => {
+              sorted.map(chunk => {
                 const title = extractTitle(chunk.payload, chunk.id)
                 const isSelected = selectedId === chunk.id
                 const matchCtx = searchTerm ? findMatchContext(chunk, searchTerm) : null
@@ -616,7 +677,11 @@ export default function VectorChunksView() {
                   />
                 ) : (
                   <div className="font-mono text-xs space-y-1">
-                    <JsonView data={selected.payload} depth={0} />
+                    <JsonView
+                      data={selected.payload}
+                      depth={0}
+                      onKeyContextMenu={(key, e) => setSortMenuTarget({ field: key, label: key, x: e.clientX, y: e.clientY })}
+                    />
                   </div>
                 )}
               </div>
@@ -630,6 +695,17 @@ export default function VectorChunksView() {
           textField={textField}
           onUpload={handleUpload}
           onClose={() => setShowUpload(false)}
+        />
+      )}
+
+      {sortMenuTarget && (
+        <SortContextMenu
+          target={sortMenuTarget}
+          hasSort={sortField === sortMenuTarget.field}
+          onSortAsc={() => applyFieldSort(sortMenuTarget.field, 'asc')}
+          onSortDesc={() => applyFieldSort(sortMenuTarget.field, 'desc')}
+          onClearSort={() => applyFieldSort(sortMenuTarget.field, null)}
+          onClose={() => setSortMenuTarget(null)}
         />
       )}
     </div>

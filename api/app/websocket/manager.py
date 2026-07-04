@@ -5,12 +5,14 @@ UI connects to /ws/{user_id} and receives JSON messages of the form:
   { "type": "...", "payload": { ... } }
 
 Message types:
-  agent_token    — streaming token from AI agent
-  agent_done     — agent turn complete
-  query_result   — result from an async query
-  query_executed — a query/script finished running on the server (any source)
-  error          — error notification
-  ping / pong    — keepalive
+  agent_token        — streaming token from AI agent
+  agent_done         — agent turn complete
+  agent_query_applied — agent ran a query; mirror it into the Query Editor/results grid
+  agent_vector_view  — agent browsed/updated a vector collection; open it in the Vector Chunks view
+  query_result       — result from an async query
+  query_executed     — a query/script finished running on the server (any source)
+  error              — error notification
+  ping / pong        — keepalive
 """
 import asyncio
 import json

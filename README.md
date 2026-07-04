@@ -6,6 +6,8 @@ Stop juggling pgAdmin, MongoDB Compass, RedisInsight, and separate vector DB das
 
 > **First Beta Release** — Core query, schema browsing, and connection management are stable and production-ready. AI-assisted natural-language querying is live. Schema migration and automated backup features are actively in development and coming soon.
 
+![Pilotbase screenshot](docs/screenshots/main.png)
+
 ---
 
 ## Why Pilotbase?

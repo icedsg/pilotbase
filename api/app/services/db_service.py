@@ -195,6 +195,11 @@ class SQLAdapter(BaseAdapter):
         else:
             raise ValueError(f"create_db_user is not supported for {self._db_type}")
 
+    # "postgres"/template0/template1 are stock Postgres maintenance DBs.
+    # "_dodb" is a DigitalOcean-managed-Postgres internal DB that isn't
+    # reachable by regular users (pg_hba rejects it) — any db starting with
+    # "_" is treated the same way since managed providers use that prefix
+    # for internal/hidden databases.
     _PG_SYSTEM_DBS = frozenset({"postgres", "template0", "template1"})
     _MYSQL_SYSTEM_DBS = frozenset({"information_schema", "mysql", "performance_schema", "sys"})
     _CRDB_SYSTEM_DBS = frozenset({"system"})
@@ -204,7 +209,7 @@ class SQLAdapter(BaseAdapter):
         with self._engine.connect() as c:
             if self._db_type == "postgresql":
                 rows = c.execute(text("SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname"))
-                return [r[0] for r in rows if r[0] not in self._PG_SYSTEM_DBS]
+                return [r[0] for r in rows if r[0] not in self._PG_SYSTEM_DBS and not r[0].startswith("_")]
             if self._db_type in ("mysql", "mariadb"):
                 rows = c.execute(text("SHOW DATABASES"))
                 return [r[0] for r in rows if r[0] not in self._MYSQL_SYSTEM_DBS]

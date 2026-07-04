@@ -18,6 +18,7 @@ def make_query_tools(
     user_id: Optional[str] = None,
     propose_only: bool = False,
     plan_sink: Optional[list] = None,
+    ui_sink: Optional[list] = None,
 ):
     """Return query tools bound to a specific DbConnection instance.
 
@@ -32,14 +33,21 @@ def make_query_tools(
     read-only) are appended to plan_sink instead of executed, and a "PLANNED"
     placeholder is returned to the LLM so the ReAct loop can keep narrating.
     Read-only statements always execute immediately so the agent can inspect
-    state before proposing a plan."""
+    state before proposing a plan.
+
+    ui_sink, when given, collects one entry per query actually executed here
+    (query, result) so the caller (routers/ai.py) can push it to the user's
+    Query Editor over the websocket — mirroring what happens when the user
+    types the query themselves and hits Run. Statements that only get
+    PLANNED are not pushed; that happens later, when the plan is committed."""
 
     @tool
     def run_sql_query(query: str) -> str:
         """Execute a SQL query on the connected database and return results as a formatted string.
         Use for SELECT, INSERT, UPDATE, CREATE, and ALTER statements. Always LIMIT large result sets.
         DROP, DELETE, TRUNCATE, and permission changes (GRANT/REVOKE/CREATE|ALTER USER) are not
-        permitted — direct the user to the UI for those."""
+        permitted — direct the user to the UI for those. The query and its result are mirrored into
+        the user's Query Editor / results grid automatically — no need to ask them to run it themselves."""
         def _format_one(result: dict) -> str:
             if result.get("error"):
                 return f"ERROR: {result['error']}"
@@ -64,6 +72,9 @@ def make_query_tools(
 
         try:
             result = db_service.execute_query(conn, query, user_id=user_id, source="agent")
+            if ui_sink is not None:
+                pushed = result["results"][-1] if result.get("multi") else result
+                ui_sink.append({"sql": query, "result": pushed})
             if result.get("multi"):
                 return "\n\n".join(
                     f"-- Statement {i + 1} --\n{_format_one(r)}" for i, r in enumerate(result["results"])

@@ -434,3 +434,63 @@ async def disable_papi(
     await get_connection_or_404(conn_id, session)
     await papi_service.disable_for_connection(session, conn_id)
     return await papi_service.get_status(session, conn_id)
+
+
+# ── Generated CRUD API — per-table registry ───────────────────────────────────
+# Enabling papi for a connection (above) makes every table CAPABLE of being
+# served, but each one must still be individually activated here (or by the
+# AI agent's enable_table_api tool, gated behind plan approval) before its
+# rows are actually reachable through app.routers.papi.
+
+@router.get("/{conn_id}/papi/tables")
+async def papi_list_tables(
+    conn_id: str,
+    user_anon_id: str,
+    session: AsyncSession = Depends(get_session),
+):
+    conn = await get_connection_or_404(conn_id, session)
+    tables = papi_service.list_exposed_tables(conn)
+    configs = {c.table_name: c for c in await papi_service.list_table_configs(session, conn_id)}
+    return {
+        "tables": [
+            {
+                "table": t,
+                "enabled": configs[t].enabled if t in configs else False,
+                "activated_by": configs[t].activated_by if t in configs else None,
+                "created_at": configs[t].created_at.isoformat() if t in configs else None,
+            }
+            for t in tables
+        ]
+    }
+
+
+@router.post("/{conn_id}/papi/tables/{table_name}/enable")
+async def papi_enable_table(
+    conn_id: str,
+    table_name: str,
+    body: ConnectionRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    await require_admin(body.user_anon_id, session)
+    conn = await get_connection_or_404(conn_id, session)
+    status = await papi_service.get_status(session, conn_id)
+    if not status["enabled"]:
+        await papi_service.enable_for_connection(session, conn)
+    try:
+        await papi_service.enable_table(session, conn, table_name, body.user_anon_id)
+    except papi_service.PapiError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"table": table_name, "enabled": True}
+
+
+@router.post("/{conn_id}/papi/tables/{table_name}/disable")
+async def papi_disable_table(
+    conn_id: str,
+    table_name: str,
+    body: ConnectionRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    await require_admin(body.user_anon_id, session)
+    await get_connection_or_404(conn_id, session)
+    await papi_service.disable_table(session, conn_id, table_name)
+    return {"table": table_name, "enabled": False}

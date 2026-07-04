@@ -29,7 +29,7 @@ from app.config import settings
 from app.database import AsyncSessionLocal, get_session
 from app.models.chat_session import ChatSession
 from app.routers._common import get_connection_or_404
-from app.services import chat_history_service, chat_relevance
+from app.services import chat_history_service, chat_relevance, papi_service
 from app.services.db_service import db_service
 from app.websocket.manager import manager
 
@@ -52,12 +52,26 @@ def _store_plan(conn, steps: list, user_id: str, session_id: str) -> str:
     return plan_id
 
 
-async def _execute_plan_step(conn, step: Dict[str, Any], user_id: str) -> Dict[str, Any]:
+async def _execute_plan_step(session: AsyncSession, conn, step: Dict[str, Any], user_id: str) -> Dict[str, Any]:
     if step["tool"] == "run_sql_query":
-        return await db_service.run_off_loop(db_service.execute_query, conn, step["sql"], user_id=user_id, source="agent")
+        result = await db_service.run_off_loop(db_service.execute_query, conn, step["sql"], user_id=user_id, source="agent")
+        await manager.send(user_id, "agent_query_applied", {
+            "connection_id": conn.id, "database": conn.database, "sql": step["sql"], "result": result,
+        })
+        return result
     if step["tool"] == "create_database":
         await db_service.run_off_loop(db_service.create_database, conn, step["db_name"])
         return {"message": f"Database '{step['db_name']}' created."}
+    if step["tool"] == "enable_table_api":
+        table_name = step["table_name"]
+        status = await papi_service.get_status(session, conn.id)
+        if not status["enabled"]:
+            await papi_service.enable_for_connection(session, conn)
+        try:
+            await papi_service.enable_table(session, conn, table_name, user_id)
+        except papi_service.PapiError as e:
+            return {"error": str(e)}
+        return {"message": f"API enabled for table '{table_name}'.", "endpoint": f"/api/v1/papi/{conn.id}/{table_name}"}
     return {"error": f"Unknown plan step tool: {step['tool']}"}
 
 
@@ -91,6 +105,7 @@ class ChatRequest(BaseModel):
     target_connection_id: Optional[str] = None
     session_id: Optional[str] = None
     request_id: Optional[str] = None
+    ui_context: Optional[Dict[str, Any]] = None
 
 
 class PlanActionRequest(BaseModel):
@@ -122,7 +137,10 @@ async def chat(
     )
 
     plan_sink: list = []
-    agent = create_db_agent(conn, target_conn, user_id=body.user_anon_id, propose_only=True, plan_sink=plan_sink)
+    agent = create_db_agent(
+        conn, target_conn, user_id=body.user_anon_id, propose_only=True, plan_sink=plan_sink,
+        ui_context=body.ui_context,
+    )
 
     state = {
         "messages": messages,
@@ -169,7 +187,10 @@ async def chat_stream(
         session, chat_session=chat_session, user_id=body.user_anon_id, content=body.message,
     )
 
-    agent = create_db_agent(conn, target_conn, user_id=body.user_anon_id, propose_only=True, plan_sink=[])
+    agent = create_db_agent(
+        conn, target_conn, user_id=body.user_anon_id, propose_only=True, plan_sink=[],
+        ui_context=body.ui_context,
+    )
 
     state = {
         "messages": messages,
@@ -239,13 +260,31 @@ async def chat_via_ws(
 
     async def run_agent():
         plan_sink: list = []
+        query_ui_sink: list = []
+        vector_ui_sink: list = []
         try:
             agent = create_db_agent(
                 conn, target_conn, user_id=body.user_anon_id, propose_only=True, plan_sink=plan_sink,
+                ui_context=body.ui_context, query_ui_sink=query_ui_sink, vector_ui_sink=vector_ui_sink,
             )
             result = await asyncio.get_event_loop().run_in_executor(None, lambda: agent.invoke(state))
             last_msg = result["messages"][-1]
             content = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+
+            # Mirror any query the agent actually ran (or vector collection it
+            # browsed/updated) into the user's Query Editor / Vector Chunks view,
+            # same as if they'd done it themselves — before the chat reply arrives,
+            # so "done" in chat lines up with the UI already showing it.
+            for entry in query_ui_sink:
+                await manager.send(body.user_anon_id, "agent_query_applied", {
+                    "connection_id": conn.id, "database": conn.database,
+                    "sql": entry["sql"], "result": entry["result"],
+                })
+            for entry in vector_ui_sink:
+                await manager.send(body.user_anon_id, "agent_vector_view", {
+                    "connection_id": conn.id, "collection": entry["collection"],
+                    "database": conn.database, "db_type": conn.db_type,
+                })
 
             # The request-scoped `session` is closed by the time this background
             # task runs — use a fresh one to persist the assistant's reply.
@@ -277,7 +316,10 @@ async def chat_via_ws(
 
 
 @router.post("/plan/commit")
-async def commit_plan(body: PlanActionRequest):
+async def commit_plan(
+    body: PlanActionRequest,
+    session: AsyncSession = Depends(get_session),
+):
     entry = _pending_plans.pop(body.plan_id, None)
     if not entry:
         raise HTTPException(status_code=404, detail="Plan not found, already resolved, or expired.")
@@ -288,7 +330,7 @@ async def commit_plan(body: PlanActionRequest):
     results = []
     for step in entry["steps"]:
         try:
-            results.append({"step": step, "result": await _execute_plan_step(conn, step, body.user_anon_id)})
+            results.append({"step": step, "result": await _execute_plan_step(session, conn, step, body.user_anon_id)})
         except Exception as e:
             results.append({"step": step, "result": {"error": str(e)}})
 

@@ -156,6 +156,22 @@ export const apiPapiEnable = (userId: string, connId: string): Promise<PapiConfi
 export const apiPapiDisable = (userId: string, connId: string): Promise<PapiConfig> =>
   http.post(`/connections/${connId}/papi/disable`, { user_anon_id: userId }).then(r => r.data)
 
+export interface PapiTableStatus {
+  table: string
+  enabled: boolean
+  activated_by: string | null
+  created_at: string | null
+}
+
+export const apiPapiListTables = (userId: string, connId: string): Promise<{ tables: PapiTableStatus[] }> =>
+  http.get(`/connections/${connId}/papi/tables`, { params: { user_anon_id: userId } }).then(r => r.data)
+
+export const apiPapiEnableTable = (userId: string, connId: string, table: string): Promise<{ table: string; enabled: boolean }> =>
+  http.post(`/connections/${connId}/papi/tables/${table}/enable`, { user_anon_id: userId }).then(r => r.data)
+
+export const apiPapiDisableTable = (userId: string, connId: string, table: string): Promise<{ table: string; enabled: boolean }> =>
+  http.post(`/connections/${connId}/papi/tables/${table}/disable`, { user_anon_id: userId }).then(r => r.data)
+
 // ── Vector DB chunk management ────────────────────────────────────────────────
 
 export const apiGetVectorSchema = (
@@ -192,9 +208,11 @@ export const apiChat = (userId: string, connId: string, message: string): Promis
 
 export const apiChatViaWs = (
   userId: string, connId: string, message: string, sessionId: string | null, requestId: string,
+  uiContext?: Record<string, unknown>,
 ): Promise<{ message: string; session_id: string }> =>
   http.post('/ai/chat/ws', {
     user_anon_id: userId, connection_id: connId, message, session_id: sessionId, request_id: requestId,
+    ui_context: uiContext,
   }).then(r => r.data)
 
 export const apiChatStreamUrl = (userId: string, connId: string) =>

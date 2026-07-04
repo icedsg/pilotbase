@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, type MouseEvent } from 'react'
 import {
   DndContext,
   closestCenter,
@@ -17,6 +17,7 @@ import { CSS } from '@dnd-kit/utilities'
 import {
   Download, AlertCircle, CheckCircle, CheckCircle2,
   Pencil, X, Check, Play, Copy, Loader2, Trash2, Plus,
+  ArrowUp, ArrowDown,
 } from 'lucide-react'
 import { useStore } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
@@ -24,6 +25,8 @@ import { apiExecuteQuery } from '../../api/client'
 import type { QueryResult } from '../../types'
 import TypeSelector from './TypeSelector'
 import { downloadBlob } from '../../utils/download'
+import { sortByDirection, type SortDirection } from '../../utils/sort'
+import SortContextMenu, { type SortMenuTarget } from './SortContextMenu'
 
 // ── CSV export ────────────────────────────────────────────────────────────────
 
@@ -191,7 +194,14 @@ function generateAddColumnScript(
 
 // ── Drag-sortable header (normal query results) ───────────────────────────────
 
-function SortableHeader({ col }: { col: string }) {
+function SortableHeader({
+  col, sortDirection, onSortCycle, onContextMenu,
+}: {
+  col: string
+  sortDirection: SortDirection
+  onSortCycle: () => void
+  onContextMenu: (e: MouseEvent) => void
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: col })
   return (
     <th
@@ -205,9 +215,16 @@ function SortableHeader({ col }: { col: string }) {
       }}
       {...attributes}
       {...listeners}
-      className="px-3 py-1.5 text-left text-[14px] text-gray-600 dark:text-gray-400 font-medium border-b border-r border-surface-50 whitespace-nowrap"
+      onClick={onSortCycle}
+      onContextMenu={onContextMenu}
+      title="Click to sort · right-click for options · drag to reorder"
+      className="px-3 py-1.5 text-left text-[14px] text-gray-600 dark:text-gray-400 font-medium border-b border-r border-surface-50 whitespace-nowrap select-none"
     >
-      {col}
+      <span className="inline-flex items-center gap-1">
+        {col}
+        {sortDirection === 'asc' && <ArrowUp size={12} className="text-accent flex-shrink-0" />}
+        {sortDirection === 'desc' && <ArrowDown size={12} className="text-accent flex-shrink-0" />}
+      </span>
     </th>
   )
 }
@@ -257,6 +274,9 @@ export default function ResultsTable() {
   const [afterColumn, setAfterColumn]       = useState('')
   const [scriptRunning, setScriptRunning]   = useState(false)
   const [activeResultTab, setActiveResultTab] = useState(0)
+  const [sortColumn, setSortColumn]         = useState<string | null>(null)
+  const [sortDirection, setSortDirection]   = useState<SortDirection>(null)
+  const [sortMenuTarget, setSortMenuTarget] = useState<(SortMenuTarget & { column: string }) | null>(null)
   const scriptEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -267,13 +287,27 @@ export default function ResultsTable() {
     setAddingColumn(false)
     setNewColDraft(EMPTY_COL)
     setActiveResultTab(0)
+    setSortColumn(null)
+    setSortDirection(null)
   }, [queryResult])
 
   useEffect(() => {
     scriptEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [alterScriptLog])
 
-  const sensors = useSensors(useSensor(PointerSensor))
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+
+  const cycleSort = (col: string) => {
+    if (sortColumn !== col) { setSortColumn(col); setSortDirection('asc'); return }
+    if (sortDirection === 'asc') { setSortDirection('desc'); return }
+    if (sortDirection === 'desc') { setSortColumn(null); setSortDirection(null); return }
+    setSortDirection('asc')
+  }
+
+  const applySort = (col: string, dir: SortDirection) => {
+    setSortColumn(dir ? col : null)
+    setSortDirection(dir)
+  }
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
@@ -786,6 +820,9 @@ export default function ResultsTable() {
   // ── Normal query results ──────────────────────────────────────────────────────
 
   const displayColumns = columnOrder.length === active.columns.length ? columnOrder : active.columns
+  const displayRows = sortColumn
+    ? sortByDirection(active.rows, (r) => r[sortColumn], sortDirection)
+    : active.rows
 
   return (
     <div className="h-full flex flex-col bg-surface-200">
@@ -794,9 +831,14 @@ export default function ResultsTable() {
         <span className="text-xs text-gray-500">
           {active.row_count} row{active.row_count !== 1 ? 's' : ''}
           {active.truncated && <span className="text-yellow-500 ml-2">(truncated to 1000)</span>}
+          {sortColumn && (
+            <span className="text-accent ml-2">
+              sorted by {sortColumn} ({sortDirection === 'asc' ? 'ascending' : 'descending'})
+            </span>
+          )}
         </span>
         <button
-          onClick={() => downloadCsv(displayColumns, active.rows)}
+          onClick={() => downloadCsv(displayColumns, displayRows)}
           className="btn-ghost flex items-center gap-1 text-xs"
         >
           <Download size={16} />
@@ -811,14 +853,23 @@ export default function ResultsTable() {
               <SortableContext items={displayColumns} strategy={horizontalListSortingStrategy}>
                 <tr>
                   {displayColumns.map((col) => (
-                    <SortableHeader key={col} col={col} />
+                    <SortableHeader
+                      key={col}
+                      col={col}
+                      sortDirection={sortColumn === col ? sortDirection : null}
+                      onSortCycle={() => cycleSort(col)}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        setSortMenuTarget({ column: col, label: col, x: e.clientX, y: e.clientY })
+                      }}
+                    />
                   ))}
                 </tr>
               </SortableContext>
             </DndContext>
           </thead>
           <tbody>
-            {active.rows.map((row, i) => (
+            {displayRows.map((row, i) => (
               <tr key={i} className="hover:bg-surface-50 transition-colors">
                 {displayColumns.map((col) => {
                   const val = row[col]
@@ -841,6 +892,16 @@ export default function ResultsTable() {
         </table>
       </div>
       {sqlLogPanel}
+      {sortMenuTarget && (
+        <SortContextMenu
+          target={sortMenuTarget}
+          hasSort={sortColumn === sortMenuTarget.column}
+          onSortAsc={() => applySort(sortMenuTarget.column, 'asc')}
+          onSortDesc={() => applySort(sortMenuTarget.column, 'desc')}
+          onClearSort={() => applySort(sortMenuTarget.column, null)}
+          onClose={() => setSortMenuTarget(null)}
+        />
+      )}
     </div>
   )
 }

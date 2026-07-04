@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useStore } from '../store'
 import type { PendingPlan } from '../store'
-import type { WsMessage, ChatMessage, QueryHistoryEntry } from '../types'
+import type { WsMessage, ChatMessage, QueryHistoryEntry, QueryResult } from '../types'
 
 const BASE_WS = import.meta.env.VITE_API_URL
   ? import.meta.env.VITE_API_URL.replace(/^http/, 'ws')
@@ -110,6 +110,40 @@ export function useWebSocket() {
 
         if (msg.type === 'query_executed' && payload) {
           addQueryHistoryEntry(payload as unknown as QueryHistoryEntry)
+        }
+
+        // The agent ran a query on the user's behalf — mirror it into the Query
+        // Editor / results grid exactly as if the user had typed and run it
+        // themselves (see api/app/routers/ai.py: agent_query_applied).
+        if (msg.type === 'agent_query_applied' && payload) {
+          const store = useStore.getState()
+          const connectionId = payload.connection_id as string | undefined
+          if (connectionId) store.setActiveConnection(connectionId)
+          if (payload.database) store.setActiveDatabase(payload.database as string)
+          store.setVectorViewContext(null)
+          store.setNosqlViewContext(null)
+          store.setMigrationViewContext(null)
+          store.setColumnViewContext(null)
+          store.setActiveQuery((payload.sql as string) || '')
+          store.setQueryResult((payload.result as QueryResult) || null)
+          store.setSqlPanelOpen(true)
+        }
+
+        // The agent browsed or updated a vector collection — open it in the
+        // Vector Chunks view, which fetches its own fresh data on open (see
+        // api/app/routers/ai.py: agent_vector_view).
+        if (msg.type === 'agent_vector_view' && payload) {
+          const store = useStore.getState()
+          const connectionId = payload.connection_id as string | undefined
+          if (connectionId) store.setActiveConnection(connectionId)
+          store.setNosqlViewContext(null)
+          store.setMigrationViewContext(null)
+          store.setVectorViewContext({
+            collection: payload.collection as string,
+            connId: connectionId || '',
+            db: (payload.database as string) || '',
+            dbType: (payload.db_type as string) || '',
+          })
         }
       } catch {
         // ignore parse errors

@@ -126,6 +126,7 @@ interface PilotbaseStore {
   setTabMessages: (tabId: string, messages: ChatMessage[]) => void
   setTabLoading: (tabId: string, v: boolean) => void
   setTabPendingPlan: (tabId: string, p: PendingPlan | null) => void
+  setTabConnection: (tabId: string, connectionId: string | null) => void
   bindTabSession: (tabId: string, sessionId: string, title: string | null) => void
   clearTabMessages: (tabId: string) => void
   registerPendingRequest: (requestId: string, tabId: string) => void
@@ -240,6 +241,9 @@ export const useStore = create<PilotbaseStore>((set, get) => ({
   })),
   setTabPendingPlan: (tabId, pendingPlan) => set((s) => ({
     chatTabs: s.chatTabs.map((t) => t.tabId === tabId ? { ...t, pendingPlan } : t),
+  })),
+  setTabConnection: (tabId, connectionId) => set((s) => ({
+    chatTabs: s.chatTabs.map((t) => t.tabId === tabId ? { ...t, connectionId } : t),
   })),
   bindTabSession: (tabId, sessionId, title) => set((s) => ({
     chatTabs: s.chatTabs.map((t) => t.tabId === tabId ? { ...t, sessionId, title: t.title ?? title } : t),

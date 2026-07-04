@@ -139,6 +139,8 @@ export interface PapiConfig {
 export type WsMessageType =
   | 'agent_token'
   | 'agent_done'
+  | 'agent_query_applied'
+  | 'agent_vector_view'
   | 'plan_proposed'
   | 'plan_committed'
   | 'plan_rejected'

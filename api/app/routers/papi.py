@@ -67,13 +67,20 @@ async def validate_token_endpoint(
     return {"valid": papi_service.validate_token(conn, secret, token)}
 
 
+async def _require_table_enabled(session: AsyncSession, conn: DbConnection, table: str) -> None:
+    if not await papi_service.is_table_enabled(session, conn.id, table):
+        raise HTTPException(status_code=404, detail=f"Generated API is not enabled for table '{table}'.")
+
+
 @router.get("/{conn_id}/{table}")
 async def list_rows(
     table: str,
     limit: int = 100,
     offset: int = 0,
     conn: DbConnection = Depends(_authed_connection),
+    session: AsyncSession = Depends(get_session),
 ):
+    await _require_table_enabled(session, conn, table)
     try:
         return {"rows": papi_service.list_rows(conn, table, min(limit, 1000), max(offset, 0))}
     except papi_service.PapiError as e:
@@ -85,7 +92,9 @@ async def get_row(
     table: str,
     guid: str,
     conn: DbConnection = Depends(_authed_connection),
+    session: AsyncSession = Depends(get_session),
 ):
+    await _require_table_enabled(session, conn, table)
     try:
         row = papi_service.get_row(conn, table, guid)
     except papi_service.PapiError as e:
@@ -100,7 +109,9 @@ async def create_row(
     table: str,
     body: Dict[str, Any],
     conn: DbConnection = Depends(_authed_connection),
+    session: AsyncSession = Depends(get_session),
 ):
+    await _require_table_enabled(session, conn, table)
     try:
         return papi_service.create_row(conn, table, body)
     except papi_service.PapiError as e:
@@ -113,7 +124,9 @@ async def update_row(
     guid: str,
     body: Dict[str, Any],
     conn: DbConnection = Depends(_authed_connection),
+    session: AsyncSession = Depends(get_session),
 ):
+    await _require_table_enabled(session, conn, table)
     try:
         matched = papi_service.update_row(conn, table, guid, body)
     except papi_service.PapiError as e:
@@ -128,7 +141,9 @@ async def delete_row(
     table: str,
     guid: str,
     conn: DbConnection = Depends(_authed_connection),
+    session: AsyncSession = Depends(get_session),
 ):
+    await _require_table_enabled(session, conn, table)
     try:
         matched = papi_service.soft_delete_row(conn, table, guid)
     except papi_service.PapiError as e:
