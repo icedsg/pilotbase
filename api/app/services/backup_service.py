@@ -22,7 +22,7 @@ from app.config import settings
 from app.models.connection import DbConnection
 from app.services.db_service import db_service
 
-_UNSUPPORTED_TYPES = {"redis", "qdrant", "chroma", "weaviate", "pinecone", "milvus", "cassandra", "dynamodb"}
+_UNSUPPORTED_TYPES = {"redis", "qdrant", "chroma", "weaviate", "pinecone", "milvus", "cassandra", "dynamodb", "couchdb"}
 
 # Dialects where "database" means a separate catalog reachable only by
 # reconnecting with a different database in the connection URL.

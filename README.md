@@ -2,7 +2,7 @@
 
 **The first open-source universal database GUI — a single db browser and client that unifies relational, NoSQL, and vector databases in one interface.**
 
-Stop juggling pgAdmin, MongoDB Compass, RedisInsight, and separate vector DB dashboards. Pilotbase connects to your entire data stack — PostgreSQL, MySQL, SQLite, SQL Server, Oracle, Db2, CockroachDB, Snowflake, MongoDB, Redis, Cassandra, DynamoDB, Qdrant, ChromaDB, Weaviate, Pinecone, Milvus — and lets you query, browse, and manage everything from a single, modern web UI with an AI agent built in.
+Stop juggling pgAdmin, MongoDB Compass, RedisInsight, and separate vector DB dashboards. Pilotbase connects to your entire data stack — PostgreSQL, MySQL, SQLite, DuckDB, SQL Server, Oracle, Db2, CockroachDB, Snowflake, MongoDB, Redis, Cassandra, CouchDB, DynamoDB, Qdrant, ChromaDB, Weaviate, Pinecone, Milvus — and lets you query, browse, and manage everything from a single, modern web UI with an AI agent built in.
 
 > **First Beta Release** — Core query, schema browsing, and connection management are stable and production-ready. AI-assisted natural-language querying is live. Schema migration and automated backup features are actively in development and coming soon.
 
@@ -89,6 +89,8 @@ Pilotbase will be live at **[http://localhost:8000](http://localhost:8000)**.
 
 The first run builds the React frontend and installs all dependencies inside the image — expect 2–3 minutes. Subsequent starts are instant.
 
+> **Backups location:** database backups are written to `BACKUPS_DIR` (default `/app/api/backups` in Docker, persisted via the `pilotbase_backups` volume). This is set in `docker-compose.yml`, not `api/.env` — if you change it, update the matching volume mount too and restart with `docker compose up -d --build`. See [Configuration Reference](docs/configuration.md).
+
 ---
 
 ## Local Development Setup
@@ -124,7 +126,7 @@ All settings are read from environment variables or `api/.env`. Full list of var
 
 ## Supported Databases
 
-Full feature matrix (create/drop DB, migration, backups, AI agent query support, per-engine notes) across all 17 supported engines: **[Supported Databases](docs/supported-databases.md)**.
+Full feature matrix (create/drop DB, migration, backups, AI agent query support, per-engine notes) across all 19 supported engines: **[Supported Databases](docs/supported-databases.md)**.
 
 ---
 
@@ -135,6 +137,7 @@ Honest, detailed write-ups on how Pilotbase compares to the admin tool you're pr
 - [PostgreSQL](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/postgresql.md) — best Postgres admin UIs compared (pgAdmin, DBeaver, TablePlus, Postico, Beekeeper Studio)
 - [MySQL / MariaDB](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/mysql.md) — best MySQL admin UIs compared (MySQL Workbench, phpMyAdmin, DBeaver, HeidiSQL, TablePlus)
 - [SQLite](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/sqlite.md) — vs DB Browser for SQLite
+- [DuckDB](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/duckdb.md) — vs the DuckDB CLI/notebook workflow
 - [SQL Server](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/sql-server.md) — vs SQL Server Management Studio (SSMS)
 - [Oracle](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/oracle.md) — vs Oracle SQL Developer
 - [Db2](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/db2.md) — vs IBM Db2 Data Studio / web console
@@ -143,6 +146,7 @@ Honest, detailed write-ups on how Pilotbase compares to the admin tool you're pr
 - [MongoDB](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/mongodb.md) — vs MongoDB Compass
 - [Redis](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/redis.md) — vs RedisInsight
 - [Cassandra](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/cassandra.md) — the best admin UI for Cassandra
+- [CouchDB](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/couchdb.md) — vs Fauxton, CouchDB's built-in admin UI
 - [DynamoDB](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/dynamodb.md) — the best admin UI for DynamoDB
 - [Qdrant](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/qdrant.md) — vs Qdrant's built-in Web UI
 - [ChromaDB](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/chromadb.md) — the best admin UI for ChromaDB
