@@ -9,6 +9,7 @@ const DB_TYPES = [
   { value: 'mysql',       label: 'MySQL',        group: 'SQL' },
   { value: 'mariadb',     label: 'MariaDB',      group: 'SQL' },
   { value: 'sqlite',      label: 'SQLite',       group: 'SQL' },
+  { value: 'duckdb',      label: 'DuckDB',       group: 'SQL' },
   { value: 'mssql',       label: 'SQL Server',   group: 'SQL' },
   { value: 'oracle',      label: 'Oracle',       group: 'SQL' },
   { value: 'db2',         label: 'Db2',          group: 'SQL' },
@@ -17,6 +18,7 @@ const DB_TYPES = [
   { value: 'mongodb',     label: 'MongoDB',      group: 'NoSQL' },
   { value: 'redis',       label: 'Redis',        group: 'NoSQL' },
   { value: 'cassandra',   label: 'Cassandra',    group: 'NoSQL' },
+  { value: 'couchdb',     label: 'CouchDB',      group: 'NoSQL' },
   { value: 'dynamodb',    label: 'DynamoDB',     group: 'NoSQL' },
   { value: 'qdrant',      label: 'Qdrant',       group: 'Vector' },
   { value: 'chroma',      label: 'ChromaDB',     group: 'Vector' },
@@ -36,6 +38,7 @@ const DEFAULT_PORTS: Record<string, number> = {
   mongodb:     27017,
   redis:       6379,
   cassandra:   9042,
+  couchdb:     5984,
   qdrant:      6333,
   chroma:      8000,
   weaviate:    8080,
@@ -44,8 +47,8 @@ const DEFAULT_PORTS: Record<string, number> = {
 
 const API_KEY_TYPES = new Set(['qdrant', 'weaviate', 'chroma', 'pinecone', 'milvus'])
 const REDIS_TYPES   = new Set(['redis'])
-const FILE_TYPES    = new Set(['sqlite'])
-const CAN_LIST_DBS  = new Set(['postgresql', 'mysql', 'mariadb', 'mongodb', 'cockroachdb', 'cassandra'])
+const FILE_TYPES    = new Set(['sqlite', 'duckdb'])
+const CAN_LIST_DBS  = new Set(['postgresql', 'mysql', 'mariadb', 'mongodb', 'cockroachdb', 'cassandra', 'couchdb'])
 const NO_HOST_TYPES  = new Set(['pinecone'])
 const AWS_TYPES      = new Set(['dynamodb'])
 const SNOWFLAKE_TYPES = new Set(['snowflake'])

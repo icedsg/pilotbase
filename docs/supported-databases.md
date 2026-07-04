@@ -7,6 +7,7 @@
 | PostgreSQL | SQL | ✅¹ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Multi-database, schema browsing, user/DB creation |
 | MySQL / MariaDB | SQL | ✅¹ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | Full database listing, user management |
 | SQLite | SQL | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅² | Provide the file path as the database field |
+| DuckDB | SQL | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅² | Embedded analytical SQL; provide the file path (or `:memory:`) as the database field |
 | Microsoft SQL Server | SQL | ✅¹ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅² | Uses `pymssql` (FreeTDS) — no proprietary ODBC driver needed |
 | Oracle Database | SQL | ❌⁴ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅² | `oracledb` thin mode — no Instant Client install required |
 | Db2 (LUW) | SQL | ❌⁴ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅² | Query/browse parity; no SQL-level database/user creation |
@@ -15,6 +16,7 @@
 | MongoDB | NoSQL | ❌ | ❌ | ❌ | ✅³ | ❌ | ✅³ | ❌ | JSON find queries and aggregation pipelines |
 | Redis | Key-Value | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | Native Redis command interface (KEYS, GET, HGETALL, etc.) |
 | Cassandra | NoSQL | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | Raw CQL queries, keyspace/table browsing |
+| CouchDB | NoSQL | ❌ | ❌ | ❌ | ✅³ | ❌ | ✅³ | ❌ | Mango (`_find`) queries and `_all_docs` browsing; no view/design-doc management yet |
 | DynamoDB | NoSQL | ❌ | ❌ | ❌ | ✅³ | ❌ | ✅³ | ❌ | Scan/get-item queries; AWS creds or DynamoDB Local endpoint |
 | Qdrant | Vector | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | ANN similarity search, scroll-based browsing, payload editing |
 | ChromaDB | Vector | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ | ❌ | Text and embedding queries, document browsing |
@@ -34,6 +36,7 @@ Whether you'd call it a database admin UI, a db browser, a SQL client, or a data
 - **PostgreSQL** — pgAdmin alternative, PostgreSQL web UI, Postgres admin panel, Postgres query browser. [Compare →](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/postgresql.md)
 - **MySQL / MariaDB** — phpMyAdmin alternative, MySQL admin UI, MariaDB web interface, MySQL query tool. [Compare →](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/mysql.md)
 - **SQLite** — SQLite admin, SQLite browser, SQLite GUI, SQLite web viewer, SQLite editor online. [Compare →](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/sqlite.md)
+- **DuckDB** — DuckDB GUI, DuckDB admin UI, DuckDB web viewer, embedded analytical database browser. [Compare →](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/duckdb.md)
 - **SQL Server** — MSSQL admin UI, SQL Server web client, SQL Server query tool, SSMS alternative. [Compare →](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/sql-server.md)
 - **Oracle** — Oracle SQL Developer alternative, Oracle web admin, Oracle query tool. [Compare →](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/oracle.md)
 - **Db2** — Db2 admin UI, Db2 web client, Db2 query tool. [Compare →](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/db2.md)
@@ -42,6 +45,7 @@ Whether you'd call it a database admin UI, a db browser, a SQL client, or a data
 - **MongoDB** — MongoDB admin, MongoDB Compass alternative, MongoDB web UI, Mongo document browser. [Compare →](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/mongodb.md)
 - **Redis** — RedisInsight alternative, Redis web UI, Redis admin panel, Redis key browser, Redis GUI. [Compare →](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/redis.md)
 - **Cassandra** — Cassandra admin UI, CQL query tool, Cassandra web client. [Compare →](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/cassandra.md)
+- **CouchDB** — CouchDB admin UI, Fauxton alternative, CouchDB web client, Mango query tool. [Compare →](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/couchdb.md)
 - **DynamoDB** — DynamoDB admin UI, DynamoDB web client, DynamoDB table browser. [Compare →](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/dynamodb.md)
 - **Qdrant** — Qdrant UI, Qdrant admin panel, Qdrant web interface, vector database GUI. [Compare →](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/qdrant.md)
 - **ChromaDB** — ChromaDB admin, ChromaDB UI, ChromaDB web viewer, Chroma vector browser. [Compare →](https://github.com/icedsg/pilotbase/blob/master/docs/comparisons/chromadb.md)

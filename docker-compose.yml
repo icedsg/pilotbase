@@ -53,6 +53,10 @@ services:
       # Application
       ENVIRONMENT: production
       STATIC_DIR: "/app/api/static"
+      # Where database backups are written inside the container. If you change
+      # this, update the volume mount below to match, then restart with
+      # `docker compose up -d --build` — otherwise backups won't persist
+      # across container rebuilds. See docs/configuration.md.
       BACKUPS_DIR: "/app/api/backups"
 
     volumes:

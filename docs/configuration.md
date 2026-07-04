@@ -15,8 +15,17 @@ All settings are read from environment variables or `api/.env`.
 | `ENVIRONMENT` | `development` | Set to `production` for tighter CORS and security defaults |
 | `CORS_ORIGINS` | `http://localhost:5173,...` | Comma-separated allowed origins |
 | `DB_CONNECT_TIMEOUT_SECONDS` | `10` | Seconds to wait when connecting to a user-added database (any engine) before giving up. Lower it to fail faster against unreachable hosts; raise it for engines with a naturally slow handshake. |
+| `BACKUPS_DIR` | `./backups` | Directory where generated database backups are written, relative to the `api/` working directory. See note below for changing this in a Docker deployment. |
 
 See `api/.env.example` for a complete, copy-pasteable template covering every variable above.
+
+**Changing `BACKUPS_DIR` in a Docker deployment:** `docker-compose.yml` sets `BACKUPS_DIR` directly under the `app` service's `environment:` block — it is **not** read from `api/.env` in this setup. To change where backups are stored:
+
+1. Edit `BACKUPS_DIR` under `environment:` in `docker-compose.yml`
+2. Update the matching volume mount (`pilotbase_backups:/app/api/backups`) so the new path is persisted outside the container
+3. Restart with `docker compose up -d --build`
+
+If you don't change the volume mount to match, backups will still be written but won't survive a container rebuild.
 
 **Using a local Ollama instance instead of the cloud:** see [Setting Up Ollama](../README.md#setting-up-ollama-for-the-ai-agent) in the main README.
 

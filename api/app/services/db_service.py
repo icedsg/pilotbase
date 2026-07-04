@@ -103,7 +103,7 @@ class SQLAdapter(BaseAdapter):
             return {"tcp_connect_timeout": timeout}
         if db_type == "snowflake":                       # snowflake-connector-python
             return {"login_timeout": t, "network_timeout": t}
-        # sqlite: local file, no network hang possible.
+        # sqlite/duckdb: local file (or in-memory), no network hang possible.
         # db2 (ibm_db_sa): ibm_db exposes no connect-timeout kwarg through
         # SQLAlchemy's connect_args — DatabaseService.run_off_loop is the only
         # protection against a hung db2 connection.
@@ -310,6 +310,9 @@ class SQLAdapter(BaseAdapter):
                     return row[0] if row else None
                 if self._db_type == "sqlite":
                     row = c.execute(text("SELECT sqlite_version()")).fetchone()
+                    return row[0] if row else None
+                if self._db_type == "duckdb":
+                    row = c.execute(text("SELECT version()")).fetchone()
                     return row[0] if row else None
                 if self._db_type == "mssql":
                     row = c.execute(text("SELECT SERVERPROPERTY('ProductVersion')")).fetchone()
@@ -578,6 +581,94 @@ class CassandraAdapter(BaseAdapter):
     def close(self) -> None:
         try:
             self._cluster.shutdown()
+        except Exception:
+            pass
+
+
+# ── CouchDB ───────────────────────────────────────────────────────────────────
+
+class CouchDBAdapter(BaseAdapter):
+    """
+    CouchDB is plain HTTP/JSON, so this talks to it directly via httpx rather
+    than pulling in a dedicated client library (the traditional `couchdb`
+    PyPI package is unmaintained; `cloudant` is IBM-Cloud-oriented overkill).
+
+    CouchDB's hierarchy is server -> databases -> flat documents — there is no
+    Mongo-style collection layer within a database. "database" in the query
+    JSON below is therefore the collection-equivalent, matching how the rest
+    of this file's generic NoSQL document-view UI expects a {"database", ...}
+    envelope:
+      {"database": "mydb", "selector": {...}, "limit": 100}   ← Mango _find query
+      {"database": "mydb"}                                     ← browse via _all_docs
+    """
+    def __init__(self, conn: DbConnection, extra: Dict):
+        import httpx
+        scheme = "https" if conn.ssl_mode in ("require", "verify-full", "true", "on") else "http"
+        host_port = f"{conn.host or 'localhost'}:{conn.port or 5984}"
+        auth = None
+        password = extra.get("_password")
+        if conn.username and password:
+            auth = (conn.username, password)
+        self._client = httpx.Client(base_url=f"{scheme}://{host_port}", auth=auth, timeout=self.CONNECT_TIMEOUT_SECONDS)
+        self._default_db = conn.database or None
+
+    def test_connection(self) -> bool:
+        try:
+            return self._client.get("/").status_code == 200
+        except Exception:
+            return False
+
+    def list_databases(self) -> List[str]:
+        r = self._client.get("/_all_dbs")
+        r.raise_for_status()
+        return [db for db in r.json() if not db.startswith("_")]
+
+    def list_objects(self, schema: Optional[str] = None, database: Optional[str] = None) -> List[Dict]:
+        db_name = database or schema or self._default_db
+        if db_name:
+            r = self._client.get(f"/{db_name}")
+            if r.status_code != 200:
+                return []
+            return [{"name": db_name, "type": "collection", "count": r.json().get("doc_count")}]
+        return [{"name": db, "type": "collection"} for db in self.list_databases()]
+
+    def execute_query(self, query: str, params: Optional[Dict] = None, limit: int = 1000) -> Dict[str, Any]:
+        try:
+            q = json.loads(query)
+        except json.JSONDecodeError as e:
+            return {"error": f"Invalid JSON: {e}", "rows": [], "columns": [], "row_count": 0}
+
+        db_name = q.get("database") or self._default_db
+        if not db_name:
+            return {"error": "Missing 'database' key", "rows": [], "columns": [], "row_count": 0}
+
+        n = min(q.get("limit", limit), limit)
+        if "selector" in q:
+            body: Dict[str, Any] = {"selector": q["selector"], "limit": n}
+            if "fields" in q:
+                body["fields"] = q["fields"]
+            r = self._client.post(f"/{db_name}/_find", json=body)
+            if r.status_code != 200:
+                return {"error": r.text, "rows": [], "columns": [], "row_count": 0}
+            rows = r.json().get("docs", [])
+        else:
+            r = self._client.get(f"/{db_name}/_all_docs", params={"include_docs": "true", "limit": n})
+            if r.status_code != 200:
+                return {"error": r.text, "rows": [], "columns": [], "row_count": 0}
+            rows = [row["doc"] for row in r.json().get("rows", []) if row.get("doc")]
+
+        columns = list(rows[0].keys()) if rows else []
+        return {"rows": rows, "columns": columns, "row_count": len(rows), "truncated": len(rows) == n}
+
+    def get_version(self) -> Optional[str]:
+        try:
+            return self._client.get("/").json().get("version")
+        except Exception:
+            return None
+
+    def close(self) -> None:
+        try:
+            self._client.close()
         except Exception:
             pass
 
@@ -1119,6 +1210,7 @@ _ADAPTER_MAP = {
     "mongodb":   MongoAdapter,
     "redis":     RedisAdapter,
     "cassandra": CassandraAdapter,
+    "couchdb":   CouchDBAdapter,
     "dynamodb":  DynamoDBAdapter,
     "qdrant":    QdrantAdapter,
     "chroma":    ChromaAdapter,
@@ -1127,13 +1219,14 @@ _ADAPTER_MAP = {
     "milvus":    MilvusAdapter,
 }
 
-_SQL_TYPES = {"postgresql", "mysql", "mariadb", "sqlite", "mssql", "oracle", "db2", "cockroachdb", "snowflake"}
+_SQL_TYPES = {"postgresql", "mysql", "mariadb", "sqlite", "duckdb", "mssql", "oracle", "db2", "cockroachdb", "snowflake"}
 
 _SQL_DRIVERS = {
     "postgresql":  "postgresql+psycopg2",
     "mysql":       "mysql+pymysql",
     "mariadb":     "mysql+pymysql",
     "sqlite":      "sqlite",
+    "duckdb":      "duckdb",
     "mssql":       "mssql+pymssql",
     "oracle":      "oracle+oracledb",
     "db2":         "ibm_db_sa",
@@ -1188,8 +1281,8 @@ class DatabaseService:
     def _build_sql_url(self, conn: DbConnection) -> str:
         password = self.decrypt_password(conn.password_encrypted) if conn.password_encrypted else ""
         driver = _SQL_DRIVERS.get(conn.db_type, conn.db_type)
-        if conn.db_type == "sqlite":
-            return f"sqlite:///{conn.database}"
+        if conn.db_type in ("sqlite", "duckdb"):
+            return f"{driver}:///{conn.database}"
         if conn.db_type == "oracle":
             host_port = f"{conn.host}:{conn.port or 1521}"
             return f"oracle+oracledb://{conn.username}:{password}@{host_port}/?service_name={conn.database}"

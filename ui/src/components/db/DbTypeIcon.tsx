@@ -1,6 +1,6 @@
 import {
-  siPostgresql, siMysql, siMariadb, siSqlite,
-  siMongodb, siRedis, siQdrant,
+  siPostgresql, siMysql, siMariadb, siSqlite, siDuckdb,
+  siMongodb, siRedis, siApachecouchdb, siQdrant,
   siSnowflake, siCockroachlabs, siApachecassandra, siMilvus,
 } from 'simple-icons'
 import { Server } from 'lucide-react'
@@ -11,6 +11,7 @@ const FILL_COLORS: Record<string, string> = {
   mysql:       '#fb923c', // orange-400
   mariadb:     '#fb923c', // orange-400
   sqlite:      '#4ade80', // green-400
+  duckdb:      '#eab308', // yellow-500
   mssql:       '#f87171', // red-400
   oracle:      '#f97316', // orange-500
   db2:         '#3b82f6', // blue-500
@@ -19,6 +20,7 @@ const FILL_COLORS: Record<string, string> = {
   mongodb:     '#34d399', // emerald-400
   redis:       '#fb7185', // rose-400
   cassandra:   '#c4b5fd', // violet-300
+  couchdb:     '#ef4444', // red-500
   dynamodb:    '#38bdf8', // sky-400 (AWS blue)
   qdrant:      '#a78bfa', // violet-400
   chroma:      '#e879f9', // fuchsia-400
@@ -32,8 +34,10 @@ const SI_PATHS: Record<string, string> = {
   mysql:      siMysql.path,
   mariadb:    siMariadb.path,
   sqlite:     siSqlite.path,
+  duckdb:     siDuckdb.path,
   mongodb:    siMongodb.path,
   redis:      siRedis.path,
+  couchdb:    siApachecouchdb.path,
   qdrant:     siQdrant.path,
   snowflake:  siSnowflake.path,
   cockroachdb: siCockroachlabs.path,
