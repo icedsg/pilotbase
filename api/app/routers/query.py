@@ -34,7 +34,8 @@ async def execute_query(
         raise HTTPException(status_code=404, detail="Connection not found.")
 
     try:
-        data = db_service.execute_query(
+        data = await db_service.run_off_loop(
+            db_service.execute_query,
             conn, body.query, body.params, body.limit, body.database,
             user_id=body.user_anon_id, source="user",
         )
@@ -88,7 +89,7 @@ async def run_ddl(
         raise HTTPException(status_code=400, detail="Unsupported DDL action.")
 
     try:
-        db_service.execute_query(conn, sql, user_id=body.user_anon_id, source="user")
+        await db_service.run_off_loop(db_service.execute_query, conn, sql, user_id=body.user_anon_id, source="user")
         return {"message": f"{body.action} on {body.object_name} executed successfully."}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

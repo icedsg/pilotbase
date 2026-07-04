@@ -38,7 +38,7 @@ async def get_schema(
     session: AsyncSession = Depends(get_session),
 ):
     conn = await _get_conn(connection_id, session)
-    props = db_service.get_vector_schema(conn, collection)
+    props = await db_service.run_off_loop(db_service.get_vector_schema, conn, collection)
     return {"properties": props}
 
 
@@ -58,7 +58,7 @@ async def delete_chunk(
 ):
     conn = await _get_conn(body.connection_id, session)
     try:
-        db_service.delete_vector_chunk(conn, body.collection, body.chunk_id)
+        await db_service.run_off_loop(db_service.delete_vector_chunk, conn, body.collection, body.chunk_id)
     except AttributeError:
         raise HTTPException(400, f"{conn.db_type} does not support chunk deletion.")
     except Exception as e:
@@ -83,7 +83,7 @@ async def update_chunk(
 ):
     conn = await _get_conn(body.connection_id, session)
     try:
-        db_service.update_vector_chunk(conn, body.collection, body.chunk_id, body.properties)
+        await db_service.run_off_loop(db_service.update_vector_chunk, conn, body.collection, body.chunk_id, body.properties)
     except AttributeError:
         raise HTTPException(400, f"{conn.db_type} does not support chunk updates.")
     except Exception as e:
@@ -157,7 +157,7 @@ async def upload_chunks(
 
         for props in chunk_props:
             try:
-                chunk_id = db_service.create_vector_chunk(conn, collection, props)
+                chunk_id = await db_service.run_off_loop(db_service.create_vector_chunk, conn, collection, props)
                 created.append({"file": filename, "id": chunk_id})
             except Exception as e:
                 errors.append({"file": filename, "error": str(e)})

@@ -42,11 +42,11 @@ def _store_plan(conn, steps: list, user_id: str) -> str:
     return plan_id
 
 
-def _execute_plan_step(conn, step: Dict[str, Any], user_id: str) -> Dict[str, Any]:
+async def _execute_plan_step(conn, step: Dict[str, Any], user_id: str) -> Dict[str, Any]:
     if step["tool"] == "run_sql_query":
-        return db_service.execute_query(conn, step["sql"], user_id=user_id, source="agent")
+        return await db_service.run_off_loop(db_service.execute_query, conn, step["sql"], user_id=user_id, source="agent")
     if step["tool"] == "create_database":
-        db_service.create_database(conn, step["db_name"])
+        await db_service.run_off_loop(db_service.create_database, conn, step["db_name"])
         return {"message": f"Database '{step['db_name']}' created."}
     return {"error": f"Unknown plan step tool: {step['tool']}"}
 
@@ -194,7 +194,7 @@ async def commit_plan(body: PlanActionRequest):
     results = []
     for step in entry["steps"]:
         try:
-            results.append({"step": step, "result": _execute_plan_step(conn, step, body.user_anon_id)})
+            results.append({"step": step, "result": await _execute_plan_step(conn, step, body.user_anon_id)})
         except Exception as e:
             results.append({"step": step, "result": {"error": str(e)}})
 
