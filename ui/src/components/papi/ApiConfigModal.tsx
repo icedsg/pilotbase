@@ -11,10 +11,11 @@ const BASE = import.meta.env.VITE_API_URL || ''
 
 interface Props {
   connId: string
+  database: string
   onClose: () => void
 }
 
-export default function ApiConfigModal({ connId, onClose }: Props) {
+export default function ApiConfigModal({ connId, database, onClose }: Props) {
   const { userId } = useUserSession()
   const { connections } = useStore()
   const conn = connections.find((c) => c.id === connId)
@@ -28,11 +29,11 @@ export default function ApiConfigModal({ connId, onClose }: Props) {
   const [tablesLoading, setTablesLoading] = useState(false)
   const [togglingTable, setTogglingTable] = useState<string | null>(null)
 
-  const baseUrl = `${BASE}/api/v1/papi/${connId}`
+  const baseUrl = `${BASE}/api/v1/papi/${connId}/${database}`
 
   const loadTables = () => {
     setTablesLoading(true)
-    apiPapiListTables(userId, connId)
+    apiPapiListTables(userId, connId, database)
       .then((r) => setTables(r.tables))
       .catch(() => {})
       .finally(() => setTablesLoading(false))
@@ -45,11 +46,11 @@ export default function ApiConfigModal({ connId, onClose }: Props) {
   }, [onClose])
 
   useEffect(() => {
-    apiPapiStatus(userId, connId)
+    apiPapiStatus(userId, connId, database)
       .then((s) => { setEnabled(s.enabled); setEnabledAt(s.enabled_at) })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [connId, userId])
+  }, [connId, database, userId])
 
   useEffect(() => {
     if (enabled) loadTables()
@@ -60,8 +61,8 @@ export default function ApiConfigModal({ connId, onClose }: Props) {
     setTogglingTable(table)
     try {
       const r = currentlyEnabled
-        ? await apiPapiDisableTable(userId, connId, table)
-        : await apiPapiEnableTable(userId, connId, table)
+        ? await apiPapiDisableTable(userId, connId, database, table)
+        : await apiPapiEnableTable(userId, connId, database, table)
       setTables((prev) => prev.map((t) => t.table === table ? { ...t, enabled: r.enabled } : t))
     } catch {
       // leave state unchanged on failure
@@ -74,7 +75,7 @@ export default function ApiConfigModal({ connId, onClose }: Props) {
     setToggling(true)
     setError('')
     try {
-      const s = enabled ? await apiPapiDisable(userId, connId) : await apiPapiEnable(userId, connId)
+      const s = enabled ? await apiPapiDisable(userId, connId, database) : await apiPapiEnable(userId, connId, database)
       setEnabled(s.enabled)
       setEnabledAt(s.enabled_at)
     } catch (e: any) {
@@ -97,7 +98,7 @@ export default function ApiConfigModal({ connId, onClose }: Props) {
           <div className="flex items-center gap-2">
             <Webhook size={18} className="text-gray-500" />
             <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Generated API</h2>
-            {conn && <span className="text-xs text-gray-500">— {conn.name}</span>}
+            {conn && <span className="text-xs text-gray-500">— {conn.name} / {database}</span>}
           </div>
           <button onClick={onClose} className="btn-ghost p-1"><X size={20} /></button>
         </div>

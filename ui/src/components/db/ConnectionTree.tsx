@@ -111,7 +111,7 @@ export default function ConnectionTree({ refreshKey }: Props) {
   const dbCtxRef                            = useRef<HTMLDivElement>(null)
   const [backupTarget,     setBackupTarget]     = useState<DbCtxMenu | null>(null)
   const [migrationSource,  setMigrationSource]  = useState<DbCtxMenu | null>(null)
-  const [apiConfigTarget,  setApiConfigTarget]  = useState<string | null>(null)
+  const [apiConfigTarget,  setApiConfigTarget]  = useState<DbCtxMenu | null>(null)
   const [exportSqlTarget,  setExportSqlTarget]  = useState<{ connId: string; db: string; table?: string } | null>(null)
 
   useEffect(() => {
@@ -656,7 +656,7 @@ export default function ConnectionTree({ refreshKey }: Props) {
           </button>
           <button
             className="ctx-item hover:text-gray-900 dark:hover:text-white"
-            onClick={() => { setApiConfigTarget(dbCtxMenu.connId); setDbCtxMenu(null) }}
+            onClick={() => { setApiConfigTarget(dbCtxMenu); setDbCtxMenu(null) }}
           >
             <Webhook size={15} />
             <span>Enable API</span>
@@ -693,7 +693,7 @@ export default function ConnectionTree({ refreshKey }: Props) {
         />
       )}
       {apiConfigTarget && (
-        <ApiConfigModal connId={apiConfigTarget} onClose={() => setApiConfigTarget(null)} />
+        <ApiConfigModal connId={apiConfigTarget.connId} database={apiConfigTarget.db} onClose={() => setApiConfigTarget(null)} />
       )}
       {exportSqlTarget && (
         <ExportSqlModal

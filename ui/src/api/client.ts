@@ -147,14 +147,14 @@ export const apiExportSql = (
 
 // ── Generated CRUD API ("papi") ────────────────────────────────────────────────
 
-export const apiPapiStatus = (userId: string, connId: string): Promise<PapiConfig> =>
-  http.get(`/connections/${connId}/papi/status`, { params: { user_anon_id: userId } }).then(r => r.data)
+export const apiPapiStatus = (userId: string, connId: string, database: string): Promise<PapiConfig> =>
+  http.get(`/connections/${connId}/papi/status`, { params: { user_anon_id: userId, database } }).then(r => r.data)
 
-export const apiPapiEnable = (userId: string, connId: string): Promise<PapiConfig> =>
-  http.post(`/connections/${connId}/papi/enable`, { user_anon_id: userId }).then(r => r.data)
+export const apiPapiEnable = (userId: string, connId: string, database: string): Promise<PapiConfig> =>
+  http.post(`/connections/${connId}/papi/enable`, { user_anon_id: userId, database }).then(r => r.data)
 
-export const apiPapiDisable = (userId: string, connId: string): Promise<PapiConfig> =>
-  http.post(`/connections/${connId}/papi/disable`, { user_anon_id: userId }).then(r => r.data)
+export const apiPapiDisable = (userId: string, connId: string, database: string): Promise<PapiConfig> =>
+  http.post(`/connections/${connId}/papi/disable`, { user_anon_id: userId, database }).then(r => r.data)
 
 export interface PapiTableStatus {
   table: string
@@ -163,14 +163,14 @@ export interface PapiTableStatus {
   created_at: string | null
 }
 
-export const apiPapiListTables = (userId: string, connId: string): Promise<{ tables: PapiTableStatus[] }> =>
-  http.get(`/connections/${connId}/papi/tables`, { params: { user_anon_id: userId } }).then(r => r.data)
+export const apiPapiListTables = (userId: string, connId: string, database: string): Promise<{ tables: PapiTableStatus[] }> =>
+  http.get(`/connections/${connId}/papi/tables`, { params: { user_anon_id: userId, database } }).then(r => r.data)
 
-export const apiPapiEnableTable = (userId: string, connId: string, table: string): Promise<{ table: string; enabled: boolean }> =>
-  http.post(`/connections/${connId}/papi/tables/${table}/enable`, { user_anon_id: userId }).then(r => r.data)
+export const apiPapiEnableTable = (userId: string, connId: string, database: string, table: string): Promise<{ table: string; enabled: boolean }> =>
+  http.post(`/connections/${connId}/papi/tables/${table}/enable`, { user_anon_id: userId, database }).then(r => r.data)
 
-export const apiPapiDisableTable = (userId: string, connId: string, table: string): Promise<{ table: string; enabled: boolean }> =>
-  http.post(`/connections/${connId}/papi/tables/${table}/disable`, { user_anon_id: userId }).then(r => r.data)
+export const apiPapiDisableTable = (userId: string, connId: string, database: string, table: string): Promise<{ table: string; enabled: boolean }> =>
+  http.post(`/connections/${connId}/papi/tables/${table}/disable`, { user_anon_id: userId, database }).then(r => r.data)
 
 // ── Vector DB chunk management ────────────────────────────────────────────────
 

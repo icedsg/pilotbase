@@ -132,6 +132,7 @@ export interface MigrationDiff {
 
 export interface PapiConfig {
   connection_id: string
+  database: string
   enabled: boolean
   enabled_at: string | null
 }

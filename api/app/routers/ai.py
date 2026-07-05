@@ -63,15 +63,22 @@ async def _execute_plan_step(session: AsyncSession, conn, step: Dict[str, Any], 
         await db_service.run_off_loop(db_service.create_database, conn, step["db_name"])
         return {"message": f"Database '{step['db_name']}' created."}
     if step["tool"] == "enable_table_api":
+        # Scoped to conn.database, same as every other agent tool (run_sql_query,
+        # list_tables, describe_table) — the agent has no notion of "browse a
+        # different database on this connection" today, so neither does this.
         table_name = step["table_name"]
-        status = await papi_service.get_status(session, conn.id)
+        database = conn.database
+        status = await papi_service.get_status(session, conn.id, database)
         if not status["enabled"]:
-            await papi_service.enable_for_connection(session, conn)
+            await papi_service.enable_for_connection(session, conn, database)
         try:
-            await papi_service.enable_table(session, conn, table_name, user_id)
+            await papi_service.enable_table(session, conn, database, table_name, user_id)
         except papi_service.PapiError as e:
             return {"error": str(e)}
-        return {"message": f"API enabled for table '{table_name}'.", "endpoint": f"/api/v1/papi/{conn.id}/{table_name}"}
+        return {
+            "message": f"API enabled for table '{table_name}'.",
+            "endpoint": f"/api/v1/papi/{conn.id}/{database}/{table_name}",
+        }
     return {"error": f"Unknown plan step tool: {step['tool']}"}
 
 

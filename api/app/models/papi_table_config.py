@@ -9,12 +9,15 @@ from app.database import Base
 
 class PapiTableConfig(Base):
     """Per-table record of which tables have had their generated CRUD API
-    deliberately activated — the connection-level PapiConfig switch alone
-    doesn't say which tables are actually meant to be public; this is that
-    registry, so Pilotbase can enumerate/enforce exactly what's hosted."""
+    deliberately activated — the (connection_id, database)-level PapiConfig
+    switch alone doesn't say which tables are actually meant to be public;
+    this is that registry, so Pilotbase can enumerate/enforce exactly what's
+    hosted. Keyed by (connection_id, database, table_name) for the same
+    reason PapiConfig is — one connection can browse multiple databases."""
     __tablename__ = "papi_table_configs"
 
     connection_id: Mapped[str] = mapped_column(String, ForeignKey("db_connections.id"), primary_key=True)
+    database: Mapped[str] = mapped_column(String, primary_key=True)
     table_name: Mapped[str] = mapped_column(String, primary_key=True)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     activated_by: Mapped[str | None] = mapped_column(String, ForeignKey("users.id"), nullable=True)

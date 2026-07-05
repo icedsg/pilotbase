@@ -108,6 +108,14 @@ class ConnectionRequest(BaseModel):
     user_email: Optional[str] = None
 
 
+class PapiDatabaseRequest(BaseModel):
+    """Body for papi enable/disable actions — a connection can browse several
+    databases, so which one is being toggled must be explicit rather than
+    assumed from the connection's own default database."""
+    user_anon_id: str
+    database: str
+
+
 class ConnectionTestParams(BaseModel):
     user_anon_id: str
     db_type: str
@@ -402,38 +410,39 @@ async def create_db_user(
 @router.get("/{conn_id}/papi/status")
 async def papi_status(
     conn_id: str,
+    database: str,
     user_anon_id: str,
     session: AsyncSession = Depends(get_session),
 ):
     await get_connection_or_404(conn_id, session)
-    return await papi_service.get_status(session, conn_id)
+    return await papi_service.get_status(session, conn_id, database)
 
 
 @router.post("/{conn_id}/papi/enable")
 async def enable_papi(
     conn_id: str,
-    body: ConnectionRequest,
+    body: PapiDatabaseRequest,
     session: AsyncSession = Depends(get_session),
 ):
     await require_admin(body.user_anon_id, session)
     conn = await get_connection_or_404(conn_id, session)
     try:
-        await papi_service.enable_for_connection(session, conn)
+        await papi_service.enable_for_connection(session, conn, body.database)
     except papi_service.PapiError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return await papi_service.get_status(session, conn_id)
+    return await papi_service.get_status(session, conn_id, body.database)
 
 
 @router.post("/{conn_id}/papi/disable")
 async def disable_papi(
     conn_id: str,
-    body: ConnectionRequest,
+    body: PapiDatabaseRequest,
     session: AsyncSession = Depends(get_session),
 ):
     await require_admin(body.user_anon_id, session)
     await get_connection_or_404(conn_id, session)
-    await papi_service.disable_for_connection(session, conn_id)
-    return await papi_service.get_status(session, conn_id)
+    await papi_service.disable_for_connection(session, conn_id, body.database)
+    return await papi_service.get_status(session, conn_id, body.database)
 
 
 # ── Generated CRUD API — per-table registry ───────────────────────────────────
@@ -445,12 +454,13 @@ async def disable_papi(
 @router.get("/{conn_id}/papi/tables")
 async def papi_list_tables(
     conn_id: str,
+    database: str,
     user_anon_id: str,
     session: AsyncSession = Depends(get_session),
 ):
     conn = await get_connection_or_404(conn_id, session)
-    tables = papi_service.list_exposed_tables(conn)
-    configs = {c.table_name: c for c in await papi_service.list_table_configs(session, conn_id)}
+    tables = papi_service.list_exposed_tables(conn, database)
+    configs = {c.table_name: c for c in await papi_service.list_table_configs(session, conn_id, database)}
     return {
         "tables": [
             {
@@ -468,16 +478,16 @@ async def papi_list_tables(
 async def papi_enable_table(
     conn_id: str,
     table_name: str,
-    body: ConnectionRequest,
+    body: PapiDatabaseRequest,
     session: AsyncSession = Depends(get_session),
 ):
     await require_admin(body.user_anon_id, session)
     conn = await get_connection_or_404(conn_id, session)
-    status = await papi_service.get_status(session, conn_id)
+    status = await papi_service.get_status(session, conn_id, body.database)
     if not status["enabled"]:
-        await papi_service.enable_for_connection(session, conn)
+        await papi_service.enable_for_connection(session, conn, body.database)
     try:
-        await papi_service.enable_table(session, conn, table_name, body.user_anon_id)
+        await papi_service.enable_table(session, conn, body.database, table_name, body.user_anon_id)
     except papi_service.PapiError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"table": table_name, "enabled": True}
@@ -487,10 +497,10 @@ async def papi_enable_table(
 async def papi_disable_table(
     conn_id: str,
     table_name: str,
-    body: ConnectionRequest,
+    body: PapiDatabaseRequest,
     session: AsyncSession = Depends(get_session),
 ):
     await require_admin(body.user_anon_id, session)
     await get_connection_or_404(conn_id, session)
-    await papi_service.disable_table(session, conn_id, table_name)
+    await papi_service.disable_table(session, conn_id, body.database, table_name)
     return {"table": table_name, "enabled": False}
