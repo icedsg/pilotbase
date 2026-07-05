@@ -42,6 +42,11 @@ const markdownComponents = {
   },
 }
 
+// Below this many past sessions, the history dropdown isn't useful enough to
+// bother enabling — the 1 most recent session is already auto-restored on
+// load, and up to MAX_CHAT_TABS more can just be opened as fresh tabs.
+const MIN_SESSIONS_FOR_HISTORY_BUTTON = 4
+
 interface Props {
   onClose: () => void
 }
@@ -64,16 +69,9 @@ export default function RightPanel({ onClose }: Props) {
   const [historyOpen, setHistoryOpen] = useState(false)
   const [historySessions, setHistorySessions] = useState<ChatSessionSummary[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [sessionCount, setSessionCount] = useState(0)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-
-  // Ensure there's always at least one open tab. Reads fresh state (not the
-  // render-time closure) so React StrictMode's double-invoke in dev can't
-  // open two tabs.
-  useEffect(() => {
-    if (useStore.getState().chatTabs.length === 0) openNewChatTab(activeConnectionId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
 
   // Keep the current chat's connection in sync with whatever the user picks
   // in the left sidebar, as long as the chat hasn't started yet — once a
@@ -140,6 +138,30 @@ export default function RightPanel({ onClose }: Props) {
     }
   }
 
+  // On first load (page refresh / reopen), restore the user's single most
+  // recent chat session as a tab, if any exist — and while we're fetching
+  // the list anyway, use its length to decide whether the history button is
+  // worth enabling. Reads/writes fresh state (not the render-time closure)
+  // so React StrictMode's double-invoke in dev can't open two tabs.
+  useEffect(() => {
+    if (!userId) return
+    let cancelled = false
+    apiListChatSessions(userId)
+      .then(({ sessions }) => {
+        if (cancelled) return
+        setSessionCount(sessions.length)
+        setHistorySessions(sessions)
+        if (useStore.getState().chatTabs.length > 0) return
+        if (sessions.length > 0) void openPastSession(sessions[0])
+        else openNewChatTab(activeConnectionId)
+      })
+      .catch(() => {
+        if (!cancelled && useStore.getState().chatTabs.length === 0) openNewChatTab(activeConnectionId)
+      })
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId])
+
   const sendMessage = async () => {
     const text = input.trim()
     const tab = activeTab
@@ -159,10 +181,12 @@ export default function RightPanel({ onClose }: Props) {
     const requestId = crypto.randomUUID()
     registerPendingRequest(requestId, tabId)
 
+    const wasNewSession = !tab.sessionId
     try {
       const ack = await apiChatViaWs(userId, tab.connectionId, text, tab.sessionId, requestId, buildUiContext())
       const fresh = useStore.getState().chatTabs.find((t) => t.tabId === tabId)
       bindTabSession(tabId, ack.session_id, fresh?.title ? null : text.slice(0, 80))
+      if (wasNewSession) setSessionCount((c) => c + 1)
     } catch {
       addTabMessage(tabId, {
         id: crypto.randomUUID(),
@@ -257,7 +281,12 @@ export default function RightPanel({ onClose }: Props) {
         </button>
 
         <div className="relative flex-shrink-0">
-          <button onClick={openHistory} className={`btn-ghost p-1 ${historyOpen ? 'text-accent' : ''}`} title="Past chats">
+          <button
+            onClick={openHistory}
+            disabled={sessionCount < MIN_SESSIONS_FOR_HISTORY_BUTTON}
+            className={`btn-ghost p-1 disabled:opacity-30 disabled:cursor-not-allowed ${historyOpen ? 'text-accent' : ''}`}
+            title={sessionCount < MIN_SESSIONS_FOR_HISTORY_BUTTON ? 'Not enough past chats yet' : 'Past chats'}
+          >
             <Clock size={14} />
           </button>
           {historyOpen && (
