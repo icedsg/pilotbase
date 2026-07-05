@@ -15,41 +15,27 @@ RUN npm run build 2>&1 || \
     { echo ""; echo "ERROR: Frontend build failed. Check ui/src for TypeScript or build errors."; exit 1; }
 
 
-# ── Stage 2: Python 3.13 runtime ─────────────────────────────────────────────
-FROM python:3.13-slim-bookworm AS runtime
+# ── Stage 2: Build Python dependencies ───────────────────────────────────────
+FROM python:3.13-slim-bookworm AS python-builder
 
-LABEL org.opencontainers.image.title="Pilotbase"
-LABEL org.opencontainers.image.description="Open source DB manager with AI — web-based administration and LangGraph AI agent"
-LABEL org.opencontainers.image.url="https://github.com/your-org/pilotbase"
-
-# System dependencies
+# Build-only system dependencies — compiler + headers needed to build wheels.
+# This stage is discarded after the venv is built, so none of this reaches
+# the runtime image.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libpq-dev \
         gcc \
-        curl \
-        ca-certificates \
         freetds-dev \
-        freetds-bin \
         libev-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Non-root user
-RUN useradd -m -u 1000 -s /bin/bash pilotbase
-
-WORKDIR /app
-
-# Python venv inside the image (keeps site-packages isolated)
 RUN python3 -m venv /app/venv
 ENV PATH="/app/venv/bin:$PATH"
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
 
-# Install Python dependencies early (cache layer)
-COPY api/requirements.txt ./requirements.txt
+COPY api/requirements.txt /app/requirements.txt
 
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt 2>&1 || \
+    pip install --no-cache-dir -r /app/requirements.txt 2>&1 || \
     { echo ""; \
       echo "══════════════════════════════════════════════════════════"; \
       echo "ERROR: pip install failed."; \
@@ -59,20 +45,50 @@ RUN pip install --no-cache-dir --upgrade pip && \
       echo "══════════════════════════════════════════════════════════"; \
       exit 1; }
 
+
+# ── Stage 3: Python 3.13 runtime ─────────────────────────────────────────────
+FROM python:3.13-slim-bookworm AS runtime
+
+LABEL org.opencontainers.image.title="Pilotbase"
+LABEL org.opencontainers.image.description="Open source DB manager with AI — web-based administration and LangGraph AI agent"
+LABEL org.opencontainers.image.url="https://github.com/your-org/pilotbase"
+
+# Runtime-only system dependencies — shared libraries, not the compiler
+# toolchain used to build them (that lives only in python-builder above)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl \
+        ca-certificates \
+        freetds-bin \
+        libev4 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Non-root user
+RUN useradd -m -u 1000 -s /bin/bash pilotbase
+
+WORKDIR /app
+
+ENV PATH="/app/venv/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# Pre-built virtualenv, copied in with correct ownership up front — avoids a
+# trailing `chown -R` which would force an overlay2 copy-up and duplicate
+# this entire layer in the final image
+COPY --from=python-builder --chown=pilotbase:pilotbase /app/venv /app/venv
+
 # Copy API source
-COPY api/ ./api/
+COPY --chown=pilotbase:pilotbase api/ ./api/
 
 # Docs bundled into the image so the agent's docs_tools can read them at runtime
-COPY docs/ ./docs/
-COPY README.md ./README.md
+COPY --chown=pilotbase:pilotbase docs/ ./docs/
+COPY --chown=pilotbase:pilotbase README.md ./README.md
 
 # Copy built frontend into the location FastAPI serves static files from
-COPY --from=frontend-builder /build/ui/dist ./api/static/
+COPY --from=frontend-builder --chown=pilotbase:pilotbase /build/ui/dist ./api/static/
 
 # Pilotbase-owned backups directory
-RUN mkdir -p /app/api/backups
-
-RUN chown -R pilotbase:pilotbase /app
+RUN mkdir -p /app/api/backups && chown pilotbase:pilotbase /app/api/backups
 
 USER pilotbase
 

@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     ollama_flash_model: str = "deepseek-v3"
 
     # Application
+    port: int = 8000
     environment: str = "development"
     static_dir: str = "./static"
     backups_dir: str = "./backups"
