@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Loader2, AlertCircle, Check, ArrowRight, Database, FileStack } from 'lucide-react'
 import { apiMigrationObjects, apiMigrationPlan } from '../../api/client'
 import { useUserSession } from '../../hooks/useUserSession'
-import { useStore } from '../../store'
+import { useStore, type MigrationTab } from '../../store'
 import type { MigrationObjectPick } from '../../types'
 
 function formatSize(bytes: number | null): string {
@@ -12,9 +12,9 @@ function formatSize(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export default function MigrationObjectPicker() {
+export default function MigrationObjectPicker({ tab }: { tab: MigrationTab }) {
   const { userId } = useUserSession()
-  const { migrationViewContext, connections, updateMigrationViewContext } = useStore()
+  const { connections, updateMigrationTab } = useStore()
   const [objects, setObjects] = useState<MigrationObjectPick[] | null>(null)
   const [kind, setKind] = useState<'sql' | 'mongo'>('sql')
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -23,24 +23,23 @@ export default function MigrationObjectPicker() {
   const [planLoading, setPlanLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const sourceConn = connections.find((c) => c.id === migrationViewContext?.sourceConnId)
-  const targetConn = connections.find((c) => c.id === migrationViewContext?.targetConnId)
+  const sourceConn = connections.find((c) => c.id === tab.sourceConnId)
+  const targetConn = connections.find((c) => c.id === tab.targetConnId)
 
   useEffect(() => {
-    if (!migrationViewContext) return
     setLoading(true)
     setError('')
-    apiMigrationObjects(userId, migrationViewContext.sourceConnId, migrationViewContext.targetConnId)
+    updateMigrationTab(tab.id, { checking: true })
+    apiMigrationObjects(userId, tab.sourceConnId, tab.targetConnId)
       .then((r) => {
         setObjects(r.objects)
         setKind(r.kind)
         setSelected(new Set(r.objects.filter((o) => o.on_source).map((o) => o.name)))
       })
       .catch((e) => setError(e?.response?.data?.detail || 'Failed to list tables/collections.'))
-      .finally(() => setLoading(false))
-  }, [migrationViewContext, userId])
-
-  if (!migrationViewContext) return null
+      .finally(() => { setLoading(false); updateMigrationTab(tab.id, { checking: false }) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab.sourceConnId, tab.targetConnId, userId])
 
   const toggle = (name: string) => {
     setSelected((s) => {
@@ -62,17 +61,19 @@ export default function MigrationObjectPicker() {
   }
 
   const continueToReview = async () => {
-    if (!migrationViewContext || selected.size === 0) return
+    if (selected.size === 0) return
     setPlanLoading(true)
     setError('')
+    updateMigrationTab(tab.id, { checking: true })
     try {
       const r = await apiMigrationPlan(
-        userId, migrationViewContext.sourceConnId, migrationViewContext.targetConnId,
+        userId, tab.sourceConnId, tab.targetConnId,
         Array.from(selected), scope,
       )
-      updateMigrationViewContext({ step: 'review', kind: r.kind, scope, plan: r.objects })
+      updateMigrationTab(tab.id, { step: 'review', migrationKind: r.kind, scope, plan: r.objects, checking: false })
     } catch (e: any) {
       setError(e?.response?.data?.detail || 'Failed to build migration plan.')
+      updateMigrationTab(tab.id, { checking: false })
     } finally {
       setPlanLoading(false)
     }

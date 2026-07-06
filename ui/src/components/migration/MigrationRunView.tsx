@@ -1,9 +1,9 @@
 import { Loader2, Check, X, Circle, RotateCcw } from 'lucide-react'
-import { useStore } from '../../store'
+import { useStore, type MigrationTab } from '../../store'
 
-export default function MigrationRunView() {
-  const { migrationViewContext, setMigrationViewContext } = useStore()
-  const job = migrationViewContext?.job
+export default function MigrationRunView({ tab }: { tab: MigrationTab }) {
+  const { closeMainTab } = useStore()
+  const job = tab.job
   if (!job) return null
 
   const terminal = job.status === 'done' || job.status === 'error'
@@ -18,7 +18,7 @@ export default function MigrationRunView() {
         </div>
         {terminal && (
           <button
-            onClick={() => setMigrationViewContext(null)}
+            onClick={() => closeMainTab(tab.id)}
             className="flex items-center gap-1.5 bg-surface-300 hover:bg-surface-200 text-gray-700 dark:text-gray-300 px-3 py-1.5 rounded text-xs font-medium"
           >
             <RotateCcw size={13} /> Close

@@ -2,26 +2,26 @@ import { useState } from 'react'
 import { Loader2, AlertCircle, Play } from 'lucide-react'
 import { apiMigrationExecute } from '../../api/client'
 import { useUserSession } from '../../hooks/useUserSession'
-import { useStore } from '../../store'
+import { useStore, type MigrationTab } from '../../store'
 import MigrationObjectRow from './MigrationObjectRow'
 
-export default function MigrationPlanReview() {
+export default function MigrationPlanReview({ tab }: { tab: MigrationTab }) {
   const { userId } = useUserSession()
-  const { migrationViewContext, updateMigrationViewContext, setMigrationJob } = useStore()
+  const { updateMigrationTab, setMigrationTabJob } = useStore()
   const [running, setRunning] = useState(false)
   const [error, setError] = useState('')
 
-  if (!migrationViewContext?.plan) return null
-  const { plan, kind = 'sql' } = migrationViewContext
+  if (!tab.plan) return null
+  const { plan, migrationKind: kind = 'sql' } = tab
 
   const toggleInclude = (name: string) => {
-    updateMigrationViewContext({
+    updateMigrationTab(tab.id, {
       plan: plan.map((o) => o.name === name ? { ...o, include: !o.include } : o),
     })
   }
 
   const toggleVersion = (name: string) => {
-    updateMigrationViewContext({
+    updateMigrationTab(tab.id, {
       plan: plan.map((o) => o.name === name ? { ...o, version_instead_of_overwrite: !o.version_instead_of_overwrite } : o),
     })
   }
@@ -29,17 +29,16 @@ export default function MigrationPlanReview() {
   const includedCount = plan.filter((o) => o.include).length
 
   const runMigration = async () => {
-    if (!migrationViewContext) return
     setRunning(true)
     setError('')
     try {
       const job = await apiMigrationExecute(
-        userId, migrationViewContext.sourceConnId, migrationViewContext.targetConnId,
+        userId, tab.sourceConnId, tab.targetConnId,
         plan.map((o) => ({ name: o.name, status: o.status, include: o.include, version_instead_of_overwrite: o.version_instead_of_overwrite })),
-        migrationViewContext.scope || 'schema',
+        tab.scope || 'schema',
       )
-      setMigrationJob({ jobId: job.job_id, steps: job.steps, status: job.status, error: job.error })
-      updateMigrationViewContext({ step: 'running' })
+      setMigrationTabJob(tab.id, { jobId: job.job_id, steps: job.steps, status: job.status, error: job.error })
+      updateMigrationTab(tab.id, { step: 'running' })
     } catch (e: any) {
       setError(e?.response?.data?.detail || 'Failed to start migration.')
     } finally {

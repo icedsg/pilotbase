@@ -93,43 +93,6 @@ export interface QueryHistoryEntry {
   executed_at: string
 }
 
-export interface TableStat {
-  src_rows: number | null
-  tgt_rows: number | null
-  src_size: number | null
-  tgt_size: number | null
-}
-
-export interface ColumnChange {
-  added: string[]
-  dropped: string[]
-  modified: string[]
-}
-
-export interface IndexChange {
-  added: string[]
-  dropped: string[]
-  changed: string[]
-}
-
-export interface FkChange {
-  added: string[]
-  dropped: string[]
-}
-
-export interface MigrationDiff {
-  added_tables: string[]
-  dropped_tables: string[]
-  column_changes: Record<string, ColumnChange>
-  added_views: string[]
-  dropped_views: string[]
-  added_routines: string[]
-  dropped_routines: string[]
-  table_stats: Record<string, TableStat>
-  index_changes: Record<string, IndexChange>
-  fk_changes: Record<string, FkChange>
-}
-
 export interface MigrationObjectPick {
   name: string
   on_source: boolean

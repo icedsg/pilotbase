@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Search, X, FileText, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown, AlertCircle, Copy } from 'lucide-react'
-import { useStore } from '../../store'
+import type { QueryTab } from '../../store'
 import { sortByDirection, type SortDirection } from '../../utils/sort'
 import SortContextMenu, { type SortMenuTarget } from './SortContextMenu'
 import { JsonView, extractDocId, extractPreview, matchesSearch, type Doc } from './JsonView'
@@ -10,8 +10,9 @@ import { JsonView, extractDocId, extractPreview, matchesSearch, type Doc } from 
 // detail pane, mirroring NoSQLDocumentView's layout — a flat SQL-style grid
 // can't represent nested/aggregated documents (it shows "[object Object]").
 
-export default function NoSQLQueryResultsView() {
-  const { queryResult, queryLoading } = useStore()
+export default function NoSQLQueryResultsView({ tab }: { tab: QueryTab }) {
+  const queryResult = tab.result
+  const queryLoading = tab.loading
 
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)

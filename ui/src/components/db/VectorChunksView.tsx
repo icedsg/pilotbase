@@ -3,7 +3,7 @@ import {
   Search, RefreshCw, Loader2, X, Package, ChevronRight, ChevronLeft,
   Trash2, Pencil, Check, Upload, AlertCircle, ArrowUp, ArrowDown, ArrowUpDown,
 } from 'lucide-react'
-import { useStore } from '../../store'
+import type { VectorTab } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
 import {
   apiExecuteQuery, apiGetVectorSchema, apiDeleteVectorChunk,
@@ -275,8 +275,8 @@ function UploadDialog({
 
 const PAGE_SIZE = 100
 
-export default function VectorChunksView() {
-  const { vectorViewContext } = useStore()
+export default function VectorChunksView({ tab }: { tab: VectorTab }) {
+  const vectorViewContext = tab.context
   const { userId } = useUserSession()
 
   const [chunks, setChunks]           = useState<Chunk[]>([])
@@ -441,8 +441,6 @@ export default function VectorChunksView() {
     const fields = [...keys].sort((a, b) => a.localeCompare(b))
     return hasScore ? ['score', ...fields] : fields
   }, [chunks])
-
-  if (!vectorViewContext) return null
 
   const filtered = chunks.filter(c => matchesSearch(c, searchTerm))
   const sorted = sortField ? sortByDirection(filtered, c => getChunkFieldValue(c, sortField), sortDirection) : filtered

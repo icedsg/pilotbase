@@ -1,37 +1,25 @@
 import { useRef } from 'react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
-import { Play, Loader2, Copy, Box } from 'lucide-react'
+import { Play, Loader2, Copy } from 'lucide-react'
 import QueryEditor, { type QueryEditorHandle } from '../db/QueryEditor'
 import ResultsTable from '../db/ResultsTable'
 import VectorChunksView from '../db/VectorChunksView'
 import NoSQLDocumentView from '../db/NoSQLDocumentView'
 import NoSQLQueryResultsView from '../db/NoSQLQueryResultsView'
 import MigrationFlow from '../migration/MigrationFlow'
+import MainTabBar from './MainTabBar'
 import { useStore } from '../../store'
 import { LogoIcon } from '../common/Logo'
-import DbTypeIcon from '../db/DbTypeIcon'
 import { isNoSqlJsonDbType } from '../../utils/dbTypes'
 
 export default function MainArea() {
   const {
-    activeConnectionId, connections, activeDatabase, activeQuery, queryLoading,
-    vectorViewContext, nosqlViewContext, migrationViewContext, sqlPanelOpen,
-    setVectorViewContext, setNosqlViewContext, setMigrationViewContext,
+    activeConnectionId, connections, mainTabs, activeMainTabId, focusConnectionQueryTab,
   } = useStore()
   const activeConn = connections.find((c) => c.id === activeConnectionId)
+  const activeTab = mainTabs.find((t) => t.id === activeMainTabId)
   const queryEditorRef = useRef<QueryEditorHandle>(null)
   const isNoSqlJsonConn = isNoSqlJsonDbType(activeConn?.db_type)
-
-  const isSpecialView = !!(vectorViewContext || nosqlViewContext || migrationViewContext)
-  const migrationStepLabel: Record<string, string> = { objects: 'Plan Migration', review: 'Review Plan', running: 'Migrating…' }
-  const specialLabel = vectorViewContext?.collection ?? nosqlViewContext?.collection
-    ?? (migrationViewContext ? migrationStepLabel[migrationViewContext.step] : undefined)
-
-  const resetToNormalView = () => {
-    setVectorViewContext(null)
-    setNosqlViewContext(null)
-    setMigrationViewContext(null)
-  }
 
   if (!activeConnectionId) {
     return (
@@ -52,40 +40,25 @@ export default function MainArea() {
         {/* Left: connection identity */}
         <div className="flex items-center gap-2 text-xs text-gray-400 min-w-0">
           <button
-            onClick={resetToNormalView}
-            className={isSpecialView ? 'cursor-pointer flex-shrink-0' : 'flex-shrink-0 cursor-default'}
-            title={isSpecialView ? 'Return to the normal view' : undefined}
+            onClick={() => focusConnectionQueryTab(activeConnectionId)}
+            className="flex-shrink-0"
           >
             <LogoIcon size={16} />
           </button>
           <span className="text-gray-700 dark:text-gray-300 font-medium truncate">{activeConn?.name}</span>
           <span className="text-gray-500">·</span>
           <span className="text-gray-500">{activeConn?.db_type}</span>
-          {isSpecialView && specialLabel && (
-            <>
-              <span className="text-gray-600">/</span>
-              <div className="flex items-center gap-1.5 text-gray-700 dark:text-gray-300 min-w-0">
-                <Box size={12} className="text-violet-400 flex-shrink-0" />
-                <span className="font-mono font-medium truncate">{specialLabel}</span>
-                {vectorViewContext?.totalCount != null && (
-                  <span className="text-[11px] text-gray-600 dark:text-gray-400 tabular-nums flex-shrink-0">
-                    ({vectorViewContext.totalCount.toLocaleString()} chunks)
-                  </span>
-                )}
-              </div>
-            </>
-          )}
         </div>
 
-        {/* Right: SQL controls only when the query editor panel is open */}
-        {!isSpecialView && sqlPanelOpen && (
+        {/* Right: SQL controls only when the active tab is a query tab with the panel open */}
+        {activeTab?.kind === 'query' && activeTab.sqlPanelOpen && (
           <div className="flex items-center gap-2 flex-shrink-0 ml-4">
             <button
               onClick={() => queryEditorRef.current?.run()}
-              disabled={!activeConnectionId || queryLoading}
+              disabled={activeTab.loading}
               className="flex items-center gap-1 bg-accent hover:bg-accent-hover text-white px-2 py-0.5 rounded text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {queryLoading
+              {activeTab.loading
                 ? <Loader2 size={12} className="animate-spin" />
                 : <Play size={12} fill="currentColor" />
               }
@@ -94,40 +67,48 @@ export default function MainArea() {
             </button>
 
             <button
-              onClick={() => navigator.clipboard.writeText(activeQuery)}
+              onClick={() => navigator.clipboard.writeText(activeTab.query)}
               className="btn-ghost p-1"
               title="Copy query"
             >
               <Copy size={14} />
             </button>
 
-            {activeDatabase && (
+            {activeTab.database && (
               <span className="text-[15px] text-gray-500 dark:text-gray-400">
-                db: <span className="text-gray-700 dark:text-gray-200 font-medium">{activeDatabase}</span>
+                db: <span className="text-gray-700 dark:text-gray-200 font-medium">{activeTab.database}</span>
               </span>
             )}
           </div>
         )}
       </div>
 
+      <MainTabBar />
+
       {/* Main content */}
-      {isSpecialView ? (
-        <div className="flex-1 min-h-0">
-          {vectorViewContext ? <VectorChunksView /> : migrationViewContext ? <MigrationFlow /> : <NoSQLDocumentView />}
+      {!activeTab ? (
+        <div className="flex-1 min-h-0 flex items-center justify-center text-gray-600 text-xs">
+          Select a database or table from the panel to get started
         </div>
-      ) : sqlPanelOpen ? (
+      ) : activeTab.kind === 'vector' ? (
+        <div className="flex-1 min-h-0"><VectorChunksView tab={activeTab} /></div>
+      ) : activeTab.kind === 'nosql' ? (
+        <div className="flex-1 min-h-0"><NoSQLDocumentView tab={activeTab} /></div>
+      ) : activeTab.kind === 'migration' ? (
+        <div className="flex-1 min-h-0"><MigrationFlow tab={activeTab} /></div>
+      ) : activeTab.sqlPanelOpen ? (
         <PanelGroup direction="vertical" className="flex-1">
           <Panel defaultSize={40} minSize={20}>
-            <QueryEditor ref={queryEditorRef} />
+            <QueryEditor ref={queryEditorRef} tab={activeTab} />
           </Panel>
           <PanelResizeHandle className="h-1 bg-surface-50 hover:bg-accent transition-colors cursor-row-resize" />
           <Panel defaultSize={60} minSize={20}>
-            {isNoSqlJsonConn ? <NoSQLQueryResultsView /> : <ResultsTable />}
+            {isNoSqlJsonConn ? <NoSQLQueryResultsView tab={activeTab} /> : <ResultsTable tab={activeTab} />}
           </Panel>
         </PanelGroup>
       ) : (
         <div className="flex-1 min-h-0">
-          {isNoSqlJsonConn ? <NoSQLQueryResultsView /> : <ResultsTable />}
+          {isNoSqlJsonConn ? <NoSQLQueryResultsView tab={activeTab} /> : <ResultsTable tab={activeTab} />}
         </div>
       )}
     </div>

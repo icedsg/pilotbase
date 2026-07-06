@@ -118,15 +118,18 @@ export function useWebSocket() {
         if (msg.type === 'agent_query_applied' && payload) {
           const store = useStore.getState()
           const connectionId = payload.connection_id as string | undefined
-          if (connectionId) store.setActiveConnection(connectionId)
-          if (payload.database) store.setActiveDatabase(payload.database as string)
-          store.setVectorViewContext(null)
-          store.setNosqlViewContext(null)
-          store.setMigrationViewContext(null)
-          store.setColumnViewContext(null)
-          store.setActiveQuery((payload.sql as string) || '')
-          store.setQueryResult((payload.result as QueryResult) || null)
-          store.setSqlPanelOpen(true)
+          if (connectionId) {
+            store.setActiveConnection(connectionId)
+            const tabId = store.ensureQueryTab(connectionId)
+            store.updateQueryTab(tabId, {
+              database: (payload.database as string) || null,
+              query: (payload.sql as string) || '',
+              result: (payload.result as QueryResult) || null,
+              sqlPanelOpen: true,
+              columnViewContext: null,
+            })
+            store.setActiveMainTab(tabId)
+          }
         }
 
         // The agent browsed or updated a vector collection — open it in the
@@ -136,9 +139,7 @@ export function useWebSocket() {
           const store = useStore.getState()
           const connectionId = payload.connection_id as string | undefined
           if (connectionId) store.setActiveConnection(connectionId)
-          store.setNosqlViewContext(null)
-          store.setMigrationViewContext(null)
-          store.setVectorViewContext({
+          store.openVectorTab({
             collection: payload.collection as string,
             connId: connectionId || '',
             db: (payload.database as string) || '',
@@ -147,12 +148,14 @@ export function useWebSocket() {
         }
         // Migration job progress — guarded by job_id so a stray message from a
         // different/prior job (e.g. after a reconnect) can't corrupt an
-        // unrelated view (see api/app/services/migration_executor.py).
+        // unrelated tab (see api/app/services/migration_executor.py). Jobs are
+        // tab-scoped now, so find whichever migration tab owns this job_id.
         if (msg.type === 'migration_progress' && payload) {
           const store = useStore.getState()
           const jobId = payload.job_id as string
-          if (store.migrationViewContext?.job?.jobId === jobId) {
-            store.patchMigrationJobStep(jobId, payload.step_key as string, {
+          const tab = store.mainTabs.find((t) => t.kind === 'migration' && t.job?.jobId === jobId)
+          if (tab) {
+            store.patchMigrationTabJobStep(tab.id, jobId, payload.step_key as string, {
               status: 'running',
               progress_done: payload.done as number,
               progress_total: (payload.total as number | null) ?? null,
@@ -164,8 +167,9 @@ export function useWebSocket() {
         if (msg.type === 'migration_step_done' && payload) {
           const store = useStore.getState()
           const jobId = payload.job_id as string
-          if (store.migrationViewContext?.job?.jobId === jobId) {
-            store.patchMigrationJobStep(jobId, payload.step_key as string, {
+          const tab = store.mainTabs.find((t) => t.kind === 'migration' && t.job?.jobId === jobId)
+          if (tab) {
+            store.patchMigrationTabJobStep(tab.id, jobId, payload.step_key as string, {
               status: (payload.status as 'done' | 'error') || 'done',
               error: (payload.error as string) || null,
             })
@@ -175,19 +179,19 @@ export function useWebSocket() {
         if (msg.type === 'migration_done' && payload) {
           const store = useStore.getState()
           const jobId = payload.job_id as string
-          const job = store.migrationViewContext?.job
-          if (job?.jobId === jobId) {
+          const tab = store.mainTabs.find((t) => t.kind === 'migration' && t.job?.jobId === jobId)
+          if (tab?.kind === 'migration' && tab.job) {
             const summary = payload.summary as MigrationJobState['summary']
-            store.setMigrationJob({ ...job, status: summary && summary.errors.length > 0 ? 'error' : 'done', summary: summary ?? null })
+            store.setMigrationTabJob(tab.id, { ...tab.job, status: summary && summary.errors.length > 0 ? 'error' : 'done', summary: summary ?? null })
           }
         }
 
         if (msg.type === 'migration_error' && payload) {
           const store = useStore.getState()
           const jobId = payload.job_id as string
-          const job = store.migrationViewContext?.job
-          if (job?.jobId === jobId) {
-            store.setMigrationJob({ ...job, status: 'error', error: (payload.message as string) || 'Migration failed.' })
+          const tab = store.mainTabs.find((t) => t.kind === 'migration' && t.job?.jobId === jobId)
+          if (tab?.kind === 'migration' && tab.job) {
+            store.setMigrationTabJob(tab.id, { ...tab.job, status: 'error', error: (payload.message as string) || 'Migration failed.' })
           }
         }
       } catch {

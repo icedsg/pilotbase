@@ -7,7 +7,6 @@ import type {
   UserSession,
   ChatSessionSummary,
   QueryHistoryEntry,
-  MigrationDiff,
   MigrationObjectPick,
   MigrationPlanObject,
   PapiConfig,
@@ -123,12 +122,6 @@ export const apiDownloadBackup = (userId: string, filename: string): Promise<Blo
   }).then(r => r.data)
 
 // ── Migration ─────────────────────────────────────────────────────────────────
-
-export const apiSchemaDiff = (userId: string, sourceId: string, targetId: string): Promise<MigrationDiff> =>
-  http.post('/migration/diff', { user_anon_id: userId, source_connection_id: sourceId, target_connection_id: targetId }).then(r => r.data)
-
-export const apiMigrationScript = (userId: string, sourceId: string, targetId: string): Promise<{ sql: string }> =>
-  http.post('/migration/script', { user_anon_id: userId, source_connection_id: sourceId, target_connection_id: targetId }).then(r => r.data)
 
 export const apiMigrationObjects = (
   userId: string, sourceId: string, targetId: string, schema?: string,

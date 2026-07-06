@@ -30,19 +30,6 @@ export interface NoSQLViewContext {
 
 export type MigrationStep = 'objects' | 'review' | 'running'
 
-export interface MigrationViewContext {
-  sourceConnId: string
-  sourceDb: string | null
-  targetConnId: string
-  targetDb: string | null
-  step: MigrationStep
-  kind?: 'sql' | 'mongo'
-  scope?: 'schema' | 'schema_data'
-  objects?: MigrationObjectPick[]
-  plan?: MigrationPlanObject[]
-  job?: MigrationJobState | null
-}
-
 export interface AlterScriptEntry {
   ts: string
   sql: string
@@ -73,6 +60,54 @@ export interface ChatTab {
   pendingPlan: PendingPlan | null
 }
 
+// ── Main area tabs ──────────────────────────────────────────────────────────
+// Query/vector/nosql/migration views all live as tabs so switching connections
+// or between views never destroys in-progress work (see MainTabBar/MainArea).
+
+export type MainTabKind = 'query' | 'vector' | 'nosql' | 'migration'
+
+interface MainTabBase {
+  id: string
+}
+
+export interface QueryTab extends MainTabBase {
+  kind: 'query'
+  connectionId: string
+  database: string | null
+  query: string
+  result: QueryResult | null
+  loading: boolean
+  sqlPanelOpen: boolean
+  columnViewContext: ColumnViewContext | null
+}
+
+export interface VectorTab extends MainTabBase {
+  kind: 'vector'
+  context: VectorViewContext
+}
+
+export interface NoSQLTab extends MainTabBase {
+  kind: 'nosql'
+  context: NoSQLViewContext
+}
+
+export interface MigrationTab extends MainTabBase {
+  kind: 'migration'
+  sourceConnId: string
+  sourceDb: string | null
+  targetConnId: string
+  targetDb: string | null
+  step: MigrationStep
+  migrationKind?: 'sql' | 'mongo'
+  scope?: 'schema' | 'schema_data'
+  objects?: MigrationObjectPick[]
+  plan?: MigrationPlanObject[]
+  job?: MigrationJobState | null
+  checking: boolean
+}
+
+export type MainTab = QueryTab | VectorTab | NoSQLTab | MigrationTab
+
 interface PilotbaseStore {
   // ── User session ─────────────────────────────────────────────────
   session: UserSession | null
@@ -87,41 +122,27 @@ interface PilotbaseStore {
   removeConnection: (id: string) => void
   setActiveConnection: (id: string | null) => void
 
-  // ── Query editor ─────────────────────────────────────────────────
-  activeQuery: string
-  activeDatabase: string | null
-  queryResult: QueryResult | null
-  queryLoading: boolean
-  sqlPanelOpen: boolean
-  setActiveQuery: (q: string) => void
-  setActiveDatabase: (db: string | null) => void
-  setQueryResult: (r: QueryResult | null) => void
-  setQueryLoading: (v: boolean) => void
-  setSqlPanelOpen: (v: boolean) => void
+  // ── Main area tabs (query / vector / nosql / migration) ────────────
+  mainTabs: MainTab[]
+  activeMainTabId: string | null
+  ensureQueryTab: (connectionId: string) => string
+  focusConnectionQueryTab: (connectionId: string) => string
+  updateQueryTab: (tabId: string, patch: Partial<QueryTab>) => void
+  openVectorTab: (ctx: VectorViewContext) => string
+  openNoSQLTab: (ctx: NoSQLViewContext) => string
+  openMigrationTab: (args: { sourceConnId: string; sourceDb: string | null; targetConnId: string; targetDb: string | null }) => string
+  updateMigrationTab: (tabId: string, patch: Partial<MigrationTab>) => void
+  setMigrationTabJob: (tabId: string, job: MigrationJobState | null) => void
+  patchMigrationTabJobStep: (tabId: string, jobId: string, stepKey: string, patch: Partial<MigrationJobStep>) => void
+  closeMainTab: (tabId: string) => void
+  setActiveMainTab: (tabId: string) => void
 
-  // ── Column view / ALTER TABLE ─────────────────────────────────────
-  columnViewContext: ColumnViewContext | null
-  setColumnViewContext: (ctx: ColumnViewContext | null) => void
+  // ── Alter-script audit log (cross-connection) ──────────────────────
   alterScriptLog: AlterScriptEntry[]
   appendAlterScript: (sql: string, executed?: boolean) => void
   clearAlterScripts: () => void
   sqlLogPanelOpen: boolean
   setSqlLogPanelOpen: (v: boolean) => void
-
-  // ── Vector DB view ────────────────────────────────────────────────
-  vectorViewContext: VectorViewContext | null
-  setVectorViewContext: (ctx: VectorViewContext | null) => void
-
-  // ── NoSQL view ────────────────────────────────────────────────────
-  nosqlViewContext: NoSQLViewContext | null
-  setNosqlViewContext: (ctx: NoSQLViewContext | null) => void
-
-  // ── Migration compare view ────────────────────────────────────────
-  migrationViewContext: MigrationViewContext | null
-  setMigrationViewContext: (ctx: MigrationViewContext | null) => void
-  updateMigrationViewContext: (patch: Partial<MigrationViewContext>) => void
-  setMigrationJob: (job: MigrationJobState | null) => void
-  patchMigrationJobStep: (jobId: string, stepKey: string, patch: Partial<MigrationJobStep>) => void
 
   // ── Query history (executed scripts, any source) ──────────────────
   queryHistory: QueryHistoryEntry[]
@@ -143,7 +164,6 @@ interface PilotbaseStore {
   setTabConnection: (tabId: string, connectionId: string | null) => void
   bindTabSession: (tabId: string, sessionId: string, title: string | null) => void
   clearTabMessages: (tabId: string) => void
-  resetChatForConnection: (connectionId: string | null) => void
   registerPendingRequest: (requestId: string, tabId: string) => void
   resolveTabForRequest: (requestId: string | null | undefined, sessionId: string | null | undefined) => string | null
 
@@ -154,6 +174,14 @@ interface PilotbaseStore {
   // ── Theme ────────────────────────────────────────────────────────
   theme: 'dark' | 'light'
   toggleTheme: () => void
+}
+
+function newQueryTab(connectionId: string): QueryTab {
+  return {
+    id: crypto.randomUUID(), kind: 'query', connectionId,
+    database: null, query: '', result: null, loading: false,
+    sqlPanelOpen: false, columnViewContext: null,
+  }
 }
 
 export const useStore = create<PilotbaseStore>((set, get) => ({
@@ -175,21 +203,94 @@ export const useStore = create<PilotbaseStore>((set, get) => ({
     })),
   setActiveConnection: (activeConnectionId) => set({ activeConnectionId }),
 
-  // Query
-  activeQuery: '',
-  activeDatabase: null,
-  queryResult: null,
-  queryLoading: false,
-  sqlPanelOpen: false,
-  setActiveQuery: (activeQuery) => set({ activeQuery }),
-  setActiveDatabase: (activeDatabase) => set({ activeDatabase }),
-  setQueryResult: (queryResult) => set({ queryResult }),
-  setQueryLoading: (queryLoading) => set((s) => ({ queryLoading, sqlPanelOpen: queryLoading || s.sqlPanelOpen })),
-  setSqlPanelOpen: (sqlPanelOpen) => set({ sqlPanelOpen }),
+  // Main area tabs
+  mainTabs: [],
+  activeMainTabId: null,
+  ensureQueryTab: (connectionId) => {
+    const existing = get().mainTabs.find((t): t is QueryTab => t.kind === 'query' && t.connectionId === connectionId)
+    if (existing) return existing.id
+    const tab = newQueryTab(connectionId)
+    set((s) => ({ mainTabs: [...s.mainTabs, tab] }))
+    return tab.id
+  },
+  focusConnectionQueryTab: (connectionId) => {
+    const tabId = get().ensureQueryTab(connectionId)
+    set({ activeMainTabId: tabId })
+    return tabId
+  },
+  updateQueryTab: (tabId, patch) => set((s) => ({
+    mainTabs: s.mainTabs.map((t) => {
+      if (t.id !== tabId || t.kind !== 'query') return t
+      // Starting a query run always reveals the editor/results panel — mirrors the
+      // old global setQueryLoading behavior — unless the patch itself says otherwise.
+      const sqlPanelOpen = 'sqlPanelOpen' in patch ? patch.sqlPanelOpen! : (patch.loading ? true : t.sqlPanelOpen)
+      return { ...t, ...patch, sqlPanelOpen }
+    }),
+  })),
+  openVectorTab: (ctx) => {
+    const existing = get().mainTabs.find(
+      (t): t is VectorTab => t.kind === 'vector' && t.context.connId === ctx.connId && t.context.db === ctx.db && t.context.collection === ctx.collection,
+    )
+    const tabId = existing ? existing.id : crypto.randomUUID()
+    set((s) => ({
+      mainTabs: existing
+        ? s.mainTabs.map((t) => t.id === tabId ? { ...t, context: ctx } as VectorTab : t)
+        : [...s.mainTabs, { id: tabId, kind: 'vector', context: ctx } as VectorTab],
+      activeMainTabId: tabId,
+    }))
+    return tabId
+  },
+  openNoSQLTab: (ctx) => {
+    const existing = get().mainTabs.find(
+      (t): t is NoSQLTab => t.kind === 'nosql' && t.context.connId === ctx.connId && t.context.db === ctx.db && t.context.collection === ctx.collection,
+    )
+    const tabId = existing ? existing.id : crypto.randomUUID()
+    set((s) => ({
+      mainTabs: existing
+        ? s.mainTabs.map((t) => t.id === tabId ? { ...t, context: ctx } as NoSQLTab : t)
+        : [...s.mainTabs, { id: tabId, kind: 'nosql', context: ctx } as NoSQLTab],
+      activeMainTabId: tabId,
+    }))
+    return tabId
+  },
+  openMigrationTab: ({ sourceConnId, sourceDb, targetConnId, targetDb }) => {
+    const existing = get().mainTabs.find(
+      (t): t is MigrationTab => t.kind === 'migration' && t.sourceConnId === sourceConnId && t.sourceDb === sourceDb
+        && t.targetConnId === targetConnId && t.targetDb === targetDb,
+    )
+    if (existing) {
+      set({ activeMainTabId: existing.id })
+      return existing.id
+    }
+    const tab: MigrationTab = {
+      id: crypto.randomUUID(), kind: 'migration', sourceConnId, sourceDb, targetConnId, targetDb,
+      step: 'objects', checking: true,
+    }
+    set((s) => ({ mainTabs: [...s.mainTabs, tab], activeMainTabId: tab.id }))
+    return tab.id
+  },
+  updateMigrationTab: (tabId, patch) => set((s) => ({
+    mainTabs: s.mainTabs.map((t) => (t.id === tabId && t.kind === 'migration') ? { ...t, ...patch } : t),
+  })),
+  setMigrationTabJob: (tabId, job) => set((s) => ({
+    mainTabs: s.mainTabs.map((t) => (t.id === tabId && t.kind === 'migration') ? { ...t, job } : t),
+  })),
+  patchMigrationTabJobStep: (tabId, jobId, stepKey, patch) => set((s) => ({
+    mainTabs: s.mainTabs.map((t) => {
+      if (t.id !== tabId || t.kind !== 'migration' || !t.job || t.job.jobId !== jobId) return t
+      return { ...t, job: { ...t.job, steps: t.job.steps.map((step) => step.key === stepKey ? { ...step, ...patch } : step) } }
+    }),
+  })),
+  closeMainTab: (tabId) => set((s) => {
+    const mainTabs = s.mainTabs.filter((t) => t.id !== tabId)
+    const activeMainTabId = s.activeMainTabId === tabId
+      ? (mainTabs[mainTabs.length - 1]?.id ?? null)
+      : s.activeMainTabId
+    return { mainTabs, activeMainTabId }
+  }),
+  setActiveMainTab: (tabId) => set({ activeMainTabId: tabId }),
 
-  // Column view / ALTER TABLE
-  columnViewContext: null,
-  setColumnViewContext: (columnViewContext) => set({ columnViewContext }),
+  // Alter-script audit log
   alterScriptLog: [],
   appendAlterScript: (sql, executed) => set((s) => ({
     alterScriptLog: [...s.alterScriptLog, { ts: new Date().toLocaleTimeString(), sql, executed }],
@@ -198,34 +299,6 @@ export const useStore = create<PilotbaseStore>((set, get) => ({
   clearAlterScripts: () => set({ alterScriptLog: [] }),
   sqlLogPanelOpen: false,
   setSqlLogPanelOpen: (sqlLogPanelOpen) => set({ sqlLogPanelOpen }),
-
-  // Vector DB view
-  vectorViewContext: null,
-  setVectorViewContext: (vectorViewContext) => set({ vectorViewContext }),
-
-  // NoSQL view
-  nosqlViewContext: null,
-  setNosqlViewContext: (nosqlViewContext) => set({ nosqlViewContext }),
-
-  // Migration compare view
-  migrationViewContext: null,
-  setMigrationViewContext: (migrationViewContext) => set({ migrationViewContext }),
-  updateMigrationViewContext: (patch) => set((s) => ({
-    migrationViewContext: s.migrationViewContext ? { ...s.migrationViewContext, ...patch } : s.migrationViewContext,
-  })),
-  setMigrationJob: (job) => set((s) => ({
-    migrationViewContext: s.migrationViewContext ? { ...s.migrationViewContext, job } : s.migrationViewContext,
-  })),
-  patchMigrationJobStep: (jobId, stepKey, patch) => set((s) => {
-    const ctx = s.migrationViewContext
-    if (!ctx?.job || ctx.job.jobId !== jobId) return s
-    return {
-      migrationViewContext: {
-        ...ctx,
-        job: { ...ctx.job, steps: ctx.job.steps.map((step) => step.key === stepKey ? { ...step, ...patch } : step) },
-      },
-    }
-  }),
 
   // Query history
   queryHistory: [],
@@ -282,13 +355,6 @@ export const useStore = create<PilotbaseStore>((set, get) => ({
   clearTabMessages: (tabId) => set((s) => ({
     chatTabs: s.chatTabs.map((t) => t.tabId === tabId ? { ...t, messages: [] } : t),
   })),
-  resetChatForConnection: (connectionId) => {
-    const tab: ChatTab = {
-      tabId: crypto.randomUUID(), sessionId: null, connectionId, title: null,
-      messages: [], loading: false, pendingPlan: null,
-    }
-    set({ chatTabs: [tab], activeTabId: tab.tabId, pendingRequests: {} })
-  },
   registerPendingRequest: (requestId, tabId) => set((s) => ({
     pendingRequests: { ...s.pendingRequests, [requestId]: tabId },
   })),

@@ -17,19 +17,26 @@ import type { ChatMessage, ChatSessionSummary } from '../../types'
 function buildUiContext(): Record<string, unknown> {
   const s = useStore.getState()
   const ctx: Record<string, unknown> = {}
-  if (s.activeDatabase) ctx.activeDatabase = s.activeDatabase
-  if (s.activeQuery.trim()) ctx.activeQuery = s.activeQuery
-  if (s.queryResult) {
-    ctx.queryResult = {
-      row_count: s.queryResult.row_count,
-      columns: s.queryResult.columns,
-      truncated: s.queryResult.truncated,
+  const tab = s.mainTabs.find((t) => t.id === s.activeMainTabId)
+  if (!tab) return ctx
+
+  if (tab.kind === 'query') {
+    if (tab.database) ctx.activeDatabase = tab.database
+    if (tab.query.trim()) ctx.activeQuery = tab.query
+    if (tab.result) {
+      ctx.queryResult = { row_count: tab.result.row_count, columns: tab.result.columns, truncated: tab.result.truncated }
+    }
+    if (tab.columnViewContext) ctx.columnViewContext = tab.columnViewContext
+  } else if (tab.kind === 'vector') {
+    ctx.vectorViewContext = tab.context
+  } else if (tab.kind === 'nosql') {
+    ctx.nosqlViewContext = tab.context
+  } else if (tab.kind === 'migration') {
+    ctx.migrationViewContext = {
+      sourceConnId: tab.sourceConnId, sourceDb: tab.sourceDb,
+      targetConnId: tab.targetConnId, targetDb: tab.targetDb, step: tab.step,
     }
   }
-  if (s.columnViewContext) ctx.columnViewContext = s.columnViewContext
-  if (s.vectorViewContext) ctx.vectorViewContext = s.vectorViewContext
-  if (s.nosqlViewContext) ctx.nosqlViewContext = s.nosqlViewContext
-  if (s.migrationViewContext) ctx.migrationViewContext = s.migrationViewContext
   return ctx
 }
 

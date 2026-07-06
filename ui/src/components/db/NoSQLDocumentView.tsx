@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Search, RefreshCw, Loader2, X, FileText, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
-import { useStore } from '../../store'
+import type { NoSQLTab } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
 import { apiExecuteQuery } from '../../api/client'
 import { sortByDirection, type SortDirection } from '../../utils/sort'
@@ -9,8 +9,8 @@ import { JsonView, extractDocId, extractPreview, matchesSearch, type Doc } from 
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export default function NoSQLDocumentView() {
-  const { nosqlViewContext } = useStore()
+export default function NoSQLDocumentView({ tab }: { tab: NoSQLTab }) {
+  const nosqlViewContext = tab.context
   const { userId } = useUserSession()
 
   const [docs, setDocs] = useState<Doc[]>([])
@@ -69,8 +69,6 @@ export default function NoSQLDocumentView() {
     setSortField(dir ? field : null)
     setSortDirection(dir)
   }
-
-  if (!nosqlViewContext) return null
 
   return (
     <div className="h-full flex flex-col bg-surface-200">

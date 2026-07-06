@@ -2,12 +2,10 @@ import Logo from '../common/Logo'
 import { useStore } from '../../store'
 
 export default function TopBar() {
-  const { setVectorViewContext, setNosqlViewContext, setMigrationViewContext } = useStore()
+  const { activeConnectionId, focusConnectionQueryTab } = useStore()
 
   const resetToNormalView = () => {
-    setVectorViewContext(null)
-    setNosqlViewContext(null)
-    setMigrationViewContext(null)
+    if (activeConnectionId) focusConnectionQueryTab(activeConnectionId)
   }
 
   return (

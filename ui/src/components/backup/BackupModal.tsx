@@ -3,7 +3,7 @@ import { X, Download, DatabaseBackup, Loader2, CheckCircle2, AlertCircle, AlertT
 import { apiRunBackup, apiListBackups, apiDownloadBackup, apiListDatabases } from '../../api/client'
 import { useUserSession } from '../../hooks/useUserSession'
 import { downloadBlob } from '../../utils/download'
-import { useStore } from '../../store'
+import { useStore, type QueryTab } from '../../store'
 
 interface BackupEntry {
   filename: string
@@ -31,8 +31,9 @@ function formatSize(bytes: number): string {
 
 export default function BackupModal({ connId, database, onClose }: Props) {
   const { userId } = useUserSession()
-  const { connections, activeDatabase } = useStore()
+  const { connections, mainTabs } = useStore()
   const conn = connections.find((c) => c.id === connId)
+  const activeDatabase = mainTabs.find((t): t is QueryTab => t.kind === 'query' && t.connectionId === connId)?.database ?? null
   const [backups, setBackups] = useState<BackupEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)

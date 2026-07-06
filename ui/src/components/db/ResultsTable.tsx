@@ -19,7 +19,7 @@ import {
   Pencil, X, Check, Play, Copy, Loader2, Trash2, Plus,
   ArrowUp, ArrowDown,
 } from 'lucide-react'
-import { useStore } from '../../store'
+import { useStore, type QueryTab } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
 import { apiExecuteQuery } from '../../api/client'
 import type { QueryResult } from '../../types'
@@ -253,17 +253,21 @@ function CellInput({ value, onChange, placeholder, autoFocus }: {
 const EMPTY_COL: ColDraft = { name: '', type: 'VARCHAR(255)', nullable: 'YES', default: '' }
 const VIEW_COLS = ['column', 'type', 'nullable', 'default', 'pk'] as const
 
-export default function ResultsTable() {
+export default function ResultsTable({ tab }: { tab: QueryTab }) {
   const {
-    queryResult, setQueryResult,
-    queryLoading,
-    activeQuery, setActiveQuery,
-    activeConnectionId, connections,
-    columnViewContext,
+    connections, updateQueryTab,
     alterScriptLog, appendAlterScript, clearAlterScripts,
     sqlLogPanelOpen, setSqlLogPanelOpen,
   } = useStore()
   const { userId } = useUserSession()
+
+  const queryResult = tab.result
+  const queryLoading = tab.loading
+  const activeQuery = tab.query
+  const activeConnectionId = tab.connectionId
+  const columnViewContext = tab.columnViewContext
+  const setQueryResult = (r: QueryResult | null) => updateQueryTab(tab.id, { result: r })
+  const setActiveQuery = (q: string) => updateQueryTab(tab.id, { query: q })
 
   const [columnOrder, setColumnOrder]       = useState<string[]>([])
   const [editingRowIdx, setEditingRowIdx]   = useState<number | null>(null)

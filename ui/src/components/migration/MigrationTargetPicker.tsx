@@ -14,7 +14,7 @@ interface Props {
 
 export default function MigrationTargetPicker({ sourceConnId, sourceDb, onClose }: Props) {
   const { userId } = useUserSession()
-  const { connections, setMigrationViewContext } = useStore()
+  const { connections, openMigrationTab } = useStore()
   const candidates = connections.filter((c) => c.id !== sourceConnId)
 
   const [targetConnId, setTargetConnId] = useState(candidates[0]?.id ?? '')
@@ -36,7 +36,7 @@ export default function MigrationTargetPicker({ sourceConnId, sourceDb, onClose 
 
   const continueToObjects = () => {
     if (!targetConnId) return
-    setMigrationViewContext({ sourceConnId, sourceDb, targetConnId, targetDb: targetDb || null, step: 'objects' })
+    openMigrationTab({ sourceConnId, sourceDb, targetConnId, targetDb: targetDb || null })
     onClose()
   }
 

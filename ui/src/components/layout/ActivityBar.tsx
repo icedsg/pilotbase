@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Terminal, GitMerge, Download, Database, Bot, History, Sun, Moon, ScrollText } from 'lucide-react'
-import { useStore } from '../../store'
+import { useStore, type QueryTab } from '../../store'
 import BackupModal from '../backup/BackupModal'
 import QueryHistoryPanel from '../db/QueryHistoryPanel'
 import MigrationTargetPicker from '../migration/MigrationTargetPicker'
@@ -14,20 +14,31 @@ interface Props {
 
 export default function ActivityBar({ leftOpen, rightOpen, onToggleLeft, onToggleRight }: Props) {
   const {
-    theme, toggleTheme, activeConnectionId, activeDatabase,
-    sqlPanelOpen, setSqlPanelOpen, sqlLogPanelOpen, setSqlLogPanelOpen,
+    theme, toggleTheme, activeConnectionId, mainTabs,
+    ensureQueryTab, updateQueryTab, setActiveMainTab, sqlLogPanelOpen, setSqlLogPanelOpen,
   } = useStore()
   const [historyOpen, setHistoryOpen] = useState(false)
   const [backupOpen, setBackupOpen] = useState(false)
   const [migrationOpen, setMigrationOpen] = useState(false)
 
+  const activeQueryTab = mainTabs.find((t): t is QueryTab => t.kind === 'query' && t.connectionId === activeConnectionId)
+  const activeDatabase = activeQueryTab?.database ?? null
   const canMigrate = !!(activeConnectionId && activeDatabase)
+  const sqlPanelOpen = activeQueryTab?.sqlPanelOpen ?? false
+
+  const toggleSqlPanel = () => {
+    if (!activeConnectionId) return
+    const tabId = ensureQueryTab(activeConnectionId)
+    updateQueryTab(tabId, { sqlPanelOpen: !sqlPanelOpen })
+    setActiveMainTab(tabId)
+  }
 
   return (
     <div className="w-11 flex flex-col items-center py-2 gap-1 bg-surface-300 border-r border-surface-50 flex-shrink-0">
       <button
-        onClick={() => setSqlPanelOpen(!sqlPanelOpen)}
-        className={`btn-ghost p-2 rounded ${sqlPanelOpen ? 'text-accent' : ''}`}
+        onClick={toggleSqlPanel}
+        disabled={!activeConnectionId}
+        className={`btn-ghost p-2 rounded disabled:opacity-40 disabled:cursor-not-allowed ${sqlPanelOpen ? 'text-accent' : ''}`}
         title="Execute SQL Query"
       >
         <Terminal size={20} />

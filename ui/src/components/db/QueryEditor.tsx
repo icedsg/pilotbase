@@ -1,6 +1,6 @@
 import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
 import Editor, { useMonaco } from '@monaco-editor/react'
-import { useStore } from '../../store'
+import { useStore, type QueryTab } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
 import { apiExecuteQuery, apiListObjects, apiDescribeTable } from '../../api/client'
 import { isNoSqlJsonDbType } from '../../utils/dbTypes'
@@ -9,20 +9,13 @@ export interface QueryEditorHandle {
   run: () => void
 }
 
-const QueryEditor = forwardRef<QueryEditorHandle, {}>((_, ref) => {
+const QueryEditor = forwardRef<QueryEditorHandle, { tab: QueryTab }>(({ tab }, ref) => {
   const { userId } = useUserSession()
-  const {
-    activeConnectionId,
-    activeDatabase,
-    activeQuery,
-    setActiveQuery,
-    setQueryResult,
-    queryLoading,
-    setQueryLoading,
-    setColumnViewContext,
-    theme,
-    connections,
-  } = useStore()
+  const { updateQueryTab, theme, connections } = useStore()
+  const activeConnectionId = tab.connectionId
+  const activeDatabase = tab.database
+  const activeQuery = tab.query
+  const queryLoading = tab.loading
 
   const editorRef = useRef<any>(null)
   const completionDisposableRef = useRef<any>(null)
@@ -34,21 +27,21 @@ const QueryEditor = forwardRef<QueryEditorHandle, {}>((_, ref) => {
     const query = editorRef.current?.getValue()?.trim() || activeQuery.trim()
     if (!query || !activeConnectionId || queryLoading) return
 
-    setColumnViewContext(null)
-    setQueryLoading(true)
-    setQueryResult(null)
+    updateQueryTab(tab.id, { columnViewContext: null, loading: true, result: null })
     try {
       const result = await apiExecuteQuery(userId, activeConnectionId, query, activeDatabase || undefined)
-      setQueryResult(result)
+      updateQueryTab(tab.id, { result })
     } catch (err: any) {
-      setQueryResult({
-        rows: [],
-        columns: ['Error'],
-        row_count: 0,
-        error: err?.response?.data?.detail || String(err),
-      } as any)
+      updateQueryTab(tab.id, {
+        result: {
+          rows: [],
+          columns: ['Error'],
+          row_count: 0,
+          error: err?.response?.data?.detail || String(err),
+        } as any,
+      })
     } finally {
-      setQueryLoading(false)
+      updateQueryTab(tab.id, { loading: false })
     }
   }
 
@@ -155,7 +148,7 @@ const QueryEditor = forwardRef<QueryEditorHandle, {}>((_, ref) => {
           language={isNoSqlJsonConn ? 'json' : 'sql'}
           theme={theme === 'dark' ? 'vs-dark' : 'light'}
           value={activeQuery}
-          onChange={(val) => setActiveQuery(val || '')}
+          onChange={(val) => updateQueryTab(tab.id, { query: val || '' })}
           onMount={(editor) => { editorRef.current = editor }}
           options={{
             fontSize: 13,
