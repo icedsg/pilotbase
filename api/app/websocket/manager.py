@@ -11,6 +11,10 @@ Message types:
   agent_vector_view  — agent browsed/updated a vector collection; open it in the Vector Chunks view
   query_result       — result from an async query
   query_executed     — a query/script finished running on the server (any source)
+  migration_progress — a migration job's current step made incremental progress
+  migration_step_done — a migration job's current step finished (or failed)
+  migration_done     — a migration job finished (all steps attempted)
+  migration_error    — a migration job hit a job-fatal error (not one object's failure)
   error              — error notification
   ping / pong        — keepalive
 """
@@ -69,6 +73,15 @@ class ConnectionManager:
         if self.loop is None:
             return
         asyncio.run_coroutine_threadsafe(self.broadcast(msg_type, payload), self.loop)
+
+    def send_threadsafe(self, user_id: str, msg_type: str, payload: dict) -> None:
+        """Same as broadcast_threadsafe but scoped to one user. Use this (not
+        broadcast_threadsafe) for anything that shouldn't fan out to every
+        connected user — e.g. migration_executor's worker-thread progress
+        updates, which belong to whichever user started that job."""
+        if self.loop is None:
+            return
+        asyncio.run_coroutine_threadsafe(self.send(user_id, msg_type, payload), self.loop)
 
 
 manager = ConnectionManager()

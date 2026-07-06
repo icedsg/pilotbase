@@ -1,5 +1,8 @@
 import { create } from 'zustand'
-import type { ChatMessage, DbConnection, QueryHistoryEntry, QueryResult, UserSession } from '../types'
+import type {
+  ChatMessage, DbConnection, QueryHistoryEntry, QueryResult, UserSession,
+  MigrationObjectPick, MigrationPlanObject, MigrationJobState, MigrationJobStep,
+} from '../types'
 
 const MAX_QUERY_HISTORY = 500
 
@@ -25,11 +28,19 @@ export interface NoSQLViewContext {
   dbType: string
 }
 
+export type MigrationStep = 'objects' | 'review' | 'running'
+
 export interface MigrationViewContext {
   sourceConnId: string
   sourceDb: string | null
   targetConnId: string
   targetDb: string | null
+  step: MigrationStep
+  kind?: 'sql' | 'mongo'
+  scope?: 'schema' | 'schema_data'
+  objects?: MigrationObjectPick[]
+  plan?: MigrationPlanObject[]
+  job?: MigrationJobState | null
 }
 
 export interface AlterScriptEntry {
@@ -108,6 +119,9 @@ interface PilotbaseStore {
   // ── Migration compare view ────────────────────────────────────────
   migrationViewContext: MigrationViewContext | null
   setMigrationViewContext: (ctx: MigrationViewContext | null) => void
+  updateMigrationViewContext: (patch: Partial<MigrationViewContext>) => void
+  setMigrationJob: (job: MigrationJobState | null) => void
+  patchMigrationJobStep: (jobId: string, stepKey: string, patch: Partial<MigrationJobStep>) => void
 
   // ── Query history (executed scripts, any source) ──────────────────
   queryHistory: QueryHistoryEntry[]
@@ -129,6 +143,7 @@ interface PilotbaseStore {
   setTabConnection: (tabId: string, connectionId: string | null) => void
   bindTabSession: (tabId: string, sessionId: string, title: string | null) => void
   clearTabMessages: (tabId: string) => void
+  resetChatForConnection: (connectionId: string | null) => void
   registerPendingRequest: (requestId: string, tabId: string) => void
   resolveTabForRequest: (requestId: string | null | undefined, sessionId: string | null | undefined) => string | null
 
@@ -195,6 +210,22 @@ export const useStore = create<PilotbaseStore>((set, get) => ({
   // Migration compare view
   migrationViewContext: null,
   setMigrationViewContext: (migrationViewContext) => set({ migrationViewContext }),
+  updateMigrationViewContext: (patch) => set((s) => ({
+    migrationViewContext: s.migrationViewContext ? { ...s.migrationViewContext, ...patch } : s.migrationViewContext,
+  })),
+  setMigrationJob: (job) => set((s) => ({
+    migrationViewContext: s.migrationViewContext ? { ...s.migrationViewContext, job } : s.migrationViewContext,
+  })),
+  patchMigrationJobStep: (jobId, stepKey, patch) => set((s) => {
+    const ctx = s.migrationViewContext
+    if (!ctx?.job || ctx.job.jobId !== jobId) return s
+    return {
+      migrationViewContext: {
+        ...ctx,
+        job: { ...ctx.job, steps: ctx.job.steps.map((step) => step.key === stepKey ? { ...step, ...patch } : step) },
+      },
+    }
+  }),
 
   // Query history
   queryHistory: [],
@@ -251,6 +282,13 @@ export const useStore = create<PilotbaseStore>((set, get) => ({
   clearTabMessages: (tabId) => set((s) => ({
     chatTabs: s.chatTabs.map((t) => t.tabId === tabId ? { ...t, messages: [] } : t),
   })),
+  resetChatForConnection: (connectionId) => {
+    const tab: ChatTab = {
+      tabId: crypto.randomUUID(), sessionId: null, connectionId, title: null,
+      messages: [], loading: false, pendingPlan: null,
+    }
+    set({ chatTabs: [tab], activeTabId: tab.tabId, pendingRequests: {} })
+  },
   registerPendingRequest: (requestId, tabId) => set((s) => ({
     pendingRequests: { ...s.pendingRequests, [requestId]: tabId },
   })),

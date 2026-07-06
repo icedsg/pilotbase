@@ -130,6 +130,58 @@ export interface MigrationDiff {
   fk_changes: Record<string, FkChange>
 }
 
+export interface MigrationObjectPick {
+  name: string
+  on_source: boolean
+  on_target: boolean
+  src_rows: number | null
+  tgt_rows: number | null
+  src_size: number | null
+  tgt_size: number | null
+  has_changes: boolean
+}
+
+export type MigrationObjectStatus = 'new_on_source' | 'new_on_target' | 'common_no_change' | 'common_changed'
+
+export interface MigrationPlanObject {
+  name: string
+  status: MigrationObjectStatus
+  columns_added: string[]
+  columns_dropped: string[]
+  columns_modified: string[]
+  indexes_added: string[]
+  indexes_dropped: string[]
+  indexes_changed: string[]
+  fks_added: string[]
+  fks_dropped: string[]
+  src_rows: number | null
+  tgt_rows: number | null
+  src_size: number | null
+  tgt_size: number | null
+  include: boolean
+  version_instead_of_overwrite: boolean
+  version_name_preview: string | null
+}
+
+export interface MigrationJobStep {
+  key: string
+  object_name: string
+  action: 'create' | 'columns' | 'copy' | 'version'
+  label: string
+  status: 'pending' | 'running' | 'done' | 'error'
+  progress_done: number
+  progress_total: number | null
+  error?: string | null
+}
+
+export interface MigrationJobState {
+  jobId: string
+  steps: MigrationJobStep[]
+  status: 'running' | 'done' | 'error'
+  error?: string | null
+  summary?: { objects_migrated: number; rows_copied: number; errors: { object: string; message: string }[] } | null
+}
+
 export interface PapiConfig {
   connection_id: string
   database: string
@@ -147,6 +199,10 @@ export type WsMessageType =
   | 'plan_rejected'
   | 'query_result'
   | 'query_executed'
+  | 'migration_progress'
+  | 'migration_step_done'
+  | 'migration_done'
+  | 'migration_error'
   | 'error'
   | 'ping'
   | 'pong'

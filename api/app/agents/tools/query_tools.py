@@ -2,7 +2,12 @@ import re
 from typing import Optional
 
 from langchain_core.tools import tool
-from app.services.db_service import check_agent_forbidden, db_service
+from app.services.db_service import (
+    check_agent_forbidden,
+    db_service,
+    describe_query_format,
+    NOSQL_READONLY_TYPES,
+)
 
 _READ_ONLY_RE = re.compile(r"^\s*(SELECT|WITH|SHOW|EXPLAIN|DESCRIBE|DESC)\b", re.IGNORECASE)
 
@@ -41,6 +46,9 @@ def make_query_tools(
     types the query themselves and hits Run. Statements that only get
     PLANNED are not pushed; that happens later, when the plan is committed."""
 
+    query_format_hint = describe_query_format(conn.db_type)
+    is_nosql_readonly = conn.db_type in NOSQL_READONLY_TYPES
+
     @tool
     def run_sql_query(query: str) -> str:
         """Execute a SQL query on the connected database and return results as a formatted string.
@@ -65,7 +73,7 @@ def make_query_tools(
         if blocked:
             return f"BLOCKED: {blocked} is not permitted through the AI agent. Use the Pilotbase UI for this."
 
-        if propose_only and not _is_read_only(query):
+        if propose_only and not is_nosql_readonly and not _is_read_only(query):
             if plan_sink is not None:
                 plan_sink.append({"tool": "run_sql_query", "sql": query})
             return f"PLANNED (awaiting user approval, not yet executed): {query}"
@@ -82,6 +90,16 @@ def make_query_tools(
             return _format_one(result)
         except Exception as e:
             return f"ERROR: {e}"
+
+    if query_format_hint:
+        run_sql_query.description = (
+            f"Execute a query on this {conn.db_type} database and return results as a formatted string.\n"
+            "The query must be a JSON string matching this adapter's expected shape — do NOT use SQL or "
+            "mongo-shell/JS syntax (e.g. never `db.collection.aggregate(...)`).\n"
+            f"{query_format_hint}\n"
+            "The query and its result are mirrored into the user's Query Editor / results grid automatically "
+            "— no need to ask the user to run it themselves."
+        )
 
     @tool
     def list_tables(schema: str = "") -> str:

@@ -70,12 +70,13 @@ Stop juggling pgAdmin, MongoDB Compass, RedisInsight, and separate vector DB das
 ```bash
 git clone https://github.com/icedsg/pilotbase.git
 cd pilotbase
+cp api/.env.example api/.env
 ```
 
-Edit `api/.env` (copy from `api/.env.example`) and set at minimum:
+Edit `api/.env` and set at minimum:
 
 ```env
-SECRET_KEY=<generate with: openssl rand -hex 32>
+SECRET_KEY=<generate with: python -c "import secrets; print(secrets.token_hex(32))">
 ENCRYPTION_KEY=<generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())">
 ```
 
@@ -91,7 +92,7 @@ Pilotbase will be live at **[http://localhost:8000](http://localhost:8000)**.
 
 The first run builds the React frontend and installs all dependencies inside the image — expect 2–3 minutes. Subsequent starts are instant.
 
-> **Backups location:** database backups are written to `BACKUPS_DIR` (default `/app/api/backups` in Docker, persisted via the `pilotbase_backups` volume). This is set in `docker-compose.yml`, not `api/.env` — if you change it, update the matching volume mount too and restart with `docker compose up -d --build`. See [Configuration Reference](docs/configuration.md).
+That's all that's required to connect to your databases and start querying — the AI agent, backup location, migration, and per-connection public API are all optional and can be set up later, whenever you need them. For a full section-by-section walkthrough of every `api/.env` variable, with sample values and what's optional vs. required, see the **[Installation Guide](docs/installation.md)**.
 
 ---
 
@@ -122,7 +123,8 @@ No local GPU or Ollama install? Leave `OLLAMA_BASE_URL` at its default and the a
 
 ## Configuration Reference
 
-All settings are read from environment variables or `api/.env`. Full list of variables, defaults, and descriptions: **[Configuration Reference](docs/configuration.md)**.
+- **[Installation Guide](docs/installation.md)** — step-by-step setup with every `api/.env` section explained and sample values, plus what's required vs. optional (AI agent, backups, migration, public API)
+- **[Configuration Reference](docs/configuration.md)** — flat table of every variable, default, and description
 
 ---
 

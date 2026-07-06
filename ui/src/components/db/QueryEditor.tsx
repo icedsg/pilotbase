@@ -3,6 +3,7 @@ import Editor, { useMonaco } from '@monaco-editor/react'
 import { useStore } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
 import { apiExecuteQuery, apiListObjects, apiDescribeTable } from '../../api/client'
+import { isNoSqlJsonDbType } from '../../utils/dbTypes'
 
 export interface QueryEditorHandle {
   run: () => void
@@ -26,6 +27,8 @@ const QueryEditor = forwardRef<QueryEditorHandle, {}>((_, ref) => {
   const editorRef = useRef<any>(null)
   const completionDisposableRef = useRef<any>(null)
   const monaco = useMonaco()
+  const activeConn = connections.find(c => c.id === activeConnectionId)
+  const isNoSqlJsonConn = isNoSqlJsonDbType(activeConn?.db_type)
 
   const runQuery = async () => {
     const query = editorRef.current?.getValue()?.trim() || activeQuery.trim()
@@ -56,6 +59,11 @@ const QueryEditor = forwardRef<QueryEditorHandle, {}>((_, ref) => {
 
     const conn = connections.find(c => c.id === activeConnectionId)
     if (!conn) return
+    if (isNoSqlJsonDbType(conn.db_type)) {
+      completionDisposableRef.current?.dispose()
+      completionDisposableRef.current = null
+      return
+    }
 
     let cancelled = false
 
@@ -144,7 +152,7 @@ const QueryEditor = forwardRef<QueryEditorHandle, {}>((_, ref) => {
       <div className="flex-1" onKeyDown={handleKeyDown}>
         <Editor
           height="100%"
-          defaultLanguage="sql"
+          language={isNoSqlJsonConn ? 'json' : 'sql'}
           theme={theme === 'dark' ? 'vs-dark' : 'light'}
           value={activeQuery}
           onChange={(val) => setActiveQuery(val || '')}

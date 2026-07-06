@@ -30,33 +30,26 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
+    env_file:
+      # Everything else (SECRET_KEY, ENCRYPTION_KEY, OLLAMA_*, AUTH_BACKEND,
+      # CORS_ORIGINS, ENVIRONMENT, DB_CONNECT_TIMEOUT_SECONDS) is read from
+      # here. Copy api/.env.example to api/.env and edit it before your first
+      # `docker compose up --build` — see docs/installation.md.
+      - api/.env
     environment:
-      # Pilotbase internal database
+      # These four are fixed by this Compose topology and always override
+      # whatever is set in api/.env — do not change them there.
+      # Pilotbase internal database — must use the `db` service name, not
+      # localhost, since the app container reaches Postgres over the Compose
+      # network.
       DATABASE_URL: "postgresql+psycopg2://pilotbase:pilotbase_secret@db:5432/pilotbase"
-
-      # Security — change both of these before deploying
-      SECRET_KEY: "change-me-generate-with-openssl-rand-hex-32"
-      ENCRYPTION_KEY: "change-me-generate-with-fernet-generate_key="
-
-      # AI — Ollama cloud endpoint and models
-      OLLAMA_BASE_URL: "https://ollama.com/v1"
-      OLLAMA_API_KEY: "your-ollama-apikey-goes-here"
-      OLLAMA_MODEL: "gemma4:31b-cloud"
-      OLLAMA_FLASH_MODEL: "gemma4:cloud"
-
-      # Auth — "anon" for single-user/anonymous mode (default)
-      AUTH_BACKEND: "anon"
-
-      # CORS — add your domain here if accessing from a custom URL
-      CORS_ORIGINS: "http://localhost:8000"
-
-      # Application
-      ENVIRONMENT: production
+      # Must match the `ports:` mapping below and the healthcheck.
+      PORT: "8000"
       STATIC_DIR: "/app/api/static"
       # Where database backups are written inside the container. If you change
       # this, update the volume mount below to match, then restart with
       # `docker compose up -d --build` — otherwise backups won't persist
-      # across container rebuilds. See docs/configuration.md.
+      # across container rebuilds. See docs/installation.md.
       BACKUPS_DIR: "/app/api/backups"
 
     volumes:

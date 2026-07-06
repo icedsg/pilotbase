@@ -8,6 +8,8 @@ import type {
   ChatSessionSummary,
   QueryHistoryEntry,
   MigrationDiff,
+  MigrationObjectPick,
+  MigrationPlanObject,
   PapiConfig,
 } from '../types'
 
@@ -127,6 +129,57 @@ export const apiSchemaDiff = (userId: string, sourceId: string, targetId: string
 
 export const apiMigrationScript = (userId: string, sourceId: string, targetId: string): Promise<{ sql: string }> =>
   http.post('/migration/script', { user_anon_id: userId, source_connection_id: sourceId, target_connection_id: targetId }).then(r => r.data)
+
+export const apiMigrationObjects = (
+  userId: string, sourceId: string, targetId: string, schema?: string,
+): Promise<{ kind: 'sql' | 'mongo'; objects: MigrationObjectPick[] }> =>
+  http.post('/migration/objects', {
+    user_anon_id: userId, source_connection_id: sourceId, target_connection_id: targetId, schema,
+  }).then(r => r.data)
+
+export const apiMigrationPlan = (
+  userId: string, sourceId: string, targetId: string,
+  objectNames: string[], scope: 'schema' | 'schema_data', schema?: string,
+): Promise<{ kind: 'sql' | 'mongo'; scope: string; objects: MigrationPlanObject[] }> =>
+  http.post('/migration/plan', {
+    user_anon_id: userId, source_connection_id: sourceId, target_connection_id: targetId,
+    object_names: objectNames, scope, schema,
+  }).then(r => r.data)
+
+export interface MigrationExecObjectSpec {
+  name: string
+  status: string
+  include: boolean
+  version_instead_of_overwrite: boolean
+}
+
+export interface MigrationJobRaw {
+  job_id: string
+  steps: {
+    key: string
+    object_name: string
+    action: 'create' | 'columns' | 'copy' | 'version'
+    label: string
+    status: 'pending' | 'running' | 'done' | 'error'
+    progress_done: number
+    progress_total: number | null
+    error: string | null
+  }[]
+  status: 'running' | 'done' | 'error'
+  error: string | null
+}
+
+export const apiMigrationExecute = (
+  userId: string, sourceId: string, targetId: string,
+  objects: MigrationExecObjectSpec[], scope: 'schema' | 'schema_data', schema?: string,
+): Promise<MigrationJobRaw> =>
+  http.post('/migration/execute', {
+    user_anon_id: userId, source_connection_id: sourceId, target_connection_id: targetId,
+    objects, scope, schema,
+  }).then(r => r.data)
+
+export const apiMigrationJob = (userId: string, jobId: string): Promise<MigrationJobRaw> =>
+  http.get(`/migration/jobs/${jobId}`, { params: { user_anon_id: userId } }).then(r => r.data)
 
 // ── Export as SQL ─────────────────────────────────────────────────────────────
 

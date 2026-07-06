@@ -5,6 +5,7 @@ NoSQL/Vector: native client adapters (lazy imports so missing optional deps
               only fail at connection time, not at import time).
 """
 import asyncio
+import inspect
 import json
 import re
 import time
@@ -195,6 +196,26 @@ class SQLAdapter(BaseAdapter):
         else:
             raise ValueError(f"create_db_user is not supported for {self._db_type}")
 
+    def rename_table(self, old_name: str, new_name: str) -> None:
+        from sqlalchemy import text
+        if self._db_type in ("postgresql", "cockroachdb", "sqlite"):
+            if '"' in old_name or '"' in new_name:
+                raise ValueError("Table name cannot contain double quotes")
+            with self._engine.begin() as c:
+                c.execute(text(f'ALTER TABLE "{old_name}" RENAME TO "{new_name}"'))
+        elif self._db_type in ("mysql", "mariadb"):
+            if "`" in old_name or "`" in new_name:
+                raise ValueError("Table name cannot contain backticks")
+            with self._engine.begin() as c:
+                c.execute(text(f"RENAME TABLE `{old_name}` TO `{new_name}`"))
+        elif self._db_type == "mssql":
+            if "]" in old_name or "]" in new_name:
+                raise ValueError("Table name cannot contain ']'")
+            with self._engine.begin() as c:
+                c.execute(text("EXEC sp_rename :old, :new"), {"old": old_name, "new": new_name})
+        else:
+            raise ValueError(f"rename_table is not supported for {self._db_type}")
+
     # "postgres"/template0/template1 are stock Postgres maintenance DBs.
     # "_dodb" is a DigitalOcean-managed-Postgres internal DB that isn't
     # reachable by regular users (pg_hba rejects it) — any db starting with
@@ -343,6 +364,24 @@ class SQLAdapter(BaseAdapter):
 
 # ── MongoDB ───────────────────────────────────────────────────────────────────
 
+def _mongo_json_safe(value):
+    """Recursively convert BSON types (ObjectId, Decimal128) anywhere in a
+    Mongo document — not just the top-level _id — into JSON-safe values.
+    Aggregation pipelines routinely bury these deeper (e.g. $lookup embeds
+    sub-documents with their own ObjectIds, $group's _id can itself be a
+    sub-document), so a shallow top-level-only fix misses them."""
+    from bson import ObjectId, Decimal128
+    if isinstance(value, ObjectId):
+        return str(value)
+    if isinstance(value, Decimal128):
+        return str(value)
+    if isinstance(value, dict):
+        return {k: _mongo_json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_mongo_json_safe(v) for v in value]
+    return value
+
+
 class MongoAdapter(BaseAdapter):
     """
     Query format (JSON string):
@@ -404,8 +443,7 @@ class MongoAdapter(BaseAdapter):
 
         rows: List[Dict] = []
         for doc in cursor:
-            doc["_id"] = str(doc["_id"])
-            rows.append(doc)
+            rows.append(_mongo_json_safe(doc))
             if len(rows) >= limit:
                 break
 
@@ -1224,6 +1262,26 @@ _ADAPTER_MAP = {
     "milvus":    MilvusAdapter,
 }
 
+# db_types whose execute_query only ever reads — mutations for these go through
+# separate service methods (update_vector_chunk, delete_chunk, ...) called from
+# dedicated tools/UI actions, never through the ad-hoc query text itself. Redis
+# and Cassandra are excluded: both accept arbitrary write commands/CQL through
+# execute_query, so they keep the normal write-detection gating.
+NOSQL_READONLY_TYPES = set(_ADAPTER_MAP) - {"redis", "cassandra"}
+
+
+def describe_query_format(db_type: str) -> Optional[str]:
+    """Return the adapter class's own docstring describing the JSON/GraphQL
+    query format it expects, or None for SQL/plain-command db_types. Reuses
+    each adapter's docstring as the single source of truth for its query
+    shape (see MongoAdapter, QdrantAdapter, etc.) instead of duplicating it —
+    used to tell the AI agent the exact format for the connected database."""
+    cls = _ADAPTER_MAP.get(db_type)
+    if not cls or not cls.__doc__:
+        return None
+    return inspect.cleandoc(cls.__doc__)
+
+
 _SQL_TYPES = {"postgresql", "mysql", "mariadb", "sqlite", "duckdb", "mssql", "oracle", "db2", "cockroachdb", "snowflake"}
 
 _SQL_DRIVERS = {
@@ -1337,6 +1395,12 @@ class DatabaseService:
 
     def drop_engine(self, connection_id: str) -> None:
         self.drop_adapter(connection_id)
+
+    def rename_table(self, conn: DbConnection, old_name: str, new_name: str) -> None:
+        adapter = self.get_adapter(conn)
+        if not isinstance(adapter, SQLAdapter):
+            raise ValueError(f"{conn.db_type} is not a SQL database; use the adapter's own rename method")
+        adapter.rename_table(old_name, new_name)
 
     def get_mongo_client(self, conn: DbConnection):
         """Returns (pymongo client, default database name) for callers that need

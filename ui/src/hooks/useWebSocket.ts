@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { useStore } from '../store'
 import type { PendingPlan } from '../store'
-import type { WsMessage, ChatMessage, QueryHistoryEntry, QueryResult } from '../types'
+import type { WsMessage, ChatMessage, QueryHistoryEntry, QueryResult, MigrationJobState } from '../types'
 
 const BASE_WS = import.meta.env.VITE_API_URL
   ? import.meta.env.VITE_API_URL.replace(/^http/, 'ws')
@@ -144,6 +144,51 @@ export function useWebSocket() {
             db: (payload.database as string) || '',
             dbType: (payload.db_type as string) || '',
           })
+        }
+        // Migration job progress — guarded by job_id so a stray message from a
+        // different/prior job (e.g. after a reconnect) can't corrupt an
+        // unrelated view (see api/app/services/migration_executor.py).
+        if (msg.type === 'migration_progress' && payload) {
+          const store = useStore.getState()
+          const jobId = payload.job_id as string
+          if (store.migrationViewContext?.job?.jobId === jobId) {
+            store.patchMigrationJobStep(jobId, payload.step_key as string, {
+              status: 'running',
+              progress_done: payload.done as number,
+              progress_total: (payload.total as number | null) ?? null,
+              ...(payload.label ? { label: payload.label as string } : {}),
+            })
+          }
+        }
+
+        if (msg.type === 'migration_step_done' && payload) {
+          const store = useStore.getState()
+          const jobId = payload.job_id as string
+          if (store.migrationViewContext?.job?.jobId === jobId) {
+            store.patchMigrationJobStep(jobId, payload.step_key as string, {
+              status: (payload.status as 'done' | 'error') || 'done',
+              error: (payload.error as string) || null,
+            })
+          }
+        }
+
+        if (msg.type === 'migration_done' && payload) {
+          const store = useStore.getState()
+          const jobId = payload.job_id as string
+          const job = store.migrationViewContext?.job
+          if (job?.jobId === jobId) {
+            const summary = payload.summary as MigrationJobState['summary']
+            store.setMigrationJob({ ...job, status: summary && summary.errors.length > 0 ? 'error' : 'done', summary: summary ?? null })
+          }
+        }
+
+        if (msg.type === 'migration_error' && payload) {
+          const store = useStore.getState()
+          const jobId = payload.job_id as string
+          const job = store.migrationViewContext?.job
+          if (job?.jobId === jobId) {
+            store.setMigrationJob({ ...job, status: 'error', error: (payload.message as string) || 'Migration failed.' })
+          }
         }
       } catch {
         // ignore parse errors

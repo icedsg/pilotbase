@@ -13,6 +13,7 @@ import ConnectionForm from './ConnectionForm'
 import { LogoIcon } from '../common/Logo'
 import TableContextMenu, { type ContextMenuTarget } from './TableContextMenu'
 import ConfirmDialog from '../common/ConfirmDialog'
+import ConnectionSwitchConfirm from '../common/ConnectionSwitchConfirm'
 import BackupModal from '../backup/BackupModal'
 import MigrationTargetPicker from '../migration/MigrationTargetPicker'
 import ApiConfigModal from '../papi/ApiConfigModal'
@@ -32,6 +33,8 @@ function extractErrorMessage(err: any): string {
 }
 
 type ConnectionState = Record<string, Record<string, TreeNode>>
+
+const SKIP_SWITCH_CONFIRM_KEY = 'pilotbase_skip_connection_switch_confirm'
 
 const VECTOR_DB_TYPES    = new Set(['qdrant', 'chroma', 'weaviate', 'pinecone', 'milvus'])
 const ADMIN_CAPABLE_TYPES = new Set(['postgresql', 'mysql', 'mariadb', 'mssql', 'cockroachdb', 'snowflake', 'oracle'])
@@ -91,7 +94,12 @@ interface DbCtxMenu {
 }
 
 export default function ConnectionTree({ refreshKey }: Props) {
-  const { connections, activeConnectionId, setActiveConnection, removeConnection, updateConnection, setActiveQuery, setQueryResult, setQueryLoading, setActiveDatabase, setColumnViewContext, appendAlterScript, setVectorViewContext, setNosqlViewContext } = useStore()
+  const {
+    connections, activeConnectionId, setActiveConnection, removeConnection, updateConnection,
+    activeQuery, queryResult, chatTabs, resetChatForConnection,
+    setActiveQuery, setQueryResult, setQueryLoading, setActiveDatabase, setColumnViewContext,
+    appendAlterScript, setVectorViewContext, setNosqlViewContext,
+  } = useStore()
   const { userId } = useUserSession()
   const [state,      setState]      = useState<ConnectionState>({})
   const [connErrors, setConnErrors] = useState<Record<string, string>>({})
@@ -113,6 +121,35 @@ export default function ConnectionTree({ refreshKey }: Props) {
   const [migrationSource,  setMigrationSource]  = useState<DbCtxMenu | null>(null)
   const [apiConfigTarget,  setApiConfigTarget]  = useState<DbCtxMenu | null>(null)
   const [exportSqlTarget,  setExportSqlTarget]  = useState<{ connId: string; db: string; table?: string } | null>(null)
+  const [pendingSwitch,    setPendingSwitch]    = useState<{ targetId: string; proceed: () => void } | null>(null)
+
+  // Clears the query editor, results, side views, and AI agent chat, then
+  // starts a fresh agent chat bound to the newly selected connection.
+  const performSwitch = (targetId: string) => {
+    setActiveQuery('')
+    setActiveDatabase(null)
+    setQueryResult(null)
+    setColumnViewContext(null)
+    setVectorViewContext(null)
+    setNosqlViewContext(null)
+    resetChatForConnection(targetId)
+    setActiveConnection(targetId)
+  }
+
+  // Gate for any action that would make `targetId` the active connection.
+  // If there's nothing unsaved (or the user opted out of the prompt), switches
+  // immediately; otherwise asks for confirmation before clearing state.
+  const requestSwitch = (targetId: string, proceed: () => void) => {
+    if (targetId === activeConnectionId) { proceed(); return }
+    const hasUnsaved = activeQuery.trim() !== '' || queryResult !== null || chatTabs.some((t) => t.messages.length > 0)
+    const skipConfirm = localStorage.getItem(SKIP_SWITCH_CONFIRM_KEY) === 'true'
+    if (!hasUnsaved || skipConfirm) {
+      performSwitch(targetId)
+      proceed()
+      return
+    }
+    setPendingSwitch({ targetId, proceed })
+  }
 
   useEffect(() => {
     if (!userId) return
@@ -171,28 +208,29 @@ export default function ConnectionTree({ refreshKey }: Props) {
     }
   }
 
-  const toggleConn = async (conn: DbConnection) => {
-    setActiveConnection(conn.id)
-    const isOpen = openConns.has(conn.id)
-    if (isOpen) {
-      setOpenConns((s) => { const n = new Set(s); n.delete(conn.id); return n })
-      return
-    }
-    setOpenConns((s) => new Set(s).add(conn.id))
-
-    if (!state[conn.id]) {
-      setState((s) => ({ ...s, [conn.id]: { __loading: { loading: true } } }))
-      setConnErrors(e => ({ ...e, [conn.id]: '' }))
-      try {
-        const { databases } = await apiListDatabases(userId, conn.id)
-        const dbMap: Record<string, TreeNode> = {}
-        databases.forEach((db) => { dbMap[db] = { database: db, objects: undefined, open: false } })
-        setState((s) => ({ ...s, [conn.id]: dbMap }))
-      } catch (err) {
-        setState((s) => ({ ...s, [conn.id]: {} }))
-        setConnErrors(e => ({ ...e, [conn.id]: extractErrorMessage(err) }))
+  const toggleConn = (conn: DbConnection) => {
+    requestSwitch(conn.id, async () => {
+      const isOpen = openConns.has(conn.id)
+      if (isOpen) {
+        setOpenConns((s) => { const n = new Set(s); n.delete(conn.id); return n })
+        return
       }
-    }
+      setOpenConns((s) => new Set(s).add(conn.id))
+
+      if (!state[conn.id]) {
+        setState((s) => ({ ...s, [conn.id]: { __loading: { loading: true } } }))
+        setConnErrors(e => ({ ...e, [conn.id]: '' }))
+        try {
+          const { databases } = await apiListDatabases(userId, conn.id)
+          const dbMap: Record<string, TreeNode> = {}
+          databases.forEach((db) => { dbMap[db] = { database: db, objects: undefined, open: false } })
+          setState((s) => ({ ...s, [conn.id]: dbMap }))
+        } catch (err) {
+          setState((s) => ({ ...s, [conn.id]: {} }))
+          setConnErrors(e => ({ ...e, [conn.id]: extractErrorMessage(err) }))
+        }
+      }
+    })
   }
 
   const toggleDb = async (conn: DbConnection, db: string) => {
@@ -232,91 +270,94 @@ export default function ConnectionTree({ refreshKey }: Props) {
     }
   }
 
-  const handleViewRows = async (target: ContextMenuTarget) => {
+  const handleViewRows = (target: ContextMenuTarget) => {
     const conn = connections.find(c => c.id === target.connId)
     if (!conn) return
 
-    setColumnViewContext(null)
-    setActiveConnection(target.connId)
+    requestSwitch(target.connId, async () => {
+      setColumnViewContext(null)
 
-    // Vector DB → dedicated chunks view
-    if (VECTOR_DB_TYPES.has(conn.db_type)) {
-      const obj = Object.values(state[target.connId]?.[target.db] ?? {}).flatMap(n => (n as any).objects ?? []).find((o: any) => o.name === target.name)
-      setVectorViewContext({ collection: target.name, connId: target.connId, db: target.db, dbType: conn.db_type, totalCount: obj?.count })
-      setNosqlViewContext(null)
-      return
-    }
+      // Vector DB → dedicated chunks view
+      if (VECTOR_DB_TYPES.has(conn.db_type)) {
+        const obj = Object.values(state[target.connId]?.[target.db] ?? {}).flatMap(n => (n as any).objects ?? []).find((o: any) => o.name === target.name)
+        setVectorViewContext({ collection: target.name, connId: target.connId, db: target.db, dbType: conn.db_type, totalCount: obj?.count })
+        setNosqlViewContext(null)
+        return
+      }
 
-    // MongoDB / DynamoDB → dedicated document view
-    if (NOSQL_DOC_TYPES.has(conn.db_type)) {
-      setNosqlViewContext({ collection: target.name, connId: target.connId, db: target.db, dbType: conn.db_type })
+      // MongoDB / DynamoDB → dedicated document view
+      if (NOSQL_DOC_TYPES.has(conn.db_type)) {
+        setNosqlViewContext({ collection: target.name, connId: target.connId, db: target.db, dbType: conn.db_type })
+        setVectorViewContext(null)
+        return
+      }
+
+      // SQL / Redis / Cassandra → query result table
       setVectorViewContext(null)
-      return
-    }
+      setNosqlViewContext(null)
 
-    // SQL / Redis / Cassandra → query result table
-    setVectorViewContext(null)
-    setNosqlViewContext(null)
+      let sql: string
+      let queryDb: string | undefined
+      if (conn.db_type === 'mysql' || conn.db_type === 'mariadb') {
+        sql = `SELECT * FROM \`${target.db}\`.\`${target.name}\` LIMIT 500`
+      } else if (conn.db_type === 'redis') {
+        sql = `GET ${target.name}`
+      } else if (conn.db_type === 'mssql') {
+        sql = `SELECT TOP 500 * FROM [${target.name}]`
+        queryDb = target.db
+      } else if (conn.db_type === 'cassandra') {
+        sql = `SELECT * FROM ${target.db}.${target.name} LIMIT 500`
+      } else {
+        sql = `SELECT * FROM "${target.name}" LIMIT 500`
+        queryDb = target.db
+      }
 
-    let sql: string
-    let queryDb: string | undefined
-    if (conn.db_type === 'mysql' || conn.db_type === 'mariadb') {
-      sql = `SELECT * FROM \`${target.db}\`.\`${target.name}\` LIMIT 500`
-    } else if (conn.db_type === 'redis') {
-      sql = `GET ${target.name}`
-    } else if (conn.db_type === 'mssql') {
-      sql = `SELECT TOP 500 * FROM [${target.name}]`
-      queryDb = target.db
-    } else if (conn.db_type === 'cassandra') {
-      sql = `SELECT * FROM ${target.db}.${target.name} LIMIT 500`
-    } else {
-      sql = `SELECT * FROM "${target.name}" LIMIT 500`
-      queryDb = target.db
-    }
-
-    setActiveDatabase(queryDb || null)
-    setActiveQuery(sql)
-    setQueryLoading(true)
-    setQueryResult(null)
-    try {
-      const result = await apiExecuteQuery(userId, target.connId, sql, queryDb)
-      setQueryResult(result)
-    } catch (err: any) {
-      setQueryResult({ rows: [], columns: [], row_count: 0, error: err?.response?.data?.detail || 'Query failed' } as any)
-    } finally {
-      setQueryLoading(false)
-    }
+      setActiveDatabase(queryDb || null)
+      setActiveQuery(sql)
+      setQueryLoading(true)
+      setQueryResult(null)
+      try {
+        const result = await apiExecuteQuery(userId, target.connId, sql, queryDb)
+        setQueryResult(result)
+      } catch (err: any) {
+        setQueryResult({ rows: [], columns: [], row_count: 0, error: err?.response?.data?.detail || 'Query failed' } as any)
+      } finally {
+        setQueryLoading(false)
+      }
+    })
   }
 
-  const handleViewColumns = async (target: ContextMenuTarget) => {
+  const handleViewColumns = (target: ContextMenuTarget) => {
     const conn = connections.find(c => c.id === target.connId)
-    setActiveConnection(target.connId)
-    setVectorViewContext(null)
-    setNosqlViewContext(null)
-    setQueryLoading(true)
-    setQueryResult(null)
-    if (conn) {
-      setColumnViewContext({ table: target.name, connId: target.connId, db: target.db || null, dbType: conn.db_type })
-    }
-    try {
-      const info = await apiDescribeTable(userId, target.connId, target.name, undefined, target.db)
-      const result: QueryResult = {
-        columns: ['column', 'type', 'nullable', 'default', 'pk'],
-        rows: info.columns.map(col => ({
-          column: col.name,
-          type: col.type,
-          nullable: col.nullable ? 'YES' : 'NO',
-          default: col.default || '',
-          pk: info.primary_keys.includes(col.name) ? '✓' : '',
-        })),
-        row_count: info.columns.length,
+
+    requestSwitch(target.connId, async () => {
+      setVectorViewContext(null)
+      setNosqlViewContext(null)
+      setQueryLoading(true)
+      setQueryResult(null)
+      if (conn) {
+        setColumnViewContext({ table: target.name, connId: target.connId, db: target.db || null, dbType: conn.db_type })
       }
-      setQueryResult(result)
-    } catch {
-      // silent
-    } finally {
-      setQueryLoading(false)
-    }
+      try {
+        const info = await apiDescribeTable(userId, target.connId, target.name, undefined, target.db)
+        const result: QueryResult = {
+          columns: ['column', 'type', 'nullable', 'default', 'pk'],
+          rows: info.columns.map(col => ({
+            column: col.name,
+            type: col.type,
+            nullable: col.nullable ? 'YES' : 'NO',
+            default: col.default || '',
+            pk: info.primary_keys.includes(col.name) ? '✓' : '',
+          })),
+          row_count: info.columns.length,
+        }
+        setQueryResult(result)
+      } catch {
+        // silent
+      } finally {
+        setQueryLoading(false)
+      }
+    })
   }
 
   const handleExportSql = (target: ContextMenuTarget) => {
@@ -547,14 +588,13 @@ export default function ConnectionTree({ refreshKey }: Props) {
                                             className="tree-item"
                                             style={{ paddingLeft: '44px' }}
                                             onClick={() => {
-                                              if (isVectorCollection) {
-                                                setVectorViewContext({ collection: obj.name, connId: conn.id, db, dbType: conn.db_type, totalCount: obj.count })
-                                                setNosqlViewContext(null)
-                                                setColumnViewContext(null)
-                                                setActiveConnection(conn.id)
-                                              } else {
-                                                setActiveConnection(conn.id)
-                                              }
+                                              requestSwitch(conn.id, () => {
+                                                if (isVectorCollection) {
+                                                  setVectorViewContext({ collection: obj.name, connId: conn.id, db, dbType: conn.db_type, totalCount: obj.count })
+                                                  setNosqlViewContext(null)
+                                                  setColumnViewContext(null)
+                                                }
+                                              })
                                             }}
                                             onContextMenu={(e) => {
                                               e.preventDefault()
@@ -701,6 +741,25 @@ export default function ConnectionTree({ refreshKey }: Props) {
           database={exportSqlTarget.db}
           table={exportSqlTarget.table}
           onClose={() => setExportSqlTarget(null)}
+        />
+      )}
+
+      {pendingSwitch && (
+        <ConnectionSwitchConfirm
+          onCancel={() => setPendingSwitch(null)}
+          onConfirm={() => {
+            const { targetId, proceed } = pendingSwitch
+            setPendingSwitch(null)
+            performSwitch(targetId)
+            proceed()
+          }}
+          onConfirmDontAskAgain={() => {
+            localStorage.setItem(SKIP_SWITCH_CONFIRM_KEY, 'true')
+            const { targetId, proceed } = pendingSwitch
+            setPendingSwitch(null)
+            performSwitch(targetId)
+            proceed()
+          }}
         />
       )}
 

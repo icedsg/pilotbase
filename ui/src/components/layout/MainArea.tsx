@@ -5,10 +5,12 @@ import QueryEditor, { type QueryEditorHandle } from '../db/QueryEditor'
 import ResultsTable from '../db/ResultsTable'
 import VectorChunksView from '../db/VectorChunksView'
 import NoSQLDocumentView from '../db/NoSQLDocumentView'
-import MigrationCompareView from '../migration/MigrationCompareView'
+import NoSQLQueryResultsView from '../db/NoSQLQueryResultsView'
+import MigrationFlow from '../migration/MigrationFlow'
 import { useStore } from '../../store'
 import { LogoIcon } from '../common/Logo'
 import DbTypeIcon from '../db/DbTypeIcon'
+import { isNoSqlJsonDbType } from '../../utils/dbTypes'
 
 export default function MainArea() {
   const {
@@ -18,9 +20,12 @@ export default function MainArea() {
   } = useStore()
   const activeConn = connections.find((c) => c.id === activeConnectionId)
   const queryEditorRef = useRef<QueryEditorHandle>(null)
+  const isNoSqlJsonConn = isNoSqlJsonDbType(activeConn?.db_type)
 
   const isSpecialView = !!(vectorViewContext || nosqlViewContext || migrationViewContext)
-  const specialLabel = vectorViewContext?.collection ?? nosqlViewContext?.collection ?? (migrationViewContext ? 'Plan Migration' : undefined)
+  const migrationStepLabel: Record<string, string> = { objects: 'Plan Migration', review: 'Review Plan', running: 'Migrating…' }
+  const specialLabel = vectorViewContext?.collection ?? nosqlViewContext?.collection
+    ?? (migrationViewContext ? migrationStepLabel[migrationViewContext.step] : undefined)
 
   const resetToNormalView = () => {
     setVectorViewContext(null)
@@ -108,7 +113,7 @@ export default function MainArea() {
       {/* Main content */}
       {isSpecialView ? (
         <div className="flex-1 min-h-0">
-          {vectorViewContext ? <VectorChunksView /> : migrationViewContext ? <MigrationCompareView /> : <NoSQLDocumentView />}
+          {vectorViewContext ? <VectorChunksView /> : migrationViewContext ? <MigrationFlow /> : <NoSQLDocumentView />}
         </div>
       ) : sqlPanelOpen ? (
         <PanelGroup direction="vertical" className="flex-1">
@@ -117,12 +122,12 @@ export default function MainArea() {
           </Panel>
           <PanelResizeHandle className="h-1 bg-surface-50 hover:bg-accent transition-colors cursor-row-resize" />
           <Panel defaultSize={60} minSize={20}>
-            <ResultsTable />
+            {isNoSqlJsonConn ? <NoSQLQueryResultsView /> : <ResultsTable />}
           </Panel>
         </PanelGroup>
       ) : (
         <div className="flex-1 min-h-0">
-          <ResultsTable />
+          {isNoSqlJsonConn ? <NoSQLQueryResultsView /> : <ResultsTable />}
         </div>
       )}
     </div>

@@ -1,55 +1,29 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Search, RefreshCw, Loader2, X, FileText, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { Search, X, FileText, ChevronRight, ArrowUp, ArrowDown, ArrowUpDown, AlertCircle, Copy } from 'lucide-react'
 import { useStore } from '../../store'
-import { useUserSession } from '../../hooks/useUserSession'
-import { apiExecuteQuery } from '../../api/client'
 import { sortByDirection, type SortDirection } from '../../utils/sort'
 import SortContextMenu, { type SortMenuTarget } from './SortContextMenu'
 import { JsonView, extractDocId, extractPreview, matchesSearch, type Doc } from './JsonView'
 
-// ── Main component ────────────────────────────────────────────────────────────
+// Renders ad-hoc query results for JSON-command NoSQL/vector connections
+// (Mongo, Qdrant, CouchDB, ...) as a searchable document list + JsonView
+// detail pane, mirroring NoSQLDocumentView's layout — a flat SQL-style grid
+// can't represent nested/aggregated documents (it shows "[object Object]").
 
-export default function NoSQLDocumentView() {
-  const { nosqlViewContext } = useStore()
-  const { userId } = useUserSession()
+export default function NoSQLQueryResultsView() {
+  const { queryResult, queryLoading } = useStore()
 
-  const [docs, setDocs] = useState<Doc[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [sortField, setSortField]         = useState<string | null>(null)
+  const [sortField, setSortField] = useState<string | null>(null)
   const [sortDirection, setSortDirection] = useState<SortDirection>(null)
   const [sortMenuTarget, setSortMenuTarget] = useState<(SortMenuTarget & { field: string }) | null>(null)
+  const [copied, setCopied] = useState(false)
 
-  const fetch = useCallback(async () => {
-    if (!nosqlViewContext || !userId) return
-    setLoading(true)
-    setError(null)
-    setSelectedId(null)
-    setDocs([])
-    try {
-      const { collection, connId, db } = nosqlViewContext
-      const query = JSON.stringify({ collection, scroll: true, limit: 200 })
-      const result = await apiExecuteQuery(userId, connId, query, db || undefined)
-      const loaded: Doc[] = (result.rows || []).map(row => ({
-        id: extractDocId(row),
-        fields: row,
-      }))
-      setDocs(loaded)
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || 'Failed to load documents')
-    } finally {
-      setLoading(false)
-    }
-  }, [nosqlViewContext, userId])
-
-  useEffect(() => { fetch() }, [fetch])
-  useEffect(() => {
-    setSearchTerm('')
-    setSortField(null)
-    setSortDirection(null)
-  }, [nosqlViewContext?.collection])
+  const docs: Doc[] = useMemo(
+    () => (queryResult?.rows || []).map(row => ({ id: extractDocId(row), fields: row })),
+    [queryResult]
+  )
 
   const availableFields = useMemo(() => {
     const keys = new Set<string>()
@@ -70,17 +44,54 @@ export default function NoSQLDocumentView() {
     setSortDirection(dir)
   }
 
-  if (!nosqlViewContext) return null
+  const handleCopyJson = () => {
+    navigator.clipboard.writeText(JSON.stringify(queryResult?.rows ?? [], null, 2))
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1200)
+  }
+
+  if (queryLoading) {
+    return (
+      <div className="h-full flex flex-col bg-surface-200">
+        <div className="flex-1 flex items-center justify-center text-xs text-gray-500">
+          <span className="animate-pulse">Running query…</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (!queryResult) {
+    return (
+      <div className="h-full flex flex-col bg-surface-200">
+        <div className="flex-1 flex items-center justify-center text-xs text-gray-600">
+          Results will appear here
+        </div>
+      </div>
+    )
+  }
+
+  if (queryResult.error) {
+    return (
+      <div className="h-full flex flex-col bg-surface-200">
+        <div className="p-4">
+          <div className="flex items-start gap-2 text-red-400 text-xs">
+            <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
+            <pre className="whitespace-pre-wrap font-mono">{queryResult.error}</pre>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="h-full flex flex-col bg-surface-200">
-      {/* Search + toolbar */}
+      {/* Toolbar */}
       <div className="flex items-center gap-2 px-3 py-2 bg-surface-300 border-b border-surface-50 flex-shrink-0">
         <div className="relative flex-1">
           <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
           <input
             className="w-full bg-surface-200 text-gray-300 pl-8 pr-8 py-1 rounded text-xs outline-none border border-surface-50 focus:border-accent transition-colors"
-            placeholder={`Search ${nosqlViewContext.collection} documents…`}
+            placeholder="Search results…"
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
           />
@@ -94,7 +105,8 @@ export default function NoSQLDocumentView() {
           )}
         </div>
         <span className="text-[11px] text-gray-600 flex-shrink-0 tabular-nums">
-          {loading ? '…' : `${filtered.length} / ${docs.length}`}
+          {filtered.length} / {docs.length}
+          {queryResult.truncated && <span className="text-yellow-500 ml-1">(truncated)</span>}
         </span>
         <select
           className="bg-surface-200 text-gray-400 px-1.5 py-1 rounded text-xs outline-none border border-surface-50 focus:border-accent flex-shrink-0 max-w-[110px]"
@@ -114,12 +126,12 @@ export default function NoSQLDocumentView() {
           {sortDirection === 'desc' ? <ArrowDown size={13} /> : sortDirection === 'asc' ? <ArrowUp size={13} /> : <ArrowUpDown size={13} />}
         </button>
         <button
-          onClick={fetch}
-          disabled={loading}
-          className="btn-ghost p-1 flex-shrink-0"
-          title="Refresh documents"
+          onClick={handleCopyJson}
+          className="btn-ghost flex items-center gap-1 text-xs flex-shrink-0"
+          title="Copy all results as JSON"
         >
-          {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+          <Copy size={13} />
+          {copied ? 'Copied' : 'Copy JSON'}
         </button>
       </div>
 
@@ -128,21 +140,10 @@ export default function NoSQLDocumentView() {
 
         {/* Left: document list */}
         <div className="w-72 flex-shrink-0 border-r border-surface-50 flex flex-col">
-          <div className="px-3 py-1 bg-surface-300 border-b border-surface-50 flex-shrink-0">
-            <span className="text-[11px] text-gray-600 uppercase tracking-wider font-medium">
-              {nosqlViewContext.collection}
-            </span>
-          </div>
           <div className="flex-1 overflow-y-auto">
-            {error ? (
-              <div className="p-3 text-xs text-red-400">{error}</div>
-            ) : loading ? (
-              <div className="flex items-center justify-center gap-2 h-20 text-xs text-gray-600">
-                <Loader2 size={13} className="animate-spin" /> Loading…
-              </div>
-            ) : sorted.length === 0 ? (
+            {sorted.length === 0 ? (
               <div className="flex items-center justify-center h-20 text-xs text-gray-600">
-                {docs.length === 0 ? 'No documents found' : 'No matches'}
+                {docs.length === 0 ? 'Query executed. No rows returned.' : 'No matches'}
               </div>
             ) : (
               sorted.map(doc => {
@@ -178,7 +179,7 @@ export default function NoSQLDocumentView() {
           {!selected ? (
             <div className="flex flex-col items-center justify-center h-full gap-2 text-gray-600">
               <FileText size={28} className="text-gray-700" />
-              <span className="text-xs">Select a document to view its fields</span>
+              <span className="text-xs">Select a result to view its fields</span>
             </div>
           ) : (
             <div className="p-4 space-y-4">

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { X, GitMerge, Loader2 } from 'lucide-react'
-import { apiListDatabases, apiSchemaDiff } from '../../api/client'
+import { X, GitMerge, ArrowRight } from 'lucide-react'
+import { apiListDatabases } from '../../api/client'
 import { useUserSession } from '../../hooks/useUserSession'
 import { useStore } from '../../store'
 
@@ -20,8 +20,6 @@ export default function MigrationTargetPicker({ sourceConnId, sourceDb, onClose 
   const [targetConnId, setTargetConnId] = useState(candidates[0]?.id ?? '')
   const [targetDbs, setTargetDbs] = useState<string[]>([])
   const [targetDb, setTargetDb] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -36,19 +34,10 @@ export default function MigrationTargetPicker({ sourceConnId, sourceDb, onClose 
       .catch(() => setTargetDbs([]))
   }, [targetConnId, userId])
 
-  const runDiff = async () => {
+  const continueToObjects = () => {
     if (!targetConnId) return
-    setLoading(true)
-    setError('')
-    try {
-      await apiSchemaDiff(userId, sourceConnId, targetConnId)
-      setMigrationViewContext({ sourceConnId, sourceDb, targetConnId, targetDb: targetDb || null })
-      onClose()
-    } catch (e: any) {
-      setError(e?.response?.data?.detail || 'Failed to compare schemas.')
-    } finally {
-      setLoading(false)
-    }
+    setMigrationViewContext({ sourceConnId, sourceDb, targetConnId, targetDb: targetDb || null, step: 'objects' })
+    onClose()
   }
 
   return (
@@ -86,15 +75,13 @@ export default function MigrationTargetPicker({ sourceConnId, sourceDb, onClose 
             </div>
           )}
 
-          {error && <p className="text-xs text-red-400">{error}</p>}
-
           <button
-            onClick={runDiff}
-            disabled={!targetConnId || loading}
+            onClick={continueToObjects}
+            disabled={!targetConnId}
             className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent-hover text-white px-3 py-1.5 rounded text-xs font-medium disabled:opacity-50"
           >
-            {loading ? <Loader2 size={14} className="animate-spin" /> : <GitMerge size={14} />}
-            Compare schemas
+            <ArrowRight size={14} />
+            Continue
           </button>
         </div>
       </div>

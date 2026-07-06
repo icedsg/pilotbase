@@ -29,6 +29,18 @@ def _fk_sig(fk: Dict[str, Any]) -> str:
     return f"{fk.get('constrained_columns')}→{fk.get('referred_table')}.{fk.get('referred_columns')}"
 
 
+def build_create_table_ddl(table: str, cols: Dict[str, Any], pk: set) -> str:
+    """CREATE TABLE DDL text from a snapshot's columns dict + pk set. Shared by the
+    text-only script generator and the live migration executor so both stay in sync."""
+    col_defs = []
+    for name, c in cols.items():
+        col_type = str(c["type"])
+        null = "" if c.get("nullable", True) else " NOT NULL"
+        pk_flag = " PRIMARY KEY" if {name} == pk else ""
+        col_defs.append(f"    {name} {col_type}{null}{pk_flag}")
+    return f"CREATE TABLE {table} (\n" + ",\n".join(col_defs) + "\n);"
+
+
 # ── Row-count / size estimates, per SQL dialect ────────────────────────────────
 
 def _table_stats_sql(engine, db_type: str, tables: List[str]) -> Dict[str, Dict[str, Optional[int]]]:
@@ -141,6 +153,10 @@ class MigrationService:
         if isinstance(adapter, MongoAdapter):
             return self._get_mongo_snapshot(conn)
         raise ValueError(f"Schema comparison is not supported for {conn.db_type}")
+
+    def get_snapshot(self, conn: DbConnection, schema: Optional[str] = None) -> Dict[str, Any]:
+        """Public wrapper around _get_snapshot, for callers outside this module."""
+        return self._get_snapshot(conn, schema)
 
     # ── Diff ─────────────────────────────────────────────────────────────────────
 
@@ -274,13 +290,7 @@ class MigrationService:
         for table in diff["added_tables"]:
             cols = src_tables[table]["columns"]
             pk = src_tables[table]["pk"]
-            col_defs = []
-            for name, c in cols.items():
-                col_type = str(c["type"])
-                null = "" if c.get("nullable", True) else " NOT NULL"
-                pk_flag = " PRIMARY KEY" if {name} == pk else ""
-                col_defs.append(f"    {name} {col_type}{null}{pk_flag}")
-            lines.append(f"CREATE TABLE {table} (\n" + ",\n".join(col_defs) + "\n);\n")
+            lines.append(build_create_table_ddl(table, cols, pk) + "\n")
 
         for table in diff["dropped_tables"]:
             lines.append(f"-- WARNING: DROP TABLE {table};  (commented out for safety)")
