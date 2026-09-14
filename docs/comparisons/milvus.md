@@ -24,7 +24,7 @@ In practice, many teams already run Attu specifically because it's the closest t
 | AI agent (plain-English querying) | Yes, schema-aware | No |
 | Multi-database support (SQL, other NoSQL, other vector DBs) | Yes, one UI | No — Milvus only |
 | Deployment | Included, no extra service | Separate container to deploy/maintain alongside Milvus |
-| Open source | Yes (MIT) | Yes |
+| Open source | Source-available | Yes |
 | Schema migration / backups | Not yet | Not a migration tool; some collection-level ops, not cross-database |
 
 ## Who each tool is for
@@ -44,7 +44,7 @@ If you're the person operating the Milvus cluster — creating collections, tuni
 - **One tool for every database you run**, and one less service to deploy. Attu is itself a separate container you maintain alongside Milvus; if your stack also includes Postgres, Mongo, or another vector store, Pilotbase replaces several browser tabs (and several containers) with one.
 - **Chunk-level browsing next to your source data.** For RAG pipelines, viewing Milvus vectors alongside the relational/NoSQL records they were derived from, in the same tool, is the real differentiator over a Milvus-only dashboard.
 - **Built-in AI agent.** Plain-English querying against Milvus data, schema-aware automatically — Attu has no equivalent.
-- **Not tied to a single engine.** MIT-licensed, useful for teams who don't want to run and maintain N single-purpose admin tools (Attu for Milvus, something else for everything else).
+- **Not tied to a single engine.** Source-available, useful for teams who don't want to run and maintain N single-purpose admin tools (Attu for Milvus, something else for everything else).
 - **Consistent AI-assisted querying across engines**, rather than learning Attu's query UI for Milvus and a different pattern for everything else.
 
 ## Verdict

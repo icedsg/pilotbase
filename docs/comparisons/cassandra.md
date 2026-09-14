@@ -42,7 +42,7 @@ There isn't really a "deployment model" to compare cqlsh against — it's a shel
 
 ## Licensing and cost
 
-cqlsh is free and ships with Cassandra itself. DBeaver's community edition is free and open-source for generic database access, with paid tiers for enterprise features. Pilotbase is MIT-licensed and fully self-hosted (Docker Compose or local dev setup), with no per-seat cost — the tradeoff being that you host it yourself rather than installing a desktop client. A managed hosted option, Pilotbase.pro, is planned to launch in mid-2026 for teams that would rather not run their own instance.
+cqlsh is free and ships with Cassandra itself. DBeaver's community edition is free and open-source for generic database access, with paid tiers for enterprise features. Pilotbase is source-available and fully self-hosted (Docker Compose or local dev setup), with no per-seat cost — the tradeoff being that you host it yourself rather than installing a desktop client. A managed hosted option, Pilotbase.pro, is planned to launch in mid-2026 for teams that would rather not run their own instance.
 
 ## Quick take
 

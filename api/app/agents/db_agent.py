@@ -31,6 +31,7 @@ from app.agents.tools.query_tools import make_query_tools
 from app.agents.tools.ui_context_tools import make_ui_context_tools
 from app.agents.tools.vector_tools import make_vector_tools
 from app.config import settings
+from app.services.llm_settings import LlmConfig
 
 
 class AgentState(TypedDict):
@@ -94,6 +95,7 @@ def create_db_agent(
     ui_context: Optional[dict] = None,
     query_ui_sink: Optional[list] = None,
     vector_ui_sink: Optional[list] = None,
+    llm_config: Optional[LlmConfig] = None,
 ):
     """
     Build and compile a LangGraph ReAct agent for the given DbConnection.
@@ -115,11 +117,15 @@ def create_db_agent(
         + make_docs_tools()
     )
 
-    llm = ChatOpenAI(
-        model=settings.ollama_model,
-        base_url=settings.ollama_base_url,
-        api_key=settings.ollama_api_key,
-    ).bind_tools(tools)
+    llm_kwargs = {
+        "model": llm_config.model if llm_config else settings.ollama_model,
+        "base_url": llm_config.base_url if llm_config else settings.ollama_base_url,
+        "api_key": llm_config.api_key if llm_config else settings.ollama_api_key,
+    }
+    if llm_config and llm_config.provider == "openrouter":
+        llm_kwargs["default_headers"] = {"HTTP-Referer": "https://github.com/icedsg/pilotbase", "X-Title": "Pilotbase"}
+
+    llm = ChatOpenAI(**llm_kwargs).bind_tools(tools)
 
     def should_continue(state: AgentState) -> str:
         last = state["messages"][-1]

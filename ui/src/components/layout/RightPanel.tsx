@@ -8,6 +8,7 @@ import {
   apiListChatSessions, apiGetChatSessionMessages,
 } from '../../api/client'
 import { formatChatTimestamp } from '../../lib/formatTimestamp'
+import { isDesktop } from '../../lib/desktop'
 import ChatCodeBlock from './ChatCodeBlock'
 import type { ChatMessage, ChatSessionSummary } from '../../types'
 
@@ -232,7 +233,10 @@ export default function RightPanel({ onClose }: Props) {
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden border-l border-surface-50">
+    <div
+      className="h-full flex flex-col overflow-hidden border-l border-surface-50"
+      style={isDesktop ? { paddingBottom: 274 } : undefined}
+    >
       <div className="flex items-center justify-between px-3 py-2 border-b border-surface-50 flex-shrink-0">
         <div className="flex items-center gap-1.5 min-w-0">
           <Bot size={17} className="text-gray-500 flex-shrink-0" />
@@ -243,7 +247,7 @@ export default function RightPanel({ onClose }: Props) {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-0.5 flex-shrink-0">
           <button
             onClick={() => activeTab && clearTabMessages(activeTab.tabId)}
             className="btn-ghost p-1"
@@ -412,12 +416,12 @@ export default function RightPanel({ onClose }: Props) {
             onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
             placeholder={activeTab?.connectionId ? 'Ask about your data…' : 'Select a connection first'}
             disabled={!activeTab?.connectionId || !!activeTab?.loading}
-            className="flex-1 bg-surface-300 text-gray-800 dark:text-gray-200 text-xs rounded px-2 py-1.5 border border-surface-50 focus:outline-none focus:border-accent disabled:opacity-50 placeholder-gray-500 dark:placeholder-gray-600"
+            className="flex-1 min-w-0 bg-surface-300 text-gray-800 dark:text-gray-200 text-xs rounded px-2 py-1.5 border border-surface-50 focus:outline-none focus:border-accent disabled:opacity-50 placeholder-gray-500 dark:placeholder-gray-600"
           />
           <button
             onClick={sendMessage}
             disabled={!input.trim() || !activeTab?.connectionId || !!activeTab?.loading}
-            className="btn-primary px-2 py-1.5"
+            className="btn-primary px-2 py-1.5 flex-shrink-0"
           >
             <Send size={17} />
           </button>

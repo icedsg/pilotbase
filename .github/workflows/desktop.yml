@@ -1,0 +1,132 @@
+name: Build Desktop App
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: win
+            arch: --x64
+          - os: macos-14
+            platform: mac-arm64
+            arch: --arm64
+          - os: macos-13
+            platform: mac-x64
+            arch: --x64
+          - os: ubuntu-22.04
+            platform: linux
+            arch: --x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build frontend
+        working-directory: ui
+        run: |
+          npm ci
+          npm run build
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install backend dependencies
+        working-directory: api
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build sidecar binary
+        working-directory: api
+        run: pyinstaller pilotbase-api.spec
+
+      - name: Smoke test sidecar
+        shell: bash
+        working-directory: api
+        run: |
+          BIN="dist/pilotbase-api/pilotbase-api"
+          if [ "${{ runner.os }}" = "Windows" ]; then BIN="dist/pilotbase-api/pilotbase-api.exe"; fi
+          "$BIN" --host 127.0.0.1 --port 0 --token smoketest --data-dir "$RUNNER_TEMP/pb-data" > "$RUNNER_TEMP/sidecar.log" 2>&1 &
+          PID=$!
+          for i in $(seq 1 30); do
+            if grep -q "PILOTBASE_READY" "$RUNNER_TEMP/sidecar.log" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          PORT=$(grep -o 'PILOTBASE_READY port=[0-9]*' "$RUNNER_TEMP/sidecar.log" | grep -o '[0-9]*')
+          test -n "$PORT" || { cat "$RUNNER_TEMP/sidecar.log"; exit 1; }
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Pilotbase-Token: smoketest" "http://127.0.0.1:$PORT/api/v1/health")
+          test "$CODE" = "200" || { echo "health check returned $CODE"; cat "$RUNNER_TEMP/sidecar.log"; exit 1; }
+          kill $PID
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build Electron app
+        working-directory: desktop
+        env:
+          CSC_LINK: ${{ matrix.platform == 'win' && secrets.WIN_CSC_LINK || (startsWith(matrix.platform, 'mac') && secrets.CSC_LINK) || '' }}
+          CSC_KEY_PASSWORD: ${{ matrix.platform == 'win' && secrets.WIN_CSC_KEY_PASSWORD || (startsWith(matrix.platform, 'mac') && secrets.CSC_KEY_PASSWORD) || '' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        # Build only this runner's arch. The PyInstaller sidecar is host-arch
+        # only, so letting electron-builder.yml's `arch: [x64, arm64]` fan out
+        # would package this runner's sidecar into the other arch's installer.
+        run: npm run build -- ${{ matrix.arch }}
+
+      # Only the distributables. desktop/release/ also holds win-unpacked/,
+      # builder-debug.yml, builder-effective-config.yaml and .blockmap files,
+      # none of which belong on a public release.
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pilotbase-${{ matrix.platform }}
+          path: |
+            desktop/release/*.exe
+            desktop/release/*.dmg
+            desktop/release/*.AppImage
+            !desktop/release/__uninstaller-*.exe
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+
+    # Creating/updating a Release needs write access; GITHUB_TOKEN is read-only
+    # by default. Scoped to this job so the build matrix stays read-only.
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # One publish after all four builds succeed, rather than four jobs racing
+      # to create the same release.
+      - name: Attach to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          fail_on_unmatched_files: true

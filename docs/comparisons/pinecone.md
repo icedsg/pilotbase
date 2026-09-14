@@ -24,7 +24,7 @@ Because Pinecone is API-key-based SaaS, Pilotbase connects to it the same way an
 | Metadata filtering on queries | Yes | Yes |
 | AI agent (plain-English querying) | Yes, schema-aware | No |
 | Multi-database support (SQL, other NoSQL, other vector DBs) | Yes, one UI | No — Pinecone only |
-| Self-hosted, open source | Yes (MIT) | N/A — Pinecone itself is managed SaaS; Console is part of the service |
+| Self-hosted, source-available | Yes | N/A — Pinecone itself is managed SaaS; Console is part of the service |
 | Cost | Free (self-hosted) | Included with your Pinecone plan (Pinecone usage itself is paid) |
 | Schema migration / backups | Not yet | Not really applicable — Pinecone manages storage itself |
 

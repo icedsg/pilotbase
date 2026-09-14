@@ -1,0 +1,146 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Pilotbase</title>
+<style>
+  @font-face {
+    font-family: "Cormorant Garamond";
+    font-style: italic;
+    font-weight: 700;
+    src: url("cormorant-garamond-latin-700-italic.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "Inter";
+    font-style: normal;
+    font-weight: 400;
+    src: url("inter-latin-400-normal.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "Inter";
+    font-style: normal;
+    font-weight: 500;
+    src: url("inter-latin-500-normal.woff2") format("woff2");
+  }
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+    cursor: default;
+  }
+  body {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: #e2e8f0;
+    background:
+      radial-gradient(70% 55% at 50% 0%, rgba(79, 142, 247, 0.28), rgba(79, 142, 247, 0) 70%),
+      linear-gradient(180deg, #132a52 0%, #0d1b33 100%);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.07);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 10px;
+  }
+  .tile {
+    width: 60px;
+    height: 60px;
+    border-radius: 14px;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.06));
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.14),
+      0 12px 32px rgba(0, 0, 0, 0.35),
+      0 0 40px rgba(79, 142, 247, 0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .wordmark {
+    font-family: "Cormorant Garamond", Georgia, serif;
+    font-style: italic;
+    font-weight: 700;
+    font-size: 46px;
+    line-height: 1;
+    color: #ffffff;
+    letter-spacing: 0.01em;
+    text-shadow: 0 2px 18px rgba(0, 0, 0, 0.35);
+  }
+  .tagline {
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: rgba(226, 232, 240, 0.5);
+    margin-bottom: 34px;
+  }
+
+  .bar {
+    width: 200px;
+    height: 3px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.1);
+    overflow: hidden;
+    margin-bottom: 14px;
+  }
+  .bar::after {
+    content: "";
+    display: block;
+    width: 40%;
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, rgba(79, 142, 247, 0), #6ba3f8 40%, #4f8ef7 100%);
+    animation: slide 1.3s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+  @keyframes slide {
+    0%   { transform: translateX(-110%); }
+    100% { transform: translateX(260%); }
+  }
+
+  #status {
+    font-size: 12.5px;
+    color: rgba(226, 232, 240, 0.72);
+    min-height: 1.2em;
+    letter-spacing: 0.01em;
+  }
+  #version {
+    position: absolute;
+    right: 16px;
+    bottom: 12px;
+    font-size: 11px;
+    color: rgba(226, 232, 240, 0.35);
+    letter-spacing: 0.04em;
+  }
+</style>
+</head>
+<body>
+  <div class="brand">
+    <div class="tile">
+      <svg width="34" height="34" viewBox="0 0 22 22" fill="none">
+        <text x="2.5" y="16.5" font-family="system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+              font-size="14" font-weight="800" fill="white">p</text>
+        <rect x="13.5" y="5.5" width="6.5" height="2" rx="1" fill="white"/>
+        <rect x="13.5" y="9.5" width="6.5" height="2" rx="1" fill="white"/>
+        <rect x="13.5" y="13.5" width="6.5" height="2" rx="1" fill="white"/>
+      </svg>
+    </div>
+    <div class="wordmark">Pilotbase</div>
+  </div>
+  <div class="tagline">The universal database GUI</div>
+  <div class="bar"></div>
+  <div id="status">Starting…</div>
+  <div id="version"></div>
+  <script>
+    var v = new URLSearchParams(location.search).get('v');
+    if (v) document.getElementById('version').textContent = 'v' + v;
+  </script>
+</body>
+</html>

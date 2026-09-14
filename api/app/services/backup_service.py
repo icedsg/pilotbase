@@ -20,7 +20,7 @@ from typing import Any, Dict, Optional
 
 from app.config import settings
 from app.models.connection import DbConnection
-from app.services.db_service import db_service
+from app.services.db_service import db_service, duckdb_reflect_columns, duckdb_reflect_constraints
 
 _UNSUPPORTED_TYPES = {"redis", "qdrant", "chroma", "weaviate", "pinecone", "milvus", "cassandra", "dynamodb", "couchdb"}
 
@@ -136,8 +136,14 @@ class BackupService:
 
                 with engine.connect() as c:
                     for table in tables:
-                        cols = inspector.get_columns(table, schema=schema)
-                        pk = set(inspector.get_pk_constraint(table, schema=schema).get("constrained_columns", []))
+                        if conn.db_type == "duckdb":
+                            # duckdb-engine reflects nested types (LIST/STRUCT/MAP) as
+                            # NULL; DuckDB's information_schema has the real type text.
+                            cols = duckdb_reflect_columns(engine, table, schema)
+                            pk = set(duckdb_reflect_constraints(engine, table, schema)[0])
+                        else:
+                            cols = inspector.get_columns(table, schema=schema)
+                            pk = set(inspector.get_pk_constraint(table, schema=schema).get("constrained_columns", []))
 
                         f.write(f"-- Table: {table}\n")
                         col_defs = []

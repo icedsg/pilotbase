@@ -21,7 +21,7 @@ Like Postgres, MySQL and MariaDB don't have a single tool everyone converges on 
 | Multi-database support | MySQL (MariaDB partial) | MySQL/MariaDB only | Many relational + some NoSQL (JDBC) | MySQL/MariaDB + a few others | Many relational + some NoSQL | Relational, NoSQL, and vector DBs in one UI |
 | NoSQL/vector support | No | No | Partial | No | Partial | Yes |
 | AI query assistant | No | No | No | No | No | Yes — LangGraph agent, plain-English querying, schema-aware, warns before destructive ops |
-| Open source | Yes | Yes | Core yes, Enterprise paid | Yes | No | Yes (MIT) |
+| Open source | Yes | Yes | Core yes, Enterprise paid | Yes | No | Source-available |
 | Install method | Desktop app | Self-hosted web app (per server) | Desktop (Java) | Native Windows desktop app | Native desktop app | Self-hosted via Docker Compose or local dev setup |
 | Cost | Free | Free | Free / paid Enterprise | Free | Paid (limited free tier) | Free (self-hosted); hosted Pilotbase.pro planned |
 | Schema migration tooling | Manual via SQL/ER tool | Manual via SQL | Limited built-in diffing | Manual via SQL | No | Built-in diff + apply across two connections (backend done, UI in progress) |

@@ -24,7 +24,7 @@ The important distinction here isn't feature-for-feature — it's *availability*
 | Hybrid/BM25 search tooling | Via raw GraphQL | Yes, built-in query tool |
 | AI agent (plain-English querying) | Yes, schema-aware | No |
 | Multi-database support (SQL, other NoSQL, other vector DBs) | Yes, one UI | No — Weaviate only |
-| Self-hosted, open source | Yes (MIT) | Console itself isn't self-hostable; tied to Weaviate Cloud accounts |
+| Self-hosted, source-available | Yes | Console itself isn't self-hostable; tied to Weaviate Cloud accounts |
 | Cost | Free (self-hosted) | Included with a Weaviate Cloud account |
 | Schema migration / backups | Not yet | Cluster-level backup features exist for Cloud, not a general migration tool |
 
@@ -46,7 +46,7 @@ If you're on Weaviate Cloud and responsible for the cluster itself — provision
 - **One tool for every database you run.** Weaviate plus Postgres plus Redis plus another vector store — one UI, one login, instead of a cloud console for Weaviate and separate tools for everything else.
 - **Chunk-level browsing next to your source data.** For RAG pipelines, viewing Weaviate objects and vectors alongside the relational/NoSQL data they were derived from, in one tool, is the actual differentiator.
 - **Built-in AI agent.** Plain-English querying against Weaviate data, schema-aware automatically — not something the Cloud Console offers.
-- **Not tied to a hosting decision.** Pilotbase works the same whether Weaviate is self-hosted or cloud-hosted; MIT-licensed and self-hostable end-to-end.
+- **Not tied to a hosting decision.** Pilotbase works the same whether Weaviate is self-hosted or cloud-hosted; source-available and self-hostable end-to-end.
 - **Shared, permissioned access.** Pluggable auth and per-connection read/write/admin grants make it straightforward to give a team controlled access to the same Weaviate instance without everyone sharing one Cloud account.
 
 ## Verdict

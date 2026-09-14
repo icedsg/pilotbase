@@ -12,12 +12,21 @@ import type {
   PapiConfig,
 } from '../types'
 
-const BASE = import.meta.env.VITE_API_URL || ''
+// Only honor VITE_API_URL under the Vite dev server. A production build (the
+// one served by the desktop sidecar on its random port, or by any web
+// deployment) must always call same-origin — a dev-only override baked in at
+// build time would silently point every request at the wrong host/port.
+const BASE = import.meta.env.DEV ? (import.meta.env.VITE_API_URL || '') : ''
 
 const http = axios.create({
   baseURL: `${BASE}/api/v1`,
   headers: { 'Content-Type': 'application/json' },
 })
+
+// ── Health ────────────────────────────────────────────────────────────────────
+
+export const apiHealth = (): Promise<{ status: string; version: string }> =>
+  http.get('/health').then(r => r.data)
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
@@ -289,3 +298,43 @@ export const apiGetChatSessionMessages = (
 
 export const apiDeleteChatSession = (userId: string, sessionId: string): Promise<{ message: string }> =>
   http.delete(`/ai/sessions/${sessionId}`, { params: { user_anon_id: userId } }).then(r => r.data)
+
+// ── Settings (desktop) ──────────────────────────────────────────────────────────
+
+export interface LlmSettings {
+  provider: 'ollama' | 'openrouter'
+  base_url: string
+  model: string
+  flash_model: string
+  has_api_key: boolean
+}
+
+export const apiGetLlmSettings = (userId: string): Promise<LlmSettings> =>
+  http.get('/settings/llm', { params: { user_anon_id: userId } }).then(r => r.data)
+
+export const apiPutLlmSettings = (
+  userId: string,
+  data: { provider: string; base_url: string; model: string; flash_model?: string; api_key?: string },
+): Promise<{ message: string }> =>
+  http.put('/settings/llm', { user_anon_id: userId, ...data }).then(r => r.data)
+
+export const apiTestLlm = (
+  userId: string,
+): Promise<{ ok: boolean; model?: string; latency_ms?: number; error?: string }> =>
+  http.post('/settings/llm/test', { user_anon_id: userId }).then(r => r.data)
+
+export const apiGetLlmStatus = (userId: string): Promise<{ available: boolean; reason?: string }> =>
+  http.get('/settings/llm/status', { params: { user_anon_id: userId } }).then(r => r.data)
+
+export interface LlmModelInfo {
+  id: string
+  name: string
+  description: string | null
+}
+
+export const apiGetLlmModels = (
+  userId: string, provider: string, baseUrl: string, apiKey?: string,
+): Promise<{ models: LlmModelInfo[]; has_description: boolean }> =>
+  http.get('/settings/llm/models', {
+    params: { user_anon_id: userId, provider, base_url: baseUrl, api_key: apiKey || undefined },
+  }).then(r => r.data)

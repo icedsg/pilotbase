@@ -41,8 +41,10 @@ async def _ensure_default_connections(admin_user: User, session: AsyncSession) -
         return
     for cfg in _DEFAULT_CONFIGS:
         name = cfg["name"]
+        # Match regardless of is_active: once a user deletes a seeded default,
+        # it must stay deleted rather than reappearing on the next restart.
         result = await session.execute(
-            select(DbConnection).where(DbConnection.name == name, DbConnection.is_active == True)  # noqa: E712
+            select(DbConnection).where(DbConnection.name == name)
         )
         if result.scalar_one_or_none():
             continue
@@ -58,7 +60,7 @@ async def _ensure_default_connections(admin_user: User, session: AsyncSession) -
             username=cfg.get("username"),
             password_encrypted=db_service.encrypt_password(password) if password else None,
             ssl_mode=cfg.get("ssl_mode"),
-            extra_params=cfg.get("extra_params"),
+            extra_params=db_service.seal_extra_params(cfg.get("extra_params")),
             created_by=admin_user.id,
         )
         session.add(conn)
@@ -221,7 +223,8 @@ async def create_connection(
         username=body.username,
         password_encrypted=encrypted_pw,
         ssl_mode=body.ssl_mode,
-        extra_params=body.extra_params,
+        # api_key / auth_token inside extra_params are stored encrypted
+        extra_params=db_service.seal_extra_params(body.extra_params),
         created_by=user.id,
     )
     session.add(conn)
@@ -259,7 +262,8 @@ async def update_connection(
     if body.username is not None:     conn.username = body.username
     if body.password is not None:     conn.password_encrypted = db_service.encrypt_password(body.password)
     if body.ssl_mode is not None:     conn.ssl_mode = body.ssl_mode
-    if body.extra_params is not None: conn.extra_params = body.extra_params
+    if body.extra_params is not None:
+        conn.extra_params = db_service.seal_extra_params(body.extra_params, existing=conn.extra_params)
 
     db_service.drop_engine(conn_id)
     await session.commit()
@@ -277,8 +281,6 @@ async def delete_connection(
     conn = result.scalar_one_or_none()
     if not conn:
         raise HTTPException(status_code=404, detail="Connection not found.")
-    if conn.name in _default_names:
-        raise HTTPException(status_code=403, detail="Default connections cannot be deleted.")
     conn.is_active = False
     db_service.drop_engine(conn_id)
     await session.commit()

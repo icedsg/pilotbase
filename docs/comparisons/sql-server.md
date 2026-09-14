@@ -20,7 +20,7 @@ This isn't a like-for-like matchup. SSMS is a single-engine specialist tool with
 | AI natural-language querying | Yes — schema-aware agent, warns before destructive operations | No |
 | Driver/setup friction | Connects via `pymssql` (FreeTDS) — no Microsoft ODBC driver install required | Native, no driver friction on Windows, but Windows-only |
 | Advanced admin (jobs, replication, Always On, security policies, perf tooling) | No | Yes, extensive |
-| Licensing / hosting model | Open-source (MIT), self-hosted | Free, but Windows-only and tied to Microsoft's tooling ecosystem |
+| Licensing / hosting model | Source-available, self-hosted | Free, but Windows-only and tied to Microsoft's tooling ecosystem |
 
 ## Where SSMS wins
 

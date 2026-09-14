@@ -1,10 +1,18 @@
-from typing import List, Union
+import os
+from typing import List, Optional, Union
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    # When DATA_DIR is set (desktop sidecar launch), never read a stray .env
+    # file from the working directory — every setting must come from the
+    # explicit env vars the Electron shell passes in.
+    model_config = SettingsConfigDict(
+        env_file=None if os.environ.get("DATA_DIR") else ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     # Database (Pilotbase internal)
     database_url: str = "postgresql+psycopg2://pilotbase:pilotbase_secret@localhost:5432/pilotbase"
@@ -21,10 +29,16 @@ class Settings(BaseSettings):
     ollama_flash_model: str = "deepseek-v3"
 
     # Application
+    host: str = "0.0.0.0"
     port: int = 8000
     environment: str = "development"
     static_dir: str = "./static"
     backups_dir: str = "./backups"
+
+    # Desktop sidecar mode (see docs/desktop-plan.md) — set by the Electron
+    # shell, empty in every other deployment (Docker, bare CLI).
+    local_api_token: str = ""
+    data_dir: Optional[str] = None
 
     # External database connections — how long (seconds) to wait when
     # establishing a connection to a user-added database before giving up.

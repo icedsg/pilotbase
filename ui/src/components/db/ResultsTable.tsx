@@ -104,7 +104,9 @@ function generateAlterScripts(
       )
     }
 
-  } else if (dbType === 'postgresql') {
+  } else if (dbType === 'postgresql' || dbType === 'duckdb') {
+    // DuckDB supports the same Postgres-style ALTER COLUMN forms
+    // (TYPE / SET|DROP DEFAULT / SET|DROP NOT NULL / RENAME COLUMN).
     const oldCol = q(original.name)
     const newCol = q(edited.name)
     if (original.name !== edited.name) {

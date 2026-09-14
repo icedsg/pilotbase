@@ -5,6 +5,7 @@ import ActivityBar from './components/layout/ActivityBar'
 import LeftPanel from './components/layout/LeftPanel'
 import RightPanel from './components/layout/RightPanel'
 import MainArea from './components/layout/MainArea'
+import SettingsModal from './components/settings/SettingsModal'
 import { useUserSession } from './hooks/useUserSession'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useStore } from './store'
@@ -13,7 +14,7 @@ import { apiListConnections } from './api/client'
 export default function App() {
   const { userId, initSession } = useUserSession()
   const { connect } = useWebSocket()
-  const { setConnections, theme } = useStore()
+  const { setConnections, theme, settingsModalOpen, setSettingsModalOpen } = useStore()
 
   const leftPanelRef = useRef<ImperativePanelHandle>(null)
   const rightPanelRef = useRef<ImperativePanelHandle>(null)
@@ -92,6 +93,7 @@ export default function App() {
           </Panel>
         </PanelGroup>
       </div>
+      {settingsModalOpen && <SettingsModal onClose={() => setSettingsModalOpen(false)} />}
     </div>
   )
 }

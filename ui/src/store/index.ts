@@ -144,6 +144,10 @@ interface PilotbaseStore {
   sqlLogPanelOpen: boolean
   setSqlLogPanelOpen: (v: boolean) => void
 
+  // ── Settings modal (opened from ActivityBar, TopBar's "Configure" link, or the desktop menu) ──
+  settingsModalOpen: boolean
+  setSettingsModalOpen: (v: boolean) => void
+
   // ── Query history (executed scripts, any source) ──────────────────
   queryHistory: QueryHistoryEntry[]
   setQueryHistory: (entries: QueryHistoryEntry[]) => void
@@ -299,6 +303,9 @@ export const useStore = create<PilotbaseStore>((set, get) => ({
   clearAlterScripts: () => set({ alterScriptLog: [] }),
   sqlLogPanelOpen: false,
   setSqlLogPanelOpen: (sqlLogPanelOpen) => set({ sqlLogPanelOpen }),
+
+  settingsModalOpen: false,
+  setSettingsModalOpen: (settingsModalOpen) => set({ settingsModalOpen }),
 
   // Query history
   queryHistory: [],

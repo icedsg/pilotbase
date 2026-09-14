@@ -20,7 +20,7 @@ Db2 has a narrower install base than Oracle or SQL Server, and its official tool
 | Backups | Yes — portable SQL INSERT-based dump (not Db2's native backup format) | Native Db2 backup/restore tooling available (typically via admin commands rather than the GUI itself) |
 | AI natural-language querying | Yes — schema-aware agent, warns before destructive operations | No |
 | Install footprint | Docker container or local Python/Node setup | Web console ships with Db2; Data Studio is a separate Eclipse-based install |
-| Licensing / hosting model | Open-source (MIT), self-hosted | Official IBM tooling, free with Db2, single-engine |
+| Licensing / hosting model | Source-available, self-hosted | Official IBM tooling, free with Db2, single-engine |
 
 ## Where Db2 tooling wins
 

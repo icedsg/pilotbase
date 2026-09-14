@@ -11,6 +11,7 @@ import re
 import time
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, TypeVar
+from urllib.parse import urlsplit
 
 from cryptography.fernet import Fernet
 
@@ -40,6 +41,28 @@ def check_agent_forbidden(query: str) -> Optional[str]:
         if m:
             return " ".join(m.group(1).upper().split())
     return None
+
+
+def build_service_url(host: Optional[str], port: Optional[int]) -> str:
+    """
+    Builds a scheme://host[:port] URL for host-based service adapters
+    (Weaviate, Milvus, DynamoDB-compatible endpoints, ...).
+
+    If the user already typed a scheme (http:// or https://) into the host
+    field, it's used verbatim — we never double-prefix it. If no scheme was
+    typed, https is assumed. Either way, a port is only appended when the
+    user actually gave one and the host doesn't already carry one — we never
+    invent a vendor "default" port (e.g. Weaviate's 8080), since an assumed
+    https URL with no port typically means a standard reverse-proxied
+    deployment on 443, not the raw local port.
+    """
+    host = (host or "localhost").strip()
+    if re.match(r"^https?://", host, re.IGNORECASE):
+        base = host.rstrip("/")
+        if port and not re.search(r":\d+$", urlsplit(base).netloc):
+            base = f"{base}:{port}"
+        return base
+    return f"https://{host}:{port}" if port else f"https://{host}"
 
 
 # ── Base adapter ──────────────────────────────────────────────────────────────
@@ -110,10 +133,28 @@ class SQLAdapter(BaseAdapter):
         # protection against a hung db2 connection.
         return {}
 
-    def __init__(self, conn: DbConnection, url: str):
+    def __init__(self, conn: DbConnection, url: str, extra: Optional[Dict[str, Any]] = None):
         from sqlalchemy import create_engine
+        extra = extra or {}
         connect_args = self._connect_args(conn.db_type, self.CONNECT_TIMEOUT_SECONDS)
-        self._engine = create_engine(url, pool_pre_ping=True, pool_size=3, max_overflow=5, connect_args=connect_args)
+        if conn.db_type == "snowflake" and extra.get("auth_token"):
+            # OAuth access token instead of a password — the connector takes
+            # it as authenticator=oauth + token (see docs/supported-databases.md).
+            connect_args.update(authenticator="oauth", token=extra["auth_token"])
+        engine_kwargs: Dict[str, Any] = {"pool_pre_ping": True, "connect_args": connect_args}
+        if conn.db_type == "duckdb" and (conn.database or "") in ("", ":memory:"):
+            # DuckDB `:memory:` databases are per-connection: every pooled
+            # DBAPI connection would be its own empty database, and the
+            # default pool duckdb-engine picks for :memory: (SingletonThreadPool)
+            # is per-*thread* — which run_off_loop's worker threads would defeat
+            # anyway (and it rejects max_overflow). StaticPool keeps exactly one
+            # connection shared by all threads so tables persist across requests
+            # (DuckDB serializes calls on a connection internally).
+            from sqlalchemy.pool import StaticPool
+            engine_kwargs["poolclass"] = StaticPool
+        else:
+            engine_kwargs.update(pool_size=3, max_overflow=5)
+        self._engine = create_engine(url, **engine_kwargs)
         self._db_type = conn.db_type
         self._database = conn.database
 
@@ -198,11 +239,22 @@ class SQLAdapter(BaseAdapter):
 
     def rename_table(self, old_name: str, new_name: str) -> None:
         from sqlalchemy import text
-        if self._db_type in ("postgresql", "cockroachdb", "sqlite"):
+        if self._db_type in ("postgresql", "cockroachdb", "sqlite", "duckdb"):
             if '"' in old_name or '"' in new_name:
                 raise ValueError("Table name cannot contain double quotes")
-            with self._engine.begin() as c:
-                c.execute(text(f'ALTER TABLE "{old_name}" RENAME TO "{new_name}"'))
+            try:
+                with self._engine.begin() as c:
+                    c.execute(text(f'ALTER TABLE "{old_name}" RENAME TO "{new_name}"'))
+            except Exception as e:
+                # DuckDB refuses to rename a table that anything else depends
+                # on (its own indexes, or a foreign key from another table):
+                # "Dependency Error: Cannot alter entry ... entries depend on it".
+                if self._db_type == "duckdb" and "Dependency Error" in str(e):
+                    raise ValueError(
+                        f'DuckDB cannot rename "{old_name}" while it has indexes or is referenced by a foreign key. '
+                        "Drop those first, rename, then recreate them."
+                    ) from e
+                raise
         elif self._db_type in ("mysql", "mariadb"):
             if "`" in old_name or "`" in new_name:
                 raise ValueError("Table name cannot contain backticks")
@@ -240,7 +292,17 @@ class SQLAdapter(BaseAdapter):
         return [self._database or "main"]
 
     def list_schemas(self) -> List[str]:
-        from sqlalchemy import inspect as sa_inspect
+        from sqlalchemy import inspect as sa_inspect, text
+        if self._db_type == "duckdb":
+            # duckdb-engine's get_schema_names returns every attached catalog
+            # qualified ("system.main", "temp.main", "<file>.main", ...) — only
+            # the schemas of the database we actually opened are meaningful.
+            with self._engine.connect() as c:
+                rows = c.execute(text(
+                    "SELECT schema_name FROM information_schema.schemata "
+                    "WHERE catalog_name = current_database() ORDER BY schema_name"
+                ))
+                return [r[0] for r in rows]
         return sa_inspect(self._engine).get_schema_names()
 
     def list_objects(self, schema: Optional[str] = None, database: Optional[str] = None) -> List[Dict]:
@@ -272,23 +334,52 @@ class SQLAdapter(BaseAdapter):
             elif database and self._db_type in ("mysql", "mariadb"):
                 schema = database
             inspector = sa_inspect(engine)
+            if self._db_type == "duckdb":
+                primary_keys, indexes = duckdb_reflect_constraints(engine, table, schema)
+                columns = duckdb_reflect_columns(engine, table, schema)
+            else:
+                primary_keys = inspector.get_pk_constraint(table, schema=schema).get("constrained_columns", [])
+                indexes = inspector.get_indexes(table, schema=schema)
+                columns = [{"name": c["name"], "type": str(c["type"]), "nullable": c.get("nullable", True), "default": str(c.get("server_default") or "")} for c in inspector.get_columns(table, schema=schema)]
             return {
-                "columns":      [{"name": c["name"], "type": str(c["type"]), "nullable": c.get("nullable", True), "default": str(c.get("server_default") or "")} for c in inspector.get_columns(table, schema=schema)],
-                "primary_keys": inspector.get_pk_constraint(table, schema=schema).get("constrained_columns", []),
+                "columns":      columns,
+                "primary_keys": primary_keys,
                 "foreign_keys": inspector.get_foreign_keys(table, schema=schema),
-                "indexes":      inspector.get_indexes(table, schema=schema),
+                "indexes":      indexes,
             }
         finally:
             if temp_engine:
                 temp_engine.dispose()
 
-    @staticmethod
-    def _exec_statement(c, stmt: str, params: Optional[Dict], limit: int) -> Dict[str, Any]:
+    _DML_RE = re.compile(r"^\s*(INSERT|UPDATE|DELETE)\b", re.IGNORECASE)
+
+    def _exec_statement(self, c, stmt: str, params: Optional[Dict], limit: int) -> Dict[str, Any]:
         from sqlalchemy import text
-        result = c.execute(text(stmt), params or {})
+        if params:
+            result = c.execute(text(stmt), params)
+        else:
+            # No bind params (the UI and the agent always send raw SQL): send
+            # the statement to the DBAPI untouched. text() would otherwise
+            # treat every `:word` as a bind placeholder, which breaks any
+            # literal containing a colon — DuckDB STRUCT/MAP literals
+            # ({'a':1}), Postgres JSON ('{"a":1}'::jsonb), 'hh:mm' strings…
+            result = c.exec_driver_sql(stmt)
         if result.returns_rows:
+            columns = list(result.keys())
+            if self._db_type == "duckdb" and columns == ["Count"]:
+                # DuckDB reports INSERT/UPDATE/DELETE as a one-row result set
+                # with a single "Count" column, and DDL as the same shape with
+                # zero rows (its DBAPI rowcount is always -1). Surface both as
+                # an affected-row count like every other engine. A user SELECT
+                # that aliases a column "Count" and returns rows is left alone.
+                rows = result.fetchmany(limit)
+                if self._DML_RE.match(stmt) or not rows:
+                    affected = int(rows[0][0]) if rows else 0
+                    return {"rows": [], "columns": [], "row_count": affected, "affected": affected}
+                rows = [dict(row._mapping) for row in rows]
+                return {"rows": rows, "columns": columns, "row_count": len(rows), "truncated": len(rows) == limit}
             rows = [dict(row._mapping) for row in result.fetchmany(limit)]
-            return {"rows": rows, "columns": list(result.keys()), "row_count": len(rows), "truncated": len(rows) == limit}
+            return {"rows": rows, "columns": columns, "row_count": len(rows), "truncated": len(rows) == limit}
         return {"rows": [], "columns": [], "row_count": result.rowcount, "affected": result.rowcount}
 
     def execute_query(self, query: str, params: Optional[Dict] = None, limit: int = 1000, database: Optional[str] = None) -> Dict[str, Any]:
@@ -646,13 +737,17 @@ class CouchDBAdapter(BaseAdapter):
     """
     def __init__(self, conn: DbConnection, extra: Dict):
         import httpx
-        scheme = "https" if conn.ssl_mode in ("require", "verify-full", "true", "on") else "http"
-        host_port = f"{conn.host or 'localhost'}:{conn.port or 5984}"
+        base_url = build_service_url(conn.host, conn.port)
         auth = None
+        headers: Dict[str, str] = {}
+        auth_token = extra.get("auth_token")
         password = extra.get("_password")
-        if conn.username and password:
+        if auth_token:
+            # CouchDB's jwt_authentication_handler: Authorization: Bearer <JWT>
+            headers["Authorization"] = f"Bearer {auth_token}"
+        elif conn.username and password:
             auth = (conn.username, password)
-        self._client = httpx.Client(base_url=f"{scheme}://{host_port}", auth=auth, timeout=self.CONNECT_TIMEOUT_SECONDS)
+        self._client = httpx.Client(base_url=base_url, auth=auth, headers=headers, timeout=self.CONNECT_TIMEOUT_SECONDS)
         self._default_db = conn.database or None
 
     def test_connection(self) -> bool:
@@ -738,9 +833,7 @@ class DynamoDBAdapter(BaseAdapter):
         if password:
             kwargs["aws_secret_access_key"] = password
         if conn.host:
-            port = f":{conn.port}" if conn.port else ""
-            scheme = "https" if conn.ssl_mode in ("require", "verify-full", "true", "on") else "http"
-            kwargs["endpoint_url"] = f"{scheme}://{conn.host}{port}"
+            kwargs["endpoint_url"] = build_service_url(conn.host, conn.port)
         self._resource = boto3.resource("dynamodb", **kwargs)
         self._client = self._resource.meta.client
 
@@ -804,13 +897,19 @@ class QdrantAdapter(BaseAdapter):
     def __init__(self, conn: DbConnection, extra: Dict):
         from qdrant_client import QdrantClient
         https = conn.ssl_mode in ("require", "verify-full", "true", "on")
-        self._client = QdrantClient(
-            host=conn.host or "localhost",
-            port=conn.port or 6333,
-            api_key=extra.get("api_key") or None,
-            https=https,
-            timeout=int(self.CONNECT_TIMEOUT_SECONDS),
-        )
+        kwargs: Dict[str, Any] = {
+            "host": conn.host or "localhost",
+            "port": conn.port or 6333,
+            "api_key": extra.get("api_key") or None,
+            "https": https,
+            "timeout": int(self.CONNECT_TIMEOUT_SECONDS),
+        }
+        auth_token = extra.get("auth_token")
+        if auth_token:
+            # Qdrant RBAC: a JWT signed with the api-key, sent as
+            # Authorization: Bearer on every request.
+            kwargs["auth_token_provider"] = lambda: auth_token
+        self._client = QdrantClient(**kwargs)
 
     def test_connection(self) -> bool:
         try:
@@ -886,9 +985,11 @@ class ChromaAdapter(BaseAdapter):
         # connection.
         import chromadb
         kwargs: Dict[str, Any] = {"host": conn.host or "localhost", "port": conn.port or 8000}
-        api_key = extra.get("api_key")
-        if api_key:
-            kwargs["headers"] = {"Authorization": f"Bearer {api_key}"}
+        # Chroma's token auth is a bearer token: the API key field *is* the
+        # bearer token here (Authorization: Bearer <token>).
+        token = extra.get("auth_token") or extra.get("api_key")
+        if token:
+            kwargs["headers"] = {"Authorization": f"Bearer {token}"}
         self._client = chromadb.HttpClient(**kwargs)
 
     def test_connection(self) -> bool:
@@ -997,9 +1098,13 @@ class WeaviateAdapter(BaseAdapter):
     def __init__(self, conn: DbConnection, extra: Dict):
         import weaviate
         api_key = extra.get("api_key")
-        auth = weaviate.auth.AuthApiKey(api_key=api_key) if api_key else None
-        scheme = "https" if conn.ssl_mode in ("require", "verify-full", "true", "on") else "http"
-        url = f"{scheme}://{conn.host or 'localhost'}:{conn.port or 8080}"
+        auth_token = extra.get("auth_token")
+        if auth_token:
+            # OIDC / Weaviate Cloud bearer access token — takes precedence over an API key.
+            auth = weaviate.auth.AuthBearerToken(access_token=auth_token)
+        else:
+            auth = weaviate.auth.AuthApiKey(api_key=api_key) if api_key else None
+        url = build_service_url(conn.host, conn.port)
         self._client = weaviate.Client(url, auth_client_secret=auth, timeout_config=(self.CONNECT_TIMEOUT_SECONDS, 60))
 
     def test_connection(self) -> bool:
@@ -1178,9 +1283,10 @@ class MilvusAdapter(BaseAdapter):
     """
     def __init__(self, conn: DbConnection, extra: Dict):
         from pymilvus import MilvusClient
-        scheme = "https" if conn.ssl_mode in ("require", "verify-full", "true", "on") else "http"
-        uri = f"{scheme}://{conn.host or 'localhost'}:{conn.port or 19530}"
-        token = extra.get("api_key") or extra.get("_password") or ""
+        uri = build_service_url(conn.host, conn.port)
+        # Milvus/Zilliz `token` is sent as Authorization: Bearer under the hood,
+        # so the API key field is the bearer token here.
+        token = extra.get("auth_token") or extra.get("api_key") or extra.get("_password") or ""
         client_kwargs: Dict[str, Any] = {"uri": uri, "timeout": self.CONNECT_TIMEOUT_SECONDS}
         if token:
             client_kwargs["token"] = token
@@ -1282,6 +1388,63 @@ def describe_query_format(db_type: str) -> Optional[str]:
     return inspect.cleandoc(cls.__doc__)
 
 
+def duckdb_reflect_constraints(engine, table: str, schema: Optional[str] = None) -> tuple:
+    """(primary_key_columns, indexes) for a DuckDB table, read from DuckDB's own
+    catalog functions. duckdb-engine's SQLAlchemy inspector returns an empty PK
+    constraint and warns that it "doesn't yet support reflection on indices",
+    so every caller that needs either (describe_table, migration snapshots,
+    backup DDL, SQL export) goes through here instead. Index dicts use the same
+    shape as Inspector.get_indexes: {name, column_names, unique}."""
+    from sqlalchemy import text
+    schema = schema or "main"
+    with engine.connect() as c:
+        pk_rows = c.execute(text(
+            "SELECT constraint_column_names FROM duckdb_constraints() "
+            "WHERE database_name = current_database() AND schema_name = :s "
+            "AND table_name = :t AND constraint_type = 'PRIMARY KEY'"
+        ), {"s": schema, "t": table}).fetchall()
+        primary_keys: List[str] = list(pk_rows[0][0]) if pk_rows else []
+        idx_rows = c.execute(text(
+            "SELECT index_name, is_unique, expressions FROM duckdb_indexes() "
+            "WHERE database_name = current_database() AND schema_name = :s AND table_name = :t"
+        ), {"s": schema, "t": table}).fetchall()
+    indexes = []
+    for name, is_unique, expressions in idx_rows:
+        # `expressions` is the indexed column list. Depending on the DuckDB
+        # version it arrives either as a real list or as its string form,
+        # e.g. `['"name"']` / `[v]` — normalise both to plain column names.
+        if isinstance(expressions, (list, tuple)):
+            raw = [str(e) for e in expressions]
+        else:
+            s = str(expressions).strip()
+            if s.startswith("[") and s.endswith("]"):
+                s = s[1:-1]
+            raw = [part for part in (p.strip() for p in s.split(",")) if part]
+        cols = [e.strip().strip("'").strip('"') for e in raw]
+        indexes.append({"name": name, "column_names": cols, "unique": bool(is_unique)})
+    return primary_keys, indexes
+
+
+def duckdb_reflect_columns(engine, table: str, schema: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Column list for a DuckDB table in describe_table's shape, read from
+    information_schema so the type string is DuckDB's own (`VARCHAR[]`,
+    `STRUCT(a INTEGER)`, `DECIMAL(18,3)`, ...). duckdb-engine's inspector maps
+    anything it doesn't recognise — every nested type — to `NULL`."""
+    from sqlalchemy import text
+    schema = schema or "main"
+    with engine.connect() as c:
+        rows = c.execute(text(
+            "SELECT column_name, data_type, is_nullable, column_default "
+            "FROM information_schema.columns "
+            "WHERE table_catalog = current_database() AND table_schema = :s AND table_name = :t "
+            "ORDER BY ordinal_position"
+        ), {"s": schema, "t": table}).fetchall()
+    return [
+        {"name": name, "type": data_type, "nullable": str(is_nullable).upper() == "YES", "default": default or ""}
+        for name, data_type, is_nullable, default in rows
+    ]
+
+
 _SQL_TYPES = {"postgresql", "mysql", "mariadb", "sqlite", "duckdb", "mssql", "oracle", "db2", "cockroachdb", "snowflake"}
 
 _SQL_DRIVERS = {
@@ -1339,6 +1502,56 @@ class DatabaseService:
     def decrypt_password(self, encrypted: str) -> str:
         return self._cipher.decrypt(encrypted.encode()).decode()
 
+    # Keys inside extra_params that hold credentials. They're stored Fernet-
+    # encrypted under "<key>_encrypted" (same treatment as password_encrypted)
+    # and only exist in plaintext inside a live adapter.
+    _SECRET_EXTRA_KEYS = ("api_key", "auth_token")
+
+    def seal_extra_params(self, raw: Optional[Any], existing: Optional[str] = None) -> Optional[str]:
+        """Prepare an extra_params blob for storage: encrypt every secret key.
+
+        `raw` is what the client sent (JSON string or dict; only the fields the
+        user filled in). `existing` is the currently stored blob, used on edits:
+        non-secret keys (warehouse, role, ...) are replaced wholesale by `raw`,
+        exactly as before, but a secret the user left blank is carried over
+        from `existing` instead of being lost — the UI shows "leave blank to
+        keep current" for these. Legacy plaintext secrets in `existing` are
+        sealed on the way through."""
+        if isinstance(raw, dict):
+            new = dict(raw)
+        else:
+            new = json.loads(raw) if raw else {}
+        old = json.loads(existing) if existing else {}
+
+        enc_names = {f"{k}_encrypted" for k in self._SECRET_EXTRA_KEYS}
+        result = {k: v for k, v in new.items() if k not in self._SECRET_EXTRA_KEYS and k not in enc_names}
+        for key in self._SECRET_EXTRA_KEYS:
+            enc_key = f"{key}_encrypted"
+            if new.get(key):
+                result[enc_key] = self.encrypt_password(str(new[key]))
+            elif key in new:
+                continue  # explicit empty string → clear the secret
+            elif old.get(enc_key):
+                result[enc_key] = old[enc_key]
+            elif old.get(key):
+                result[enc_key] = self.encrypt_password(str(old[key]))
+        return json.dumps(result) if result else None
+
+    def _load_extra(self, conn: DbConnection) -> Dict[str, Any]:
+        """extra_params as a dict with secrets decrypted back to their plain
+        keys ("api_key", "auth_token") for adapter construction. Plaintext
+        legacy values (or the unsaved values test_connection_params passes
+        straight through) are accepted as-is."""
+        extra: Dict[str, Any] = json.loads(conn.extra_params) if conn.extra_params else {}
+        for key in self._SECRET_EXTRA_KEYS:
+            enc = extra.pop(f"{key}_encrypted", None)
+            if enc and not extra.get(key):
+                try:
+                    extra[key] = self.decrypt_password(enc)
+                except Exception:
+                    pass
+        return extra
+
     # ── Adapter lifecycle ─────────────────────────────────────────────────────
 
     def _build_sql_url(self, conn: DbConnection) -> str:
@@ -1350,7 +1563,7 @@ class DatabaseService:
             host_port = f"{conn.host}:{conn.port or 1521}"
             return f"oracle+oracledb://{conn.username}:{password}@{host_port}/?service_name={conn.database}"
         if conn.db_type == "snowflake":
-            extra: Dict[str, Any] = json.loads(conn.extra_params) if conn.extra_params else {}
+            extra = self._load_extra(conn)
             account = conn.host or ""
             db_part = f"/{conn.database}" if conn.database else ""
             params = "&".join(f"{k}={v}" for k in ("warehouse", "role") if (v := extra.get(k)))
@@ -1361,14 +1574,14 @@ class DatabaseService:
         return f"{driver}://{conn.username}:{password}@{host_port}{db_part}"
 
     def _make_adapter(self, conn: DbConnection) -> BaseAdapter:
+        extra = self._load_extra(conn)
         if conn.db_type in _SQL_TYPES:
-            return SQLAdapter(conn, self._build_sql_url(conn))
+            return SQLAdapter(conn, self._build_sql_url(conn), extra)
 
         cls = _ADAPTER_MAP.get(conn.db_type)
         if cls is None:
             raise ValueError(f"Unsupported db_type: {conn.db_type}")
 
-        extra: Dict[str, Any] = json.loads(conn.extra_params) if conn.extra_params else {}
         if conn.password_encrypted:
             extra["_password"] = self.decrypt_password(conn.password_encrypted)
         return cls(conn, extra)  # type: ignore[call-arg]

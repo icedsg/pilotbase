@@ -21,7 +21,7 @@ Redis has an official, free, deeply-featured GUI in **RedisInsight**, built by R
 | Redis Streams / JSON / TimeSeries module UI | No | Yes |
 | AI agent (plain-English querying) | Yes, schema-aware | No |
 | Multi-database support (SQL, other NoSQL, vector) | Yes, one UI | No — Redis only |
-| Self-hosted, open source | Yes (MIT) | Free but closed-source, Redis-only |
+| Self-hosted, source-available | Yes | Free but closed-source, Redis-only |
 | Backups | Not yet (in progress) | N/A (not a backup tool) |
 
 ## What the AI agent actually changes
@@ -47,7 +47,7 @@ RedisInsight ships as a desktop application (and a lightweight web version) that
 
 ## Licensing and cost
 
-RedisInsight is free but closed-source and Redis-specific; you're dependent on Redis Ltd.'s roadmap for new features. Pilotbase is MIT-licensed and self-hosted end-to-end, with no per-seat cost, though you take on running it yourself (Docker Compose is the intended path). A managed alternative, Pilotbase.pro, is planned to launch in mid-2026 for teams that would rather not self-host.
+RedisInsight is free but closed-source and Redis-specific; you're dependent on Redis Ltd.'s roadmap for new features. Pilotbase is source-available and self-hosted end-to-end, with no per-seat cost, though you take on running it yourself (Docker Compose is the intended path). A managed alternative, Pilotbase.pro, is planned to launch in mid-2026 for teams that would rather not self-host.
 
 ## Quick take
 

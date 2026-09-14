@@ -7,7 +7,10 @@ import {
 import { useUserSession } from '../../hooks/useUserSession'
 import { useStore } from '../../store'
 
-const BASE = import.meta.env.VITE_API_URL || ''
+// See api/client.ts — VITE_API_URL is a dev-only override; a production
+// build must show the actual origin the user is on (the web domain, or the
+// desktop sidecar's random port), not a baked-in dev URL.
+const BASE = import.meta.env.DEV ? (import.meta.env.VITE_API_URL || '') : window.location.origin
 
 interface Props {
   connId: string

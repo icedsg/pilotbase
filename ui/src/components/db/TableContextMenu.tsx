@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Rows3, Columns3, Eraser, Trash2, Layers, FileText, Hash, FileCode } from 'lucide-react'
+import { Rows3, Columns3, Eraser, Trash2, Layers, FileText, Hash, FileCode, Clock } from 'lucide-react'
 import type { DbObject } from '../../types'
 
 const VECTOR_DB_TYPES = new Set(['qdrant', 'chroma', 'weaviate', 'pinecone', 'milvus'])
@@ -18,6 +18,7 @@ export interface ContextMenuTarget {
 interface Props {
   target: ContextMenuTarget
   onViewRows: () => void
+  onViewLatest50: () => void
   onViewColumns: () => void
   onExportSql: () => void
   onTruncate: () => void
@@ -25,7 +26,7 @@ interface Props {
   onClose: () => void
 }
 
-export default function TableContextMenu({ target, onViewRows, onViewColumns, onExportSql, onTruncate, onDrop, onClose }: Props) {
+export default function TableContextMenu({ target, onViewRows, onViewLatest50, onViewColumns, onExportSql, onTruncate, onDrop, onClose }: Props) {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -54,7 +55,7 @@ export default function TableContextMenu({ target, onViewRows, onViewColumns, on
   const label = isTable ? 'Table' : isView ? 'View' : target.type === 'collection' ? 'Collection' : 'Key'
 
   let viewIcon = <Rows3 size={16} />
-  let viewLabel = 'View Rows'
+  let viewLabel = 'View All Rows'
   if (isVectorCollection) { viewIcon = <Layers size={16} />; viewLabel = 'View Chunks' }
   else if (isNoSQLCollection) { viewIcon = <FileText size={16} />; viewLabel = 'View Documents' }
   else if (isRedisKey) { viewIcon = <Hash size={16} />; viewLabel = 'View Value' }
@@ -77,9 +78,16 @@ export default function TableContextMenu({ target, onViewRows, onViewColumns, on
       </button>
 
       {(isTable || isView) && (
+        <button className="ctx-item hover:text-gray-900 dark:hover:text-white" onClick={() => { onViewLatest50(); onClose() }}>
+          <Clock size={16} />
+          <span>View Latest 50</span>
+        </button>
+      )}
+
+      {(isTable || isView) && (
         <button className="ctx-item hover:text-gray-900 dark:hover:text-white" onClick={() => { onViewColumns(); onClose() }}>
           <Columns3 size={16} />
-          <span>View Columns</span>
+          <span>Show Columns</span>
         </button>
       )}
 

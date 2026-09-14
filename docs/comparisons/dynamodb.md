@@ -43,7 +43,7 @@ The AWS Console requires nothing extra — it's already there whenever you have 
 
 ## Licensing and cost
 
-The AWS Console is included with your AWS account at no extra cost. NoSQL Workbench is a free download from AWS. Pilotbase is MIT-licensed and self-hosted (Docker Compose or local dev setup), with no per-seat cost but the added responsibility of running it yourself. A managed hosted option, Pilotbase.pro, is planned to launch in mid-2026 for teams that would rather not self-host.
+The AWS Console is included with your AWS account at no extra cost. NoSQL Workbench is a free download from AWS. Pilotbase is source-available and self-hosted (Docker Compose or local dev setup), with no per-seat cost but the added responsibility of running it yourself. A managed hosted option, Pilotbase.pro, is planned to launch in mid-2026 for teams that would rather not self-host.
 
 ## Quick take
 

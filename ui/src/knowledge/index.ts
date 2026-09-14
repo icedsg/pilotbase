@@ -2,6 +2,7 @@ import pgTypes    from '@knowledge/postgresql/data_types.json'
 import myTypes    from '@knowledge/mysql/data_types.json'
 import mbTypes    from '@knowledge/mariadb/data_types.json'
 import slTypes    from '@knowledge/sqlite/data_types.json'
+import ddTypes    from '@knowledge/duckdb/data_types.json'
 import msTypes    from '@knowledge/mssql/data_types.json'
 import mgTypes    from '@knowledge/mongodb/data_types.json'
 import orTypes    from '@knowledge/oracle/data_types.json'
@@ -40,6 +41,7 @@ const RAW: Record<string, KnowledgeDataTypes> = {
   mysql:       myTypes as KnowledgeDataTypes,
   mariadb:     mbTypes as KnowledgeDataTypes,
   sqlite:      slTypes as KnowledgeDataTypes,
+  duckdb:      ddTypes as KnowledgeDataTypes,
   mssql:       msTypes as KnowledgeDataTypes,
   mongodb:     mgTypes as KnowledgeDataTypes,
   oracle:      orTypes as KnowledgeDataTypes,

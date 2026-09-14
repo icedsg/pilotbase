@@ -6,7 +6,7 @@ DuckDB doesn't really have an incumbent GUI the way Postgres has pgAdmin or Mong
 
 | Feature | `duckdb` CLI / notebook | Pilotbase |
 |---|---|---|
-| Cost | Free, open source | Free, open source (MIT) |
+| Cost | Free, open source | Free, source-available |
 | Install | Ships with the `duckdb` Python package or a single static binary | Self-hosted via Docker Compose or local dev setup |
 | Database scope | DuckDB only | DuckDB plus Postgres, MySQL/MariaDB, SQLite, MongoDB, vector DBs, and more in one UI |
 | Connection model | Opens a local `.duckdb` file or `:memory:` directly in-process | File path as the "database" field; accessed through a web UI, shareable with a team |

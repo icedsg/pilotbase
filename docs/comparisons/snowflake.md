@@ -21,7 +21,7 @@ The comparison here is asymmetric in a particular way: Snowsight isn't just a qu
 | Schema migration (diff + apply) | Yes — diff across two connections, backend complete, UI in progress | Not a core Snowsight workflow |
 | Backups | Yes — portable SQL INSERT-based dump (not Snowflake's native Time Travel/cloning features) | No traditional "backup" UI — Snowflake instead offers Time Travel and zero-copy cloning as its native equivalent |
 | AI natural-language querying | Yes — schema-aware agent, warns before destructive operations | Snowflake has its own separate AI/Copilot features within its ecosystem |
-| Hosting model | Open-source (MIT), self-hosted, connects to your Snowflake account | Snowflake's hosted console only — no self-hosted or on-prem option |
+| Hosting model | Source-available, self-hosted, connects to your Snowflake account | Snowflake's hosted console only — no self-hosted or on-prem option |
 | Licensing | Free, open-source | Included with a Snowflake account, but locked to Snowflake |
 
 ## Where Snowsight wins

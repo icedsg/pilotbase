@@ -52,4 +52,12 @@ DEFAULT_CONNECTIONS: list[dict] = [
 #         "database": "0",
 #         "password": None,
 #     },
+#     {
+#         # File-based engines (sqlite, duckdb) take the file path as "database".
+#         # The path is resolved on the server; ":memory:" gives a scratch DuckDB
+#         # that lives only while the server runs.
+#         "name": "Analytics DuckDB",
+#         "db_type": "duckdb",
+#         "database": "/data/analytics.duckdb",
+#     },
 # ]

@@ -25,12 +25,12 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.db_agent import create_db_agent
-from app.config import settings
 from app.database import AsyncSessionLocal, get_session
 from app.models.chat_session import ChatSession
 from app.routers._common import get_connection_or_404
 from app.services import chat_history_service, chat_relevance, papi_service
 from app.services.db_service import db_service
+from app.services.llm_settings import get_llm_config
 from app.websocket.manager import manager
 
 router = APIRouter()
@@ -127,7 +127,8 @@ async def chat(
 ):
     """Non-streaming chat endpoint — returns the full agent response. Any write
     the agent attempts is only proposed, not executed (see plan_sink)."""
-    if not settings.ollama_api_key:
+    llm_config = await get_llm_config(session)
+    if not llm_config.api_key:
         raise HTTPException(status_code=503, detail="AI agent is not configured.")
 
     conn = await get_connection_or_404(body.connection_id, session)
@@ -146,7 +147,7 @@ async def chat(
     plan_sink: list = []
     agent = create_db_agent(
         conn, target_conn, user_id=body.user_anon_id, propose_only=True, plan_sink=plan_sink,
-        ui_context=body.ui_context,
+        ui_context=body.ui_context, llm_config=llm_config,
     )
 
     state = {
@@ -178,7 +179,8 @@ async def chat_stream(
     """SSE streaming chat endpoint — streams tokens as they arrive. Note: plan
     proposals aren't surfaced over SSE today; use /chat or /chat/ws for that.
     Not used by the current frontend (which uses /chat/ws exclusively)."""
-    if not settings.ollama_api_key:
+    llm_config = await get_llm_config(session)
+    if not llm_config.api_key:
         raise HTTPException(status_code=503, detail="AI agent is not configured.")
 
     conn = await get_connection_or_404(body.connection_id, session)
@@ -196,7 +198,7 @@ async def chat_stream(
 
     agent = create_db_agent(
         conn, target_conn, user_id=body.user_anon_id, propose_only=True, plan_sink=[],
-        ui_context=body.ui_context,
+        ui_context=body.ui_context, llm_config=llm_config,
     )
 
     state = {
@@ -240,7 +242,8 @@ async def chat_via_ws(
     "agent_done" (pure read/Q&A turn) or "plan_proposed" (the agent wants to
     write something and is waiting for approval — see commit_plan/reject_plan).
     """
-    if not settings.ollama_api_key:
+    llm_config = await get_llm_config(session)
+    if not llm_config.api_key:
         raise HTTPException(status_code=503, detail="AI agent is not configured.")
 
     conn = await get_connection_or_404(body.connection_id, session)
@@ -273,6 +276,7 @@ async def chat_via_ws(
             agent = create_db_agent(
                 conn, target_conn, user_id=body.user_anon_id, propose_only=True, plan_sink=plan_sink,
                 ui_context=body.ui_context, query_ui_sink=query_ui_sink, vector_ui_sink=vector_ui_sink,
+                llm_config=llm_config,
             )
             result = await asyncio.get_event_loop().run_in_executor(None, lambda: agent.invoke(state))
             last_msg = result["messages"][-1]

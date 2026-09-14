@@ -25,7 +25,7 @@ Both tools assume you already have a running Qdrant instance — neither one sta
 | Multi-tenancy / API key management | No | Yes |
 | AI agent (plain-English querying) | Yes, schema-aware | No |
 | Multi-database support (SQL, other NoSQL, other vector DBs) | Yes, one UI | No — Qdrant only |
-| Self-hosted, open source | Yes (MIT) | Yes, bundled with Qdrant |
+| Self-hosted, source-available | Yes | Yes, bundled with Qdrant |
 | Deployment | One app for every connection you add | Comes free with self-hosted Qdrant, no extra deploy |
 | Schema migration / backups | Not yet | Not really its job either (some snapshot ops via API, not GUI-driven) |
 
@@ -46,7 +46,7 @@ The Qdrant dashboard is the right tool if you're the person responsible for stan
 - **One tool for every database you run.** If your stack is Qdrant plus Postgres plus Mongo, Pilotbase is one UI and one set of credentials instead of switching tabs between a relational tool and the Qdrant dashboard.
 - **Chunk-level browsing next to your source data.** For RAG pipelines, being able to look at the embeddings in Qdrant and the source records in Postgres/Mongo in the same tool — without re-authenticating into a separate dashboard — is the actual differentiator.
 - **Built-in AI agent.** Ask questions in plain English against your Qdrant data, schema-aware automatically — something the Qdrant dashboard doesn't attempt.
-- **Not tied to a single engine's roadmap.** MIT-licensed, so teams running mixed vector/relational stacks aren't stuck maintaining N separate admin tools.
+- **Not tied to a single engine's roadmap.** Source-available, so teams running mixed vector/relational stacks aren't stuck maintaining N separate admin tools.
 - **Shared team access with permission grants.** Pluggable auth (anonymous by default, or JWT/OAuth2/LDAP/SSO) plus per-connection read/write/admin grants and invite links, useful once more than one person needs access to the same set of databases.
 
 ## Verdict

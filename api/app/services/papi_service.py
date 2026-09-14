@@ -104,6 +104,7 @@ _SQL_COLUMN_TYPES = {
     "mysql":       {"guid": "VARCHAR(36)", "ts": "TIMESTAMP NULL", "bool": "TINYINT(1)", "bool_default": "0"},
     "mariadb":     {"guid": "VARCHAR(36)", "ts": "TIMESTAMP NULL", "bool": "TINYINT(1)", "bool_default": "0"},
     "sqlite":      {"guid": "TEXT",        "ts": "TEXT",           "bool": "INTEGER",    "bool_default": "0"},
+    "duckdb":      {"guid": "VARCHAR(36)", "ts": "TIMESTAMP",      "bool": "BOOLEAN",    "bool_default": "FALSE"},
     "mssql":       {"guid": "VARCHAR(36)", "ts": "DATETIME2",      "bool": "BIT",        "bool_default": "0"},
 }
 
@@ -116,7 +117,7 @@ def _bool_literal(db_type: str, value: bool) -> str:
     """Postgres rejects bare 0/1 against a real boolean column (`operator does
     not exist: boolean = integer`) — every other dialect here uses an
     integer-backed bool column (TINYINT/BIT/INTEGER) and accepts 0/1 fine."""
-    if db_type == "postgresql":
+    if db_type in ("postgresql", "duckdb"):
         return "TRUE" if value else "FALSE"
     return "1" if value else "0"
 

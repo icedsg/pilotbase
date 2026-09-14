@@ -1,0 +1,280 @@
+{
+  "db_type": "duckdb",
+  "version_info": "DuckDB 1.x",
+  "source": "https://duckdb.org/docs/stable/sql/data_types/overview",
+  "notes": "DuckDB is a strongly typed, columnar analytical database. Types are enforced (unlike SQLite's affinity model). Most PostgreSQL type names are accepted as aliases. Nested types (LIST, STRUCT, MAP, UNION) are first-class and can be used in columns, expressions, and results.",
+  "categories": [
+    {
+      "category": "Integer",
+      "types": [
+        {
+          "name": "TINYINT",
+          "aliases": ["INT1"],
+          "params": null,
+          "default_expr": "TINYINT",
+          "description": "Signed 1-byte integer, -128 to 127.",
+          "storage": "1 byte"
+        },
+        {
+          "name": "SMALLINT",
+          "aliases": ["INT2", "SHORT", "INT16"],
+          "params": null,
+          "default_expr": "SMALLINT",
+          "description": "Signed 2-byte integer, -32,768 to 32,767.",
+          "storage": "2 bytes"
+        },
+        {
+          "name": "INTEGER",
+          "aliases": ["INT", "INT4", "SIGNED", "INT32"],
+          "params": null,
+          "default_expr": "INTEGER",
+          "description": "Signed 4-byte integer, -2,147,483,648 to 2,147,483,647.",
+          "storage": "4 bytes"
+        },
+        {
+          "name": "BIGINT",
+          "aliases": ["INT8", "LONG", "INT64"],
+          "params": null,
+          "default_expr": "BIGINT",
+          "description": "Signed 8-byte integer, ±9.2 × 10^18.",
+          "storage": "8 bytes"
+        },
+        {
+          "name": "HUGEINT",
+          "aliases": ["INT128"],
+          "params": null,
+          "default_expr": "HUGEINT",
+          "description": "Signed 16-byte integer, ±1.7 × 10^38.",
+          "storage": "16 bytes"
+        },
+        {
+          "name": "UTINYINT",
+          "aliases": ["UINT8"],
+          "params": null,
+          "default_expr": "UTINYINT",
+          "description": "Unsigned 1-byte integer, 0 to 255.",
+          "storage": "1 byte"
+        },
+        {
+          "name": "USMALLINT",
+          "aliases": ["UINT16"],
+          "params": null,
+          "default_expr": "USMALLINT",
+          "description": "Unsigned 2-byte integer, 0 to 65,535.",
+          "storage": "2 bytes"
+        },
+        {
+          "name": "UINTEGER",
+          "aliases": ["UINT32"],
+          "params": null,
+          "default_expr": "UINTEGER",
+          "description": "Unsigned 4-byte integer, 0 to 4,294,967,295.",
+          "storage": "4 bytes"
+        },
+        {
+          "name": "UBIGINT",
+          "aliases": ["UINT64"],
+          "params": null,
+          "default_expr": "UBIGINT",
+          "description": "Unsigned 8-byte integer, 0 to 1.8 × 10^19.",
+          "storage": "8 bytes"
+        },
+        {
+          "name": "UHUGEINT",
+          "aliases": ["UINT128"],
+          "params": null,
+          "default_expr": "UHUGEINT",
+          "description": "Unsigned 16-byte integer, 0 to 3.4 × 10^38.",
+          "storage": "16 bytes"
+        }
+      ]
+    },
+    {
+      "category": "Floating Point / Decimal",
+      "types": [
+        {
+          "name": "REAL",
+          "aliases": ["FLOAT", "FLOAT4"],
+          "params": null,
+          "default_expr": "REAL",
+          "description": "Single-precision 4-byte IEEE 754 floating-point number.",
+          "storage": "4 bytes"
+        },
+        {
+          "name": "DOUBLE",
+          "aliases": ["FLOAT8", "DOUBLE PRECISION"],
+          "params": null,
+          "default_expr": "DOUBLE",
+          "description": "Double-precision 8-byte IEEE 754 floating-point number.",
+          "storage": "8 bytes"
+        },
+        {
+          "name": "DECIMAL",
+          "aliases": ["NUMERIC"],
+          "params": "(precision, scale)",
+          "default_expr": "DECIMAL(18, 3)",
+          "description": "Exact fixed-point number with up to 38 digits of precision. Defaults to DECIMAL(18, 3) when no parameters are given.",
+          "storage": "2–16 bytes depending on precision",
+          "notes": "Precision up to 38. Arithmetic keeps exact results; use for money and other exact quantities."
+        }
+      ]
+    },
+    {
+      "category": "Boolean",
+      "types": [
+        {
+          "name": "BOOLEAN",
+          "aliases": ["BOOL", "LOGICAL"],
+          "params": null,
+          "default_expr": "BOOLEAN",
+          "description": "Native TRUE / FALSE / NULL. Integers 0 and 1 cast to and from BOOLEAN implicitly in comparisons.",
+          "storage": "1 byte"
+        }
+      ]
+    },
+    {
+      "category": "Character / Binary",
+      "types": [
+        {
+          "name": "VARCHAR",
+          "aliases": ["TEXT", "STRING", "CHAR", "BPCHAR", "NVARCHAR"],
+          "params": "[(n)]",
+          "default_expr": "VARCHAR",
+          "description": "Variable-length UTF-8 string. All aliases map to the same underlying type.",
+          "storage": "variable",
+          "notes": "A length like VARCHAR(255) is accepted for compatibility but not enforced — DuckDB stores any length."
+        },
+        {
+          "name": "BLOB",
+          "aliases": ["BYTEA", "BINARY", "VARBINARY"],
+          "params": null,
+          "default_expr": "BLOB",
+          "description": "Variable-length binary data.",
+          "storage": "variable"
+        },
+        {
+          "name": "BIT",
+          "aliases": ["BITSTRING"],
+          "params": null,
+          "default_expr": "BIT",
+          "description": "Variable-length string of 1s and 0s.",
+          "storage": "variable"
+        },
+        {
+          "name": "UUID",
+          "aliases": [],
+          "params": null,
+          "default_expr": "UUID",
+          "description": "128-bit universally unique identifier. Generate with uuid() / gen_random_uuid().",
+          "storage": "16 bytes"
+        }
+      ]
+    },
+    {
+      "category": "Date / Time",
+      "types": [
+        {
+          "name": "DATE",
+          "aliases": [],
+          "params": null,
+          "default_expr": "DATE",
+          "description": "Calendar date (year, month, day), no time zone.",
+          "storage": "4 bytes"
+        },
+        {
+          "name": "TIME",
+          "aliases": [],
+          "params": null,
+          "default_expr": "TIME",
+          "description": "Time of day with microsecond precision, no time zone.",
+          "storage": "8 bytes"
+        },
+        {
+          "name": "TIMESTAMP",
+          "aliases": ["DATETIME", "TIMESTAMP WITHOUT TIME ZONE"],
+          "params": null,
+          "default_expr": "TIMESTAMP",
+          "description": "Date and time with microsecond precision, no time zone. Variants TIMESTAMP_S / TIMESTAMP_MS / TIMESTAMP_NS store second / millisecond / nanosecond precision.",
+          "storage": "8 bytes"
+        },
+        {
+          "name": "TIMESTAMPTZ",
+          "aliases": ["TIMESTAMP WITH TIME ZONE"],
+          "params": null,
+          "default_expr": "TIMESTAMPTZ",
+          "description": "Date and time stored in UTC and displayed in the session time zone (requires the bundled ICU extension).",
+          "storage": "8 bytes"
+        },
+        {
+          "name": "INTERVAL",
+          "aliases": [],
+          "params": null,
+          "default_expr": "INTERVAL",
+          "description": "Span of time (months, days, microseconds). Supports arithmetic with DATE / TIMESTAMP.",
+          "storage": "16 bytes"
+        }
+      ]
+    },
+    {
+      "category": "Nested / Composite",
+      "types": [
+        {
+          "name": "LIST",
+          "aliases": ["ARRAY (variable length)"],
+          "params": "TYPE[]",
+          "default_expr": "INTEGER[]",
+          "description": "Ordered, variable-length collection of values of one type, e.g. INTEGER[] or VARCHAR[]. Rich list functions (list_transform, unnest, list_aggregate).",
+          "storage": "variable"
+        },
+        {
+          "name": "ARRAY",
+          "aliases": [],
+          "params": "TYPE[n]",
+          "default_expr": "DOUBLE[3]",
+          "description": "Fixed-length collection, e.g. DOUBLE[3]. Used for vectors/embeddings with array_distance / array_cosine_similarity.",
+          "storage": "fixed"
+        },
+        {
+          "name": "STRUCT",
+          "aliases": ["ROW"],
+          "params": "(name TYPE, ...)",
+          "default_expr": "STRUCT(a INTEGER, b VARCHAR)",
+          "description": "Named, typed fields — like a row or JSON object with a fixed schema. Access fields with dot notation.",
+          "storage": "variable"
+        },
+        {
+          "name": "MAP",
+          "aliases": [],
+          "params": "(KEY_TYPE, VALUE_TYPE)",
+          "default_expr": "MAP(VARCHAR, INTEGER)",
+          "description": "Key/value pairs with uniform key and value types; keys need not be known in advance.",
+          "storage": "variable"
+        },
+        {
+          "name": "UNION",
+          "aliases": [],
+          "params": "(tag TYPE, ...)",
+          "default_expr": "UNION(num INTEGER, str VARCHAR)",
+          "description": "Tagged union: each value holds exactly one of the declared member types.",
+          "storage": "variable"
+        },
+        {
+          "name": "JSON",
+          "aliases": [],
+          "params": null,
+          "default_expr": "JSON",
+          "description": "JSON document stored as text with JSON functions and -> / ->> extraction operators (bundled json extension).",
+          "storage": "variable"
+        },
+        {
+          "name": "ENUM",
+          "aliases": [],
+          "params": "('a', 'b', ...)",
+          "default_expr": "ENUM('small', 'medium', 'large')",
+          "description": "Dictionary-encoded fixed set of string values; compact and fast to compare. Usually created once with CREATE TYPE.",
+          "storage": "1–4 bytes"
+        }
+      ]
+    }
+  ]
+}

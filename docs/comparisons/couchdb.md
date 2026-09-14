@@ -6,7 +6,7 @@ CouchDB actually ships its own admin UI out of the box — **Fauxton** — which
 
 | Feature | Fauxton | Pilotbase |
 |---|---|---|
-| Cost | Free, bundled with CouchDB | Free, open source (MIT) |
+| Cost | Free, bundled with CouchDB | Free, source-available |
 | Install | None — served by CouchDB itself at `/_utils` | Self-hosted via Docker Compose or local dev setup |
 | Database scope | CouchDB only | CouchDB plus Postgres, MongoDB, Cassandra, vector DBs, and more in one UI |
 | Connection model | Points at one CouchDB server it's bundled with | Saved connections with host/port/credentials, shareable with a team |

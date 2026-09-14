@@ -237,7 +237,7 @@ export default function ConnectionTree({ refreshKey }: Props) {
     }
   }
 
-  const handleViewRows = async (target: ContextMenuTarget) => {
+  const handleViewRows = async (target: ContextMenuTarget, mode: 'all' | 'latest50' = 'all') => {
     const conn = connections.find(c => c.id === target.connId)
     if (!conn) return
 
@@ -256,20 +256,33 @@ export default function ConnectionTree({ refreshKey }: Props) {
       return
     }
 
+    const limit = mode === 'latest50' ? 50 : 500
+    const isOrderable = mode === 'latest50' && (target.type === 'table' || target.type === 'view') && conn.db_type !== 'redis' && conn.db_type !== 'cassandra'
+    let pkCols: string[] = []
+    if (isOrderable) {
+      try {
+        const info = await apiDescribeTable(userId, target.connId, target.name, undefined, target.db)
+        pkCols = info.primary_keys ?? []
+      } catch {}
+    }
+
     // SQL / Redis / Cassandra → query result table
     let sql: string
     let queryDb: string | undefined
     if (conn.db_type === 'mysql' || conn.db_type === 'mariadb') {
-      sql = `SELECT * FROM \`${target.db}\`.\`${target.name}\` LIMIT 500`
+      const orderBy = pkCols.length ? ` ORDER BY ${pkCols.map(c => `\`${c}\` DESC`).join(', ')}` : ''
+      sql = `SELECT * FROM \`${target.db}\`.\`${target.name}\`${orderBy} LIMIT ${limit}`
     } else if (conn.db_type === 'redis') {
       sql = `GET ${target.name}`
     } else if (conn.db_type === 'mssql') {
-      sql = `SELECT TOP 500 * FROM [${target.name}]`
+      const orderBy = pkCols.length ? ` ORDER BY ${pkCols.map(c => `[${c}] DESC`).join(', ')}` : ''
+      sql = `SELECT TOP ${limit} * FROM [${target.name}]${orderBy}`
       queryDb = target.db
     } else if (conn.db_type === 'cassandra') {
-      sql = `SELECT * FROM ${target.db}.${target.name} LIMIT 500`
+      sql = `SELECT * FROM ${target.db}.${target.name} LIMIT ${limit}`
     } else {
-      sql = `SELECT * FROM "${target.name}" LIMIT 500`
+      const orderBy = pkCols.length ? ` ORDER BY ${pkCols.map(c => `"${c}" DESC`).join(', ')}` : ''
+      sql = `SELECT * FROM "${target.name}"${orderBy} LIMIT ${limit}`
       queryDb = target.db
     }
 
@@ -444,19 +457,17 @@ export default function ConnectionTree({ refreshKey }: Props) {
                   >
                     <Pencil size={14} />
                   </button>
-                  {!conn.is_default && (
-                    <button
-                      onClick={(e) => handleDelete(conn, e)}
-                      disabled={isDeleting}
-                      className="btn-ghost p-0.5 hover:text-red-400"
-                      title="Delete connection"
-                    >
-                      {isDeleting
-                        ? <Loader2 size={14} className="animate-spin" />
-                        : <Trash2 size={14} />
-                      }
-                    </button>
-                  )}
+                  <button
+                    onClick={(e) => handleDelete(conn, e)}
+                    disabled={isDeleting}
+                    className="btn-ghost p-0.5 hover:text-red-400"
+                    title="Delete connection"
+                  >
+                    {isDeleting
+                      ? <Loader2 size={14} className="animate-spin" />
+                      : <Trash2 size={14} />
+                    }
+                  </button>
                 </div>
               </div>
 
@@ -604,6 +615,7 @@ export default function ConnectionTree({ refreshKey }: Props) {
         <TableContextMenu
           target={ctxMenu}
           onViewRows={() => handleViewRows(ctxMenu)}
+          onViewLatest50={() => handleViewRows(ctxMenu, 'latest50')}
           onViewColumns={() => handleViewColumns(ctxMenu)}
           onExportSql={() => handleExportSql(ctxMenu)}
           onTruncate={() => handleTruncate(ctxMenu)}

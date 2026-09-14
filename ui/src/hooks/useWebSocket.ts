@@ -3,7 +3,9 @@ import { useStore } from '../store'
 import type { PendingPlan } from '../store'
 import type { WsMessage, ChatMessage, QueryHistoryEntry, QueryResult, MigrationJobState } from '../types'
 
-const BASE_WS = import.meta.env.VITE_API_URL
+// See api/client.ts — VITE_API_URL is a dev-only override and must never
+// leak into a production build, which always connects same-origin.
+const BASE_WS = import.meta.env.DEV && import.meta.env.VITE_API_URL
   ? import.meta.env.VITE_API_URL.replace(/^http/, 'ws')
   : `ws://${window.location.host}`
 

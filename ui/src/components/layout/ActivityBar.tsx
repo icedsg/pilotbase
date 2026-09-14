@@ -1,9 +1,10 @@
-import { useState } from 'react'
-import { Terminal, GitMerge, Download, Database, Bot, History, Sun, Moon, ScrollText } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Terminal, GitMerge, Download, Database, Bot, History, Sun, Moon, ScrollText, Settings } from 'lucide-react'
 import { useStore, type QueryTab } from '../../store'
 import BackupModal from '../backup/BackupModal'
 import QueryHistoryPanel from '../db/QueryHistoryPanel'
 import MigrationTargetPicker from '../migration/MigrationTargetPicker'
+import { desktop, isDesktop } from '../../lib/desktop'
 
 interface Props {
   leftOpen: boolean
@@ -16,10 +17,18 @@ export default function ActivityBar({ leftOpen, rightOpen, onToggleLeft, onToggl
   const {
     theme, toggleTheme, activeConnectionId, mainTabs,
     ensureQueryTab, updateQueryTab, setActiveMainTab, sqlLogPanelOpen, setSqlLogPanelOpen,
+    setSettingsModalOpen,
   } = useStore()
   const [historyOpen, setHistoryOpen] = useState(false)
   const [backupOpen, setBackupOpen] = useState(false)
   const [migrationOpen, setMigrationOpen] = useState(false)
+
+  // The Electron menu's "Settings…" item (Cmd/Ctrl+,) opens the same modal —
+  // see docs/desktop-plan.md §4.2/§5.7.
+  useEffect(() => {
+    if (!isDesktop || !desktop) return
+    return desktop.onOpenSettings(() => setSettingsModalOpen(true))
+  }, [])
 
   const activeQueryTab = mainTabs.find((t): t is QueryTab => t.kind === 'query' && t.connectionId === activeConnectionId)
   const activeDatabase = activeQueryTab?.database ?? null
@@ -98,6 +107,10 @@ export default function ActivityBar({ leftOpen, rightOpen, onToggleLeft, onToggl
 
       <button onClick={toggleTheme} className="btn-ghost p-2 rounded" title="Toggle theme">
         {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+      </button>
+
+      <button onClick={() => setSettingsModalOpen(true)} className="btn-ghost p-2 rounded" title="Settings">
+        <Settings size={20} />
       </button>
 
       {historyOpen && <QueryHistoryPanel onClose={() => setHistoryOpen(false)} />}

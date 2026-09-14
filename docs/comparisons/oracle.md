@@ -21,7 +21,7 @@ These serve different jobs. SQL Developer is what you reach for when you're deep
 | Schema migration (diff + apply) | Yes — diff across two connections, backend complete, UI in progress | Limited (some compare/sync features exist but aren't the tool's focus) |
 | Backups | Yes — portable SQL INSERT-based dump (not Oracle's native Data Pump/`expdp` format) | No native backup UI (Oracle backup typically handled via RMAN/Data Pump outside SQL Developer) |
 | AI natural-language querying | Yes — schema-aware agent, warns before destructive operations | No |
-| Licensing / hosting model | Open-source (MIT), self-hosted | Free from Oracle, single-engine |
+| Licensing / hosting model | Source-available, self-hosted | Free from Oracle, single-engine |
 
 ## Where Oracle SQL Developer wins
 

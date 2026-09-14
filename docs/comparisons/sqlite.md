@@ -6,7 +6,7 @@ SQLite is different from the other databases Pilotbase supports: there's no serv
 
 | Feature | DB Browser for SQLite | Pilotbase |
 |---|---|---|
-| Cost | Free, open source | Free, open source (MIT) |
+| Cost | Free, open source | Free, source-available |
 | Install | Native desktop app (Windows/Mac/Linux) | Self-hosted via Docker Compose or local dev setup |
 | Database scope | SQLite only | SQLite plus Postgres, MySQL/MariaDB, MongoDB, vector DBs, and more in one UI |
 | Connection model | Opens local `.db` files directly, no client-server | File path as the "database" field; accessed through a web UI, shareable with a team |

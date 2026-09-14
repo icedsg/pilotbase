@@ -27,8 +27,9 @@ ENV/
 env.bak/
 
 # Environment files (contain secrets — do not commit)
-api/.env
-ui/.env.local
+.env
+.env.*
+!.env.example
 
 # Node
 node_modules/
@@ -42,6 +43,16 @@ pnpm-debug.log*
 ui/dist/
 ui/dist-ssr/
 ui/.vite/
+
+# Desktop build artifacts (see docs/desktop-plan.md)
+api/static/
+api/build/
+api/dist/
+desktop/dist/
+desktop/release/
+
+# Private planning notes
+jul26-plan.md
 
 # IDEs
 .vscode/
@@ -62,7 +73,7 @@ ui/.vite/
 .DS_Store
 .DS_Store?
 ._*
-.Spotlight-V7
+.Spotlight-V100
 .Trashes
 ehthumbs.db
 Thumbs.db
@@ -82,7 +93,11 @@ backups/
 *.db
 *.sqlite
 *.sqlite3
-!api/alembic/versions/
+*.duckdb
+*.duckdb.wal
+*.db-journal
+*.db-wal
+*.db-shm
 
 # Coverage reports
 coverage/

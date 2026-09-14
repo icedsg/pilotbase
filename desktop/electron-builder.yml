@@ -1,0 +1,17 @@
+appId: com.pilotbase.desktop
+productName: Pilotbase
+icon: resources/icon.png
+directories: { output: release, buildResources: resources }
+files: ["dist/**", "resources/ad/**", "package.json"]
+extraResources:
+  - { from: "../api/dist/pilotbase-api", to: "sidecar", filter: ["**/*"] }
+  - { from: "resources/splash", to: "splash", filter: ["**/*"] }
+  - { from: "resources/icon.png", to: "icon.png" }
+asar: true
+win:   { target: [{ target: nsis, arch: [x64] }], artifactName: "Pilotbase-Setup-${version}-win-x64.exe" }
+nsis:  { oneClick: true, perMachine: false }
+mac:   { target: [{ target: dmg, arch: [x64, arm64] }], category: public.app-category.developer-tools,
+         hardenedRuntime: true, entitlements: resources/entitlements.plist, notarize: true,
+         artifactName: "Pilotbase-${version}-mac-${arch}.dmg" }
+linux: { target: [{ target: AppImage, arch: [x64] }], category: Development, artifactName: "Pilotbase-${version}-linux-x64.AppImage" }
+publish: null

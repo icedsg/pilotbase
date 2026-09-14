@@ -20,7 +20,7 @@ MongoDB is the database most people reach for when they say "NoSQL," and it has 
 | Real-time performance stats | No | Yes |
 | AI agent (plain-English querying) | Yes, schema-aware | No |
 | Multi-database support (SQL, other NoSQL, vector) | Yes, one UI | No — MongoDB only |
-| Self-hosted, open source | Yes (MIT) | Free but closed-source, MongoDB-only |
+| Self-hosted, source-available | Yes | Free but closed-source, MongoDB-only |
 | Schema migration / backups | Not yet (in progress) | N/A (not a migration tool either) |
 
 ## What the AI agent actually changes
@@ -43,11 +43,11 @@ Compass is a desktop app you install locally and point at a MongoDB connection s
 - **One tool for every database you run.** If your stack is MongoDB plus Postgres plus Redis plus a vector store, Pilotbase is one UI and one set of credentials instead of four separate apps.
 - **Built-in AI agent.** Ask questions in plain English against your MongoDB data — schema-aware automatically, no manual pipeline construction — something Compass doesn't offer at all.
 - **Open source and self-hostable end-to-end**, with encrypted credential storage and pluggable auth (anonymous by default, or drop in JWT/OAuth2/LDAP/SSO), useful for teams that want more control over how database access is shared internally (per-connection read/write/admin grants, invite links).
-- **Not locked to one vendor's roadmap** — since it's MIT-licensed, teams can extend or self-patch it.
+- **Not locked to one vendor's roadmap** — since it's source-available, teams can extend or self-patch it for their own use.
 
 ## Licensing and cost
 
-Compass is free to use but closed-source and tied to MongoDB Inc.'s product decisions — you can't fork it or run it against a heavily customized internal auth system without their support. Pilotbase is MIT-licensed and fully self-hosted, so there's no per-seat cost and no vendor dependency; the tradeoff is that you're responsible for hosting it yourself (a Docker Compose setup is the intended path). For teams that want a managed option instead of self-hosting, a hosted version — Pilotbase.pro — is planned to launch in mid-2026.
+Compass is free to use but closed-source and tied to MongoDB Inc.'s product decisions — you can't fork it or run it against a heavily customized internal auth system without their support. Pilotbase is source-available and fully self-hosted, so there's no per-seat cost and no vendor dependency; the tradeoff is that you're responsible for hosting it yourself (a Docker Compose setup is the intended path). For teams that want a managed option instead of self-hosting, a hosted version — Pilotbase.pro — is planned to launch in mid-2026.
 
 ## Quick take
 

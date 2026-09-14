@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import inspect as sa_inspect, text
 
 from app.models.connection import DbConnection
-from app.services.db_service import MongoAdapter, SQLAdapter, db_service
+from app.services.db_service import MongoAdapter, SQLAdapter, db_service, duckdb_reflect_constraints
 
 
 def _col_sig(col: Dict[str, Any]) -> str:
@@ -120,10 +120,15 @@ class MigrationService:
         inspector = sa_inspect(engine)
         tables: Dict[str, Any] = {}
         for table in inspector.get_table_names(schema=schema):
+            if conn.db_type == "duckdb":
+                pk_cols, indexes = duckdb_reflect_constraints(engine, table, schema)
+            else:
+                pk_cols = inspector.get_pk_constraint(table, schema=schema).get("constrained_columns", [])
+                indexes = inspector.get_indexes(table, schema=schema)
             tables[table] = {
                 "columns": {c["name"]: c for c in inspector.get_columns(table, schema=schema)},
-                "pk": set(inspector.get_pk_constraint(table, schema=schema).get("constrained_columns", [])),
-                "indexes": {i["name"]: i for i in inspector.get_indexes(table, schema=schema)},
+                "pk": set(pk_cols),
+                "indexes": {i["name"]: i for i in indexes},
                 "foreign_keys": inspector.get_foreign_keys(table, schema=schema),
             }
         views = sorted(inspector.get_view_names(schema=schema))

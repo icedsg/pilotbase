@@ -21,7 +21,7 @@ PostgreSQL doesn't have one dominant GUI the way some databases do — the ecosy
 | Multi-database support | Postgres only | Many relational + some NoSQL (JDBC) | Many relational + some NoSQL | Postgres only | Several relational | Relational, NoSQL, and vector DBs in one UI |
 | NoSQL/vector support | No | Partial (some JDBC-based NoSQL) | Partial | No | No | Yes |
 | AI query assistant | No | No | No | No | No | Yes — LangGraph agent, plain-English querying, schema-aware, warns before destructive ops |
-| Open source | Yes | Core yes, Enterprise paid | No | No | Core yes, team tier paid | Yes (MIT) |
+| Open source | Yes | Core yes, Enterprise paid | No | No | Core yes, team tier paid | Source-available |
 | Install method | Desktop/web install tied to Postgres | Desktop (Java) | Native desktop app | Native Mac app | Desktop app | Self-hosted via Docker Compose or local dev setup |
 | Cost | Free | Free / paid Enterprise | Paid (limited free tier) | Paid | Free / paid team tier | Free (self-hosted); hosted Pilotbase.pro planned |
 | Schema migration tooling | Manual via SQL/extensions | Limited built-in diffing | No | No | No | Built-in diff + apply across two connections (backend done, UI in progress) |

@@ -359,7 +359,9 @@ class MigrationExecutor:
         if not rows:
             return
         try:
-            if db_type in ("postgresql", "cockroachdb"):
+            if db_type in ("postgresql", "cockroachdb", "duckdb"):
+                # duckdb-engine's dialect subclasses the Postgres dialect and
+                # DuckDB supports the same ON CONFLICT DO NOTHING clause.
                 from sqlalchemy.dialects.postgresql import insert as pg_insert
                 stmt = pg_insert(table).values(rows).on_conflict_do_nothing()
                 with engine.begin() as c:

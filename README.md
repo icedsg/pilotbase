@@ -4,7 +4,7 @@
 
 Stop juggling pgAdmin, MongoDB Compass, RedisInsight, and separate vector DB dashboards. Pilotbase connects to your entire data stack — PostgreSQL, MySQL, SQLite, DuckDB, SQL Server, Oracle, Db2, CockroachDB, Snowflake, MongoDB, Redis, Cassandra, CouchDB, DynamoDB, Qdrant, ChromaDB, Weaviate, Pinecone, Milvus — and lets you query, browse, and manage everything from a single, modern web UI with an AI agent built in.
 
-> **First Beta Release** — Core query, schema browsing, and connection management are stable and production-ready. AI-assisted natural-language querying is live. Schema migration and automated backup features are actively in development and coming soon.
+> **Beta 1.2** — Core query, schema browsing, and connection management are stable. AI-assisted natural-language querying, schema/data migration, on-demand backups, and a native desktop app (Windows, macOS, Linux) are live. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for what's new.
 
 ![Pilotbase screenshot](docs/screenshots/main.png)
 
@@ -15,7 +15,7 @@ Stop juggling pgAdmin, MongoDB Compass, RedisInsight, and separate vector DB das
 - **One tool for every database type** — SQL, document, key-value, and vector, with a consistent interface across all of them
 - **A true universal database client** — the kind of cross-engine database IDE and SQL client that tools like DBeaver or TablePlus offer per-engine, but with NoSQL and vector databases included too
 - **AI agent that understands your data** — ask questions in plain English, get query results, schema explanations, and insights powered by a local or hosted LLM
-- **Zero lock-in** — fully open source (MIT), self-hosted, runs in Docker in minutes
+- **Zero lock-in** — source-available, self-hosted, runs in Docker in minutes or as a native desktop app
 - **Built for AI-era data stacks** — first-class support for vector databases and chunk-level browsing, built for teams that run RAG pipelines alongside traditional databases
 
 ---
@@ -23,30 +23,40 @@ Stop juggling pgAdmin, MongoDB Compass, RedisInsight, and separate vector DB das
 ## Features
 
 ### Universal Database Connectivity
-- **Relational (SQL)** — PostgreSQL, MySQL, MariaDB, SQLite, Microsoft SQL Server, Oracle, Db2, CockroachDB, Snowflake
-- **NoSQL** — MongoDB (find queries + aggregation pipelines), Redis (native command interface), Cassandra (CQL), DynamoDB (scan/get-item)
+- **Relational (SQL)** — PostgreSQL, MySQL, MariaDB, SQLite, DuckDB, Microsoft SQL Server, Oracle, Db2, CockroachDB, Snowflake
+- **NoSQL** — MongoDB (find queries + aggregation pipelines), Redis (native command interface), Cassandra (CQL), CouchDB (Mango queries), DynamoDB (scan/get-item)
 - **Vector** — Qdrant, ChromaDB, Weaviate, Pinecone, Milvus — browse embeddings, run similarity search, view and edit payloads
 
 ### Query & Browse
 - Monaco-based editor with SQL syntax highlighting and `Ctrl+Enter` to run
+- Tabbed main area — keep multiple queries, tables, and tools open side by side
 - Resizable split pane — editor on top, results table below
+- Query history
 - Schema tree — browse databases, schemas, tables, views, collections, and keys
 - Table/collection inspector — column types, primary keys, foreign keys, indexes
 - NoSQL document viewer with rich JSON rendering
 - Vector chunk browser with similarity search, pagination, and inline payload editing
+
+### Manage
+- Schema and data migration between connections — pick objects, review the plan, watch the run
+- On-demand database backups
+- Export as SQL
+- Per-connection public REST API generation
 
 ### AI Agent (LangGraph + ReAct)
 - Conversational assistant connected to your active database
 - Understands your schema automatically — no manual context needed
 - Ask: *"Show me the top 10 customers by revenue this month"* — it writes and runs the query
 - Agent warns before any write or destructive operation and asks for confirmation
-- Pluggable LLM — defaults to local Ollama, works with any OpenAI-compatible API
+- Pluggable LLM — Ollama (local or cloud) or OpenRouter, configurable from the in-app **Settings** screen (`Ctrl/Cmd+,`), or any OpenAI-compatible API via env vars
+- Chat sessions persist and the last session is restored on startup
 
 ### Security & Multi-User
-- Encrypted credential storage (Fernet symmetric encryption) for all saved connections
+- Encrypted credential storage (Fernet symmetric encryption) for passwords, API keys, bearer tokens, and LLM API keys
 - Token-based invite links for adding users
 - Pluggable `AuthBackend` interface — drop in JWT, OAuth2, LDAP, or SSO
 - Per-connection read/write/admin permission grants
+- Desktop backend binds to `127.0.0.1` only, guarded by a per-launch token
 
 ---
 
@@ -60,6 +70,7 @@ Stop juggling pgAdmin, MongoDB Compass, RedisInsight, and separate vector DB das
 | Real-time | WebSockets for live query streaming |
 | Auth | Pluggable `AuthBackend` interface (anonymous mode included) |
 | Packaging | Docker multi-stage build (Node 20 → Python 3.13), Docker Compose |
+| Desktop | Electron shell, PyInstaller-bundled backend sidecar, SQLite, electron-builder |
 
 ---
 
@@ -102,14 +113,22 @@ Prefer running the backend and frontend separately with hot reload instead of Do
 
 ---
 
+## Desktop App
+
+Prefer a native app over Docker? Pilotbase Desktop wraps the same FastAPI backend and React UI in Electron — no Docker or Postgres required, with data stored locally in SQLite. It's currently build-from-source only (Windows, macOS, and Linux); see the **[Desktop build guide](desktop/README.md)** for setup and packaging instructions, and the **[Desktop technical spec](docs/desktop-plan.md)** for architecture details. Tagged releases (`v*.*.*`) build installers for every platform via [GitHub Actions](.github/workflows/desktop.yml).
+
+---
+
 ## Setting Up Ollama (for the AI Agent)
 
-Pilotbase's AI agent talks to any OpenAI-compatible LLM endpoint, and defaults to Ollama. To run models locally instead of using Ollama's hosted cloud:
+Pilotbase's AI agent talks to any OpenAI-compatible LLM endpoint, and defaults to Ollama. The quickest way to configure it is the **Settings** screen (gear icon in the activity bar, or `Ctrl/Cmd+,`): pick Ollama or OpenRouter, set the model and API key, and hit **Test**. Values saved there are stored encrypted in Pilotbase's database and take precedence over `api/.env`.
+
+To run models locally instead of using Ollama's hosted cloud:
 
 1. Install Ollama from [ollama.com/download](https://ollama.com/download)
 2. Pull a model: `ollama pull gemma4:31b-cloud` (or any model you prefer)
 3. Confirm it's running: `ollama list`
-4. In `api/.env`, set:
+4. In **Settings** choose Ollama and your model — or in `api/.env`, set:
    ```env
    OLLAMA_BASE_URL=http://localhost:11434/v1
    OLLAMA_MODEL=<your model name>
@@ -190,29 +209,47 @@ To add custom authentication, implement the `AuthBackend` abstract class in `api
 ```
 pilotbase/
 ├── api/                        # FastAPI backend (Python 3.13)
-│   ├── main.py                 # Uvicorn entry point
+│   ├── main.py                 # Uvicorn entry point (also the desktop sidecar entry)
 │   ├── requirements.txt
+│   ├── defaultConnections.py   # Optional connections seeded on startup
+│   ├── pilotbase-api.spec      # PyInstaller spec for the desktop sidecar binary
+│   ├── alembic/                # Migrations for Pilotbase's own DB
 │   └── app/
 │       ├── config.py           # Pydantic settings
 │       ├── database.py         # SQLAlchemy engine for Pilotbase's own DB
-│       ├── models/             # ORM models (User, DbConnection, etc.)
-│       ├── routers/            # REST API routes
-│       ├── services/           # DB adapters, backup, migration services
+│       ├── models/             # ORM models (User, DbConnection, AppSetting, etc.)
+│       ├── routers/            # REST API routes (query, migration, backup, export, papi, settings, ...)
+│       ├── services/           # DB adapters, backup, migration, export, LLM settings
 │       ├── agents/             # LangGraph AI agent + tools
 │       ├── auth/               # Pluggable auth backend interface
+│       ├── middleware/         # Desktop local-token guard
 │       └── websocket/          # Real-time WebSocket manager
 ├── ui/                         # React + Vite frontend (TypeScript)
 │   └── src/
+│       ├── api/                # REST client
 │       ├── components/
-│       │   ├── layout/         # TopBar, LeftPanel, RightPanel, MainArea
+│       │   ├── layout/         # ActivityBar, TopBar, LeftPanel, RightPanel, MainArea
 │       │   ├── db/             # ConnectionTree, QueryEditor, ResultsTable, VectorChunksView
+│       │   ├── migration/      # Migration flow (object picker, plan review, run view)
+│       │   ├── backup/         # Backup modal
+│       │   ├── papi/           # Public API configuration
+│       │   ├── settings/       # Settings + model picker
 │       │   └── common/         # Logo and shared components
+│       ├── knowledge/          # Per-engine data-type catalogs loader
+│       ├── lib/                # Desktop bridge and helpers
 │       ├── hooks/              # useWebSocket, useUserSession
 │       ├── store/              # Zustand global state
 │       └── types/              # Shared TypeScript types
+├── desktop/                    # Electron shell (main process, preload, packaging config)
+├── knowledge/                  # Per-engine data-type catalogs (JSON)
+├── docs/                       # Installation, configuration, supported DBs, comparisons, desktop spec
+├── .github/                    # CI workflows (desktop builds, CLA) and CODEOWNERS
 ├── Dockerfile                  # Multi-stage build (Node 20 → Python 3.13 slim)
 ├── docker-compose.yml          # Self-hosted stack
-└── LICENSE                     # MIT
+├── RELEASE_NOTES.md
+├── CONTRIBUTING.md
+├── CLA.md                      # Contributor License Agreement
+└── LICENSE                     # Pilotbase Limited Use License
 ```
 
 ---
@@ -223,13 +260,16 @@ pilotbase/
 - [x] Monaco SQL editor with keyboard shortcuts and results table
 - [x] Schema / collection tree browser
 - [x] NoSQL document viewer (MongoDB)
-- [x] Vector chunk browser with ANN search (Qdrant, ChromaDB, Weaviate)
+- [x] Vector chunk browser with ANN search (Qdrant, ChromaDB, Weaviate, Pinecone, Milvus)
 - [x] LangGraph AI agent with natural language querying
 - [x] Per-connection user access control
+- [x] Schema migration: diff and apply across two connections
+- [x] On-demand database backups and Export as SQL
+- [x] Query history
+- [x] Native desktop app (Electron) with in-app AI provider settings
 - [-] Token-based invite links *(backend done — UI in progress)*
-- [-] Schema migration: diff and apply across two connections *(backend done — UI in progress)*
-- [-] Scheduled and on-demand database backups *(backend done — UI in progress)*
-- [ ] Query history and saved queries
+- [ ] Scheduled backups
+- [ ] Saved queries
 - [ ] ER diagram view
 - [ ] Full user/role management UI
 - [ ] Custom auth backend examples and documentation
@@ -253,6 +293,7 @@ Contributions are welcome.
 1. Fork the repo and create a feature branch
 2. Open an issue first for large features or breaking changes
 3. Submit a pull request against `master`
+4. Sign the CLA when the bot prompts you (one-time; see [CONTRIBUTING.md](CONTRIBUTING.md))
 
 ---
 
@@ -271,10 +312,10 @@ Contributions are welcome.
 
 ## License
 
-[MIT](LICENSE) — free to use, modify, and self-host.
+[Pilotbase Limited Use License](LICENSE) — source-available: free to download, self-host, and modify for your own use. No redistribution, resale, or hosting it for third parties. Contributions are governed by the [CLA](CLA.md).
 
 ---
 
-## Pilotbase.pro — Coming July 2026
+## [Pilotbase.pro](https://pilotbase.pro)
 
-Don't want to run the stack yourself? **Pilotbase.pro** is a subscription service launching July 2026 that hosts Pilotbase for you — with a private, dedicated container provisioned near your databases, so you connect and query with zero infrastructure to manage. Same Pilotbase, fully managed.
+Don't want to run the stack yourself? **[Pilotbase.pro](https://pilotbase.pro)** is a subscription service that hosts Pilotbase for you — with a private, dedicated container provisioned near your databases, so you connect and query with zero infrastructure to manage. Same Pilotbase, fully managed.

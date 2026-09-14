@@ -47,6 +47,20 @@ const DEFAULT_PORTS: Record<string, number> = {
 }
 
 const API_KEY_TYPES = new Set(['qdrant', 'weaviate', 'chroma', 'pinecone', 'milvus'])
+// Engines whose HTTP/API layer accepts an `Authorization: Bearer <token>`
+// credential distinct from (or instead of) an API key / password.
+const AUTH_TOKEN_TYPES = new Set(['qdrant', 'weaviate', 'couchdb', 'snowflake'])
+const AUTH_TOKEN_HINTS: Record<string, string> = {
+  qdrant:    'JWT for Qdrant RBAC (signed with the API key). Optional — leave blank to authenticate with the API key alone.',
+  weaviate:  'OIDC / Weaviate Cloud access token. Overrides the API key when set.',
+  couchdb:   'JWT for CouchDB\'s jwt_authentication_handler. Username and password are ignored when set.',
+  snowflake: 'OAuth access token (authenticator=oauth). Password is ignored when set.',
+}
+// For these the API key field already *is* a bearer token (sent as Authorization: Bearer).
+const API_KEY_IS_BEARER: Record<string, string> = {
+  chroma: 'Sent as an Authorization: Bearer token (Chroma token auth).',
+  milvus: 'Milvus / Zilliz Cloud token — sent as an Authorization: Bearer token.',
+}
 const REDIS_TYPES   = new Set(['redis'])
 const FILE_TYPES    = new Set(['sqlite', 'duckdb'])
 const CAN_LIST_DBS  = new Set(['postgresql', 'mysql', 'mariadb', 'mongodb', 'cockroachdb', 'cassandra', 'couchdb'])
@@ -72,11 +86,12 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
     name:     connection?.name     ?? '',
     db_type:  connection?.db_type  ?? 'postgresql',
     host:     connection?.host     ?? 'localhost',
-    port:     connection?.port     ?? 5432,
+    port:     connection?.port     ?? '',
     database: connection?.database ?? '',
     username: connection?.username ?? '',
     password: '',
     api_key:  '',
+    auth_token: '',
     warehouse: '',
     role:      '',
     ssl_mode: connection?.ssl_mode ?? '',
@@ -99,6 +114,7 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
   const [databases,   setDatabases]   = useState<string[]>([])
 
   const set = (k: string, v: string | number) => setForm(f => ({ ...f, [k]: v }))
+  const portValue: number | undefined = form.port === '' ? undefined : Number(form.port)
 
   const setAndResetTest = (k: string, v: string | number) => {
     set(k, v)
@@ -108,7 +124,7 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
   }
 
   const handleDbTypeChange = (newType: string) => {
-    setForm(f => ({ ...f, db_type: newType, port: DEFAULT_PORTS[newType] ?? f.port }))
+    setForm(f => ({ ...f, db_type: newType }))
     setTestStatus('idle')
     setTestMessage(null)
     setDatabases([])
@@ -117,6 +133,7 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
   const buildExtraParams = (): string | undefined => {
     const extra: Record<string, string> = {}
     if (form.api_key) extra.api_key = form.api_key
+    if (form.auth_token && AUTH_TOKEN_TYPES.has(form.db_type)) extra.auth_token = form.auth_token
     if (SNOWFLAKE_TYPES.has(form.db_type)) {
       if (form.warehouse) extra.warehouse = form.warehouse
       if (form.role) extra.role = form.role
@@ -132,7 +149,7 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
       const res = await apiTestConnectionParams(userId, {
         db_type:      form.db_type,
         host:         form.host     || undefined,
-        port:         form.port     || undefined,
+        port:         portValue,
         database:     form.database || undefined,
         username:     form.username || undefined,
         password:     form.password || undefined,
@@ -163,7 +180,7 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
         const updated = await apiUpdateConnection(userId, connection!.id, {
           name:       form.name     || undefined,
           host:       form.host     || undefined,
-          port:       form.port     || undefined,
+          port:       portValue,
           database:   form.database || undefined,
           username:   form.username || undefined,
           password:   form.password || undefined,
@@ -173,7 +190,7 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
         onSaved({ ...connection!, name: form.name, host: form.host as any, port: form.port as any, database: form.database as any, username: form.username as any, ssl_mode: form.ssl_mode as any })
       } else {
         const extra_params = buildExtraParams()
-        const { api_key: _discard, warehouse: _discard2, role: _discard3, ...rest } = form
+        const { api_key: _discard, warehouse: _discard2, role: _discard3, auth_token: _discard4, ...rest } = form
         await apiCreateConnection(userId, { ...rest, extra_params } as any)
         onSaved()
       }
@@ -190,6 +207,7 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
   const isNoHost     = NO_HOST_TYPES.has(form.db_type)
   const isAWS        = AWS_TYPES.has(form.db_type)
   const isSnowflake  = SNOWFLAKE_TYPES.has(form.db_type)
+  const hasAuthToken = AUTH_TOKEN_TYPES.has(form.db_type)
   const canListDbs   = CAN_LIST_DBS.has(form.db_type)
   const showDbDropdown = canListDbs && testStatus === 'ok' && databases.length > 0
   const canSave = isEdit ? true : testStatus === 'ok'
@@ -271,9 +289,15 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
               <input
                 value={form.database}
                 onChange={e => setAndResetTest('database', e.target.value)}
-                placeholder="/path/to/database.db"
+                placeholder={form.db_type === 'duckdb' ? '/path/to/analytics.duckdb  (or :memory:)' : '/path/to/database.db'}
                 className={INPUT_CLS}
               />
+              {form.db_type === 'duckdb' && (
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Path is resolved on the Pilotbase server. A missing file is created; <code>:memory:</code> lives only while the server runs.
+                  DuckDB locks the file while open, so close other DuckDB clients (CLI, notebooks) first.
+                </p>
+              )}
             </div>
           )}
 
@@ -297,7 +321,8 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
                   <input
                     type="number"
                     value={form.port}
-                    onChange={e => setAndResetTest('port', parseInt(e.target.value))}
+                    placeholder={DEFAULT_PORTS[form.db_type] != null ? String(DEFAULT_PORTS[form.db_type]) : undefined}
+                    onChange={e => setAndResetTest('port', e.target.value === '' ? '' : parseInt(e.target.value))}
                     className={INPUT_CLS}
                   />
                 </div>
@@ -344,11 +369,31 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
             <div>
               <label className="block text-xs text-gray-400 mb-1">API Key</label>
               <input
+                type="password"
                 value={form.api_key}
                 onChange={e => setAndResetTest('api_key', e.target.value)}
                 placeholder={isEdit ? 'leave blank to keep current' : form.db_type === 'pinecone' ? 'required' : 'optional'}
                 className={INPUT_CLS}
               />
+              {API_KEY_IS_BEARER[form.db_type] && (
+                <p className="text-[11px] text-gray-500 mt-1">{API_KEY_IS_BEARER[form.db_type]}</p>
+              )}
+            </div>
+          )}
+
+          {/* Auth: bearer token for engines whose API accepts one (JWT / OAuth / OIDC) */}
+          {hasAuthToken && (
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Bearer Token <span className="text-gray-600">(optional)</span></label>
+              <input
+                type="password"
+                value={form.auth_token}
+                onChange={e => setAndResetTest('auth_token', e.target.value)}
+                placeholder={isEdit ? 'leave blank to keep current' : 'eyJhbGciOi…'}
+                className={INPUT_CLS}
+                autoComplete="off"
+              />
+              <p className="text-[11px] text-gray-500 mt-1">{AUTH_TOKEN_HINTS[form.db_type]}</p>
             </div>
           )}
 

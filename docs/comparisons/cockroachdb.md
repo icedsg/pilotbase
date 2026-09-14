@@ -21,7 +21,7 @@ It's important to be clear about what each tool is actually for. The DB Console 
 | Schema migration (diff + apply) | Yes — diff across two connections, backend complete, UI in progress | No |
 | Backups | Yes — portable SQL INSERT-based dump (not Cockroach's native `BACKUP`/enterprise backup format) | No (native backups typically run via SQL `BACKUP` statements or Cockroach's own scheduled backup features, outside the DB Console UI itself) |
 | AI natural-language querying | Yes — schema-aware agent, warns before destructive operations | No |
-| Licensing / hosting model | Open-source (MIT), self-hosted separately | Ships free with every CockroachDB cluster |
+| Licensing / hosting model | Source-available, self-hosted separately | Ships free with every CockroachDB cluster |
 
 ## Where the DB Console wins
 
