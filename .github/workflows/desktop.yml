@@ -61,6 +61,8 @@ jobs:
         shell: bash
         working-directory: api
         run: |
+          export ENCRYPTION_KEY=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+          export SECRET_KEY=smoketest-secret
           BIN="dist/pilotbase-api/pilotbase-api"
           if [ "${{ runner.os }}" = "Windows" ]; then BIN="dist/pilotbase-api/pilotbase-api.exe"; fi
           "$BIN" --host 127.0.0.1 --port 0 --token smoketest --data-dir "$RUNNER_TEMP/pb-data" > "$RUNNER_TEMP/sidecar.log" 2>&1 &
@@ -78,6 +80,11 @@ jobs:
       - name: Install desktop dependencies
         working-directory: desktop
         run: npm install
+
+      - name: Set app version from tag
+        working-directory: desktop
+        shell: bash
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
 
       - name: Build Electron app
         working-directory: desktop

@@ -115,7 +115,18 @@ Prefer running the backend and frontend separately with hot reload instead of Do
 
 ## Desktop App
 
-Prefer a native app over Docker? Pilotbase Desktop wraps the same FastAPI backend and React UI in Electron — no Docker or Postgres required, with data stored locally in SQLite. It's currently build-from-source only (Windows, macOS, and Linux); see the **[Desktop build guide](desktop/README.md)** for setup and packaging instructions, and the **[Desktop technical spec](docs/desktop-plan.md)** for architecture details. Tagged releases (`v*.*.*`) build installers for every platform via [GitHub Actions](.github/workflows/desktop.yml).
+Prefer a native app over Docker? Pilotbase Desktop wraps the same FastAPI backend and React UI in Electron — no Docker or Postgres required, with data stored locally in SQLite. Bring your own LLM API key and database connections through the same in-app **Settings** screen (`Ctrl/Cmd+,`) used by the web version.
+
+**[⬇ Download the latest release](https://github.com/icedsg/pilotbase/releases/latest)** — installers are built and attached automatically for every tagged release:
+
+| Platform | File |
+|---|---|
+| Windows (x64) | `Pilotbase-Setup-<version>-win-x64.exe` |
+| macOS (Apple Silicon) | `Pilotbase-<version>-mac-arm64.dmg` |
+| macOS (Intel) | `Pilotbase-<version>-mac-x64.dmg` |
+| Linux (x64) | `Pilotbase-<version>-linux-x64.AppImage` |
+
+Prefer to build it yourself instead? See the **[Desktop build guide](desktop/README.md)** for setup and packaging instructions, and the **[Desktop technical spec](docs/desktop-plan.md)** for architecture details. Tagged releases (`v*.*.*`) build installers for every platform via [GitHub Actions](.github/workflows/desktop.yml).
 
 ---
 

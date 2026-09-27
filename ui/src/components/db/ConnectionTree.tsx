@@ -497,7 +497,7 @@ export default function ConnectionTree({ refreshKey }: Props) {
                         <div
                           onClick={() => toggleDb(conn, db)}
                           onContextMenu={(e) => { e.preventDefault(); setDbCtxMenu({ connId: conn.id, db, x: e.clientX, y: e.clientY }) }}
-                          className="tree-item group/db"
+                          className={`tree-item group/db ${dbCtxMenu?.connId === conn.id && dbCtxMenu?.db === db ? 'tree-item-ctx-active' : ''}`}
                           style={{ paddingLeft: '20px' }}
                         >
                           {node.open ? <ChevronDown size={14} className="flex-shrink-0" /> : <ChevronRight size={14} className="flex-shrink-0" />}
@@ -553,7 +553,7 @@ export default function ConnectionTree({ refreshKey }: Props) {
                                         return (
                                           <div
                                             key={obj.name}
-                                            className="tree-item"
+                                            className={`tree-item ${ctxMenu?.connId === conn.id && ctxMenu?.db === db && ctxMenu?.name === obj.name ? 'tree-item-ctx-active' : ''}`}
                                             style={{ paddingLeft: '44px' }}
                                             onClick={() => {
                                               setActiveConnection(conn.id)

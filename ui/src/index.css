@@ -75,6 +75,10 @@
     @apply bg-accent/20 text-accent;
   }
 
+  .tree-item-ctx-active {
+    @apply bg-white/10 text-gray-900 dark:text-white;
+  }
+
   .ctx-item {
     @apply flex w-full items-center gap-2 px-3 py-1.5 text-xs text-gray-600 dark:text-gray-200 hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer transition-colors;
   }

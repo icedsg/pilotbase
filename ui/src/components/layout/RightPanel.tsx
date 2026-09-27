@@ -195,11 +195,11 @@ export default function RightPanel({ onClose }: Props) {
       const fresh = useStore.getState().chatTabs.find((t) => t.tabId === tabId)
       bindTabSession(tabId, ack.session_id, fresh?.title ? null : text.slice(0, 80))
       if (wasNewSession) setSessionCount((c) => c + 1)
-    } catch {
+    } catch (e: any) {
       addTabMessage(tabId, {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: 'AI agent unavailable. Check the server configuration.',
+        content: e?.response?.data?.detail || 'AI agent unavailable. Check the server configuration.',
         timestamp: new Date(),
       })
       setTabLoading(tabId, false)
