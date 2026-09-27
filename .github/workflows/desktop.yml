@@ -71,8 +71,8 @@ jobs:
             if grep -q "PILOTBASE_READY" "$RUNNER_TEMP/sidecar.log" 2>/dev/null; then break; fi
             sleep 1
           done
-          PORT=$(grep -o 'PILOTBASE_READY port=[0-9]*' "$RUNNER_TEMP/sidecar.log" | grep -o '[0-9]*')
-          test -n "$PORT" || { cat "$RUNNER_TEMP/sidecar.log"; exit 1; }
+          PORT=$(grep -oE 'PILOTBASE_READY port=[0-9]+' "$RUNNER_TEMP/sidecar.log" | grep -oE '[0-9]+$' || true)
+          test -n "$PORT" || { echo "sidecar did not become ready:"; cat "$RUNNER_TEMP/sidecar.log"; exit 1; }
           CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "X-Pilotbase-Token: smoketest" "http://127.0.0.1:$PORT/api/v1/health")
           test "$CODE" = "200" || { echo "health check returned $CODE"; cat "$RUNNER_TEMP/sidecar.log"; exit 1; }
           kill $PID
