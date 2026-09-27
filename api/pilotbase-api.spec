@@ -9,6 +9,7 @@ block_cipher = None
 hidden_imports = [
     "uvicorn.logging", "uvicorn.loops.auto", "uvicorn.protocols.http.auto",
     "uvicorn.protocols.websockets.auto", "uvicorn.lifespan.on",
+    "greenlet",
     "aiosqlite", "sqlalchemy.dialects.sqlite", "sqlalchemy.dialects.postgresql",
     "sqlalchemy.dialects.mysql", "sqlalchemy.dialects.mssql", "sqlalchemy.dialects.oracle",
     "duckdb_engine", "sqlalchemy_cockroachdb", "snowflake.sqlalchemy",
