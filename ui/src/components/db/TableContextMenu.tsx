@@ -9,6 +9,7 @@ export interface ContextMenuTarget {
   connId: string
   connType: string
   db: string
+  schema?: string
   name: string
   type: DbObject['type']
   x: number

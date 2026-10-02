@@ -4,17 +4,17 @@ Thanks for your interest in improving Pilotbase.
 
 ## Before you open a pull request
 
-This project is source-available under the [Pilotbase Limited Use
-License](LICENSE), not a traditional open source license — see the
-LICENSE file for what that means for using and modifying the code.
+Pilotbase is open source under the [MIT License](LICENSE). Copyright in
+the project is held by Pilotbase (pilotbase.pro), which also offers
+additional features in the hosted Pilotbase.pro product.
 
-Contributions are handled separately from that license. Anything you
-submit (code, docs, tests, etc.) is governed by our
+Anything you submit (code, docs, tests, etc.) is also governed by our
 [Contributor License Agreement](CLA.md), which briefly means:
 
 - You keep copyright in what you write.
-- You grant the project owner an exclusive license to use, modify, and
-  relicense your contribution (including commercially).
+- Your contribution is released to everyone under the MIT License.
+- You grant the project owner a non-exclusive license to also use and
+  relicense your contribution, including in Pilotbase.pro.
 - You confirm the contribution is your own work and doesn't infringe
   anyone else's rights.
 

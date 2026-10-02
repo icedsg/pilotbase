@@ -1,7 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, session, screen, shell } from 'electron'
 import { randomBytes } from 'crypto'
 import http from 'http'
-import { existsSync, readFileSync, writeFileSync } from 'fs'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
 import { buildMenu } from './menu'
@@ -59,6 +59,29 @@ function clampToDisplay(bounds: Bounds): Bounds {
   const x = Math.min(Math.max(bounds.x, area.x), area.x + area.width - width)
   const y = Math.min(Math.max(bounds.y, area.y), area.y + area.height - height)
   return { x, y, width, height }
+}
+
+// ── MCP endpoint file ────────────────────────────────────────────────────────
+// Read by the stdio bridge (`pilotbase-api --mcp-bridge`, api/app/mcp/bridge.py)
+// so Claude Desktop / Cowork can find the sidecar's random port and token.
+function mcpEndpointFile(dataDir: string): string {
+  return join(dataDir, 'mcp-endpoint.json')
+}
+
+function writeMcpEndpoint(dataDir: string, port: number, token: string): void {
+  try {
+    writeFileSync(
+      mcpEndpointFile(dataDir),
+      JSON.stringify({ url: `http://127.0.0.1:${port}/mcp`, token }),
+      { mode: 0o600 },
+    )
+  } catch {
+    // best-effort — MCP is optional
+  }
+}
+
+function removeMcpEndpoint(dataDir: string): void {
+  rmSync(mcpEndpointFile(dataDir), { force: true })
 }
 
 // ── Backend health poll ──────────────────────────────────────────────────────
@@ -237,6 +260,7 @@ async function main(): Promise<void> {
         setSplashStatus('Waiting for backend…')
         await waitForHealth(port, token, 10_000)
         currentPort = port
+        writeMcpEndpoint(dataDir, port, token)
         await session.defaultSession.cookies.set({
           url: `http://127.0.0.1:${port}`,
           name: 'pilotbase_token',
@@ -270,6 +294,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', async (event) => {
+  removeMcpEndpoint(app.getPath('userData'))
   if (sidecar) {
     event.preventDefault()
     const s = sidecar

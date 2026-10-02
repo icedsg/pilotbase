@@ -19,17 +19,17 @@ does not transfer ownership of the Contribution to the Project Owner.
 ## 2. License Grant
 
 You grant the Project Owner a perpetual, worldwide, irrevocable,
-exclusive, transferable, sublicensable, royalty-free license to
+non-exclusive, transferable, sublicensable, royalty-free license to
 reproduce, prepare derivative works of, publicly display, publicly
 perform, distribute, sublicense, and relicense your Contribution (and
 derivative works of it) under any license terms of the Project Owner's
-choosing, including proprietary or commercial terms, for any purpose.
+choosing, including proprietary or commercial terms (for example, in
+Pilotbase.pro), for any purpose.
 
-Because this grant is exclusive, you agree not to separately license,
-distribute, sell, or otherwise exploit the Contribution yourself, or
-grant any other party rights in it, except with the Project Owner's
-prior written consent. You remain free to reuse your own independent
-work product that is not part of the Contribution.
+You also agree that your Contribution, once accepted into the Project,
+is distributed to the public under the Project's open source license
+(the MIT License, see LICENSE). Because this grant is non-exclusive, you
+remain free to use and license your own Contribution in any other way.
 
 ## 3. Patent License
 

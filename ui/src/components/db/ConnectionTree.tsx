@@ -2,12 +2,12 @@ import { useState, useEffect, useRef } from 'react'
 import {
   Table2, ChevronRight, ChevronDown,
   Eye, Loader2, Layers, Box, Key, Trash2, Settings2, Pencil, RefreshCw,
-  DatabaseBackup, GitMerge, Webhook, FileCode,
+  DatabaseBackup, GitMerge, Webhook, FileCode, KeyRound,
 } from 'lucide-react'
 import DbTypeIcon from './DbTypeIcon'
 import { useStore } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
-import { apiListDatabases, apiListObjects, apiDeleteConnection, apiExecuteQuery, apiDescribeTable, apiRunDdl, apiGetDbVersion } from '../../api/client'
+import { apiListDatabases, apiListSchemas, apiListObjects, apiDeleteConnection, apiExecuteQuery, apiDescribeTable, apiRunDdl, apiGetDbVersion } from '../../api/client'
 import AdminActionsPanel from './AdminActionsPanel'
 import ConnectionForm from './ConnectionForm'
 import { LogoIcon } from '../common/Logo'
@@ -17,7 +17,16 @@ import BackupModal from '../backup/BackupModal'
 import MigrationTargetPicker from '../migration/MigrationTargetPicker'
 import ApiConfigModal from '../papi/ApiConfigModal'
 import ExportSqlModal from './ExportSqlModal'
+import DbCredentialsDialog, { DB_LOGIN_TYPES } from './DbCredentialsDialog'
 import type { DbConnection, DbObject, QueryResult } from '../../types'
+
+interface SchemaNode {
+  schema: string
+  objects?: DbObject[]
+  loading?: boolean
+  open?: boolean
+  error?: string
+}
 
 interface TreeNode {
   database?: string
@@ -25,6 +34,10 @@ interface TreeNode {
   loading?: boolean
   open?: boolean
   error?: string
+  // Only populated for SCHEMA_CAPABLE_TYPES connections — schemas within this database.
+  schemas?: Record<string, SchemaNode>
+  schemasLoading?: boolean
+  schemasError?: string
 }
 
 function extractErrorMessage(err: any): string {
@@ -36,6 +49,11 @@ type ConnectionState = Record<string, Record<string, TreeNode>>
 const VECTOR_DB_TYPES    = new Set(['qdrant', 'chroma', 'weaviate', 'pinecone', 'milvus'])
 const ADMIN_CAPABLE_TYPES = new Set(['postgresql', 'mysql', 'mariadb', 'mssql', 'cockroachdb', 'snowflake', 'oracle'])
 const NOSQL_DOC_TYPES    = new Set(['mongodb', 'dynamodb'])
+// Engines where "schema" is a distinct namespace within a database, worth its
+// own tree level. mysql/mariadb treat schema as a synonym for database (already
+// modeled one level up) and sqlite/duckdb are effectively single-schema.
+const SCHEMA_CAPABLE_TYPES = new Set(['postgresql', 'cockroachdb', 'mssql', 'oracle', 'db2', 'snowflake'])
+const DEFAULT_SCHEMA = 'public'
 
 const DB_TYPE_COLORS: Record<string, string> = {
   postgresql:  'text-blue-400',
@@ -117,6 +135,19 @@ export default function ConnectionTree({ refreshKey }: Props) {
   const [migrationSource,  setMigrationSource]  = useState<DbCtxMenu | null>(null)
   const [apiConfigTarget,  setApiConfigTarget]  = useState<DbCtxMenu | null>(null)
   const [exportSqlTarget,  setExportSqlTarget]  = useState<{ connId: string; db: string; table?: string } | null>(null)
+  const [loginTarget,      setLoginTarget]      = useState<{ connId: string; db: string; reason?: string } | null>(null)
+
+  // Shown under a database's error: lets the user retry with a different
+  // user/password for just this database on the same server.
+  const loginLink = (conn: DbConnection, db: string, reason: string) =>
+    DB_LOGIN_TYPES.has(conn.db_type) && (
+      <button
+        onClick={(e) => { e.stopPropagation(); setLoginTarget({ connId: conn.id, db, reason }) }}
+        className="block mt-1 text-accent hover:underline"
+      >
+        Try a different user/password for this database
+      </button>
+    )
 
   useEffect(() => {
     if (!userId) return
@@ -152,12 +183,72 @@ export default function ConnectionTree({ refreshKey }: Props) {
   const refreshDb = async (connId: string, db: string) => {
     const node = state[connId]?.[db]
     if (!node) return
+    const conn = connections.find(c => c.id === connId)
+    if (conn && SCHEMA_CAPABLE_TYPES.has(conn.db_type)) {
+      await loadSchemas(connId, db, node)
+      return
+    }
     setState(s => ({ ...s, [connId]: { ...s[connId], [db]: { ...node, loading: true, open: true, error: undefined } } }))
     try {
       const { objects } = await apiListObjects(userId, connId, db)
       setState(s => ({ ...s, [connId]: { ...s[connId], [db]: { ...node, loading: false, objects, open: true, error: undefined } } }))
     } catch (err) {
       setState(s => ({ ...s, [connId]: { ...s[connId], [db]: { ...node, loading: false, open: true, error: extractErrorMessage(err) } } }))
+    }
+  }
+
+  // Fetch the schema list for a database and default-expand `public` (or the
+  // first schema, if there's no `public`) so the tree isn't empty on open.
+  const loadSchemas = async (connId: string, db: string, node: TreeNode) => {
+    setState(s => ({ ...s, [connId]: { ...s[connId], [db]: { ...node, open: true, schemasLoading: true, schemasError: undefined } } }))
+    try {
+      const { schemas } = await apiListSchemas(userId, connId, db)
+      const schemaMap: Record<string, SchemaNode> = {}
+      schemas.forEach(sc => { schemaMap[sc] = { schema: sc, objects: undefined, open: false } })
+      const defaultSchema = schemas.includes(DEFAULT_SCHEMA) ? DEFAULT_SCHEMA : schemas[0]
+      setState(s => {
+        const dbNode = s[connId]?.[db]
+        if (!dbNode) return s
+        return { ...s, [connId]: { ...s[connId], [db]: { ...dbNode, open: true, schemasLoading: false, schemas: schemaMap, schemasError: undefined } } }
+      })
+      if (defaultSchema) await toggleSchema(connId, db, defaultSchema, true)
+    } catch (err) {
+      setState(s => ({ ...s, [connId]: { ...s[connId], [db]: { ...node, open: true, schemasLoading: false, schemasError: extractErrorMessage(err) } } }))
+    }
+  }
+
+  const toggleSchema = async (connId: string, db: string, schema: string, forceOpen = false) => {
+    const dbNode = state[connId]?.[db]
+    const schemaNode = dbNode?.schemas?.[schema]
+    if (!dbNode || !schemaNode) return
+
+    if (schemaNode.open && !forceOpen) {
+      setState(s => ({ ...s, [connId]: { ...s[connId], [db]: { ...dbNode, schemas: { ...dbNode.schemas, [schema]: { ...schemaNode, open: false } } } } }))
+      return
+    }
+
+    setState(s => {
+      const curDb = s[connId]?.[db]
+      if (!curDb) return s
+      const curSchema = curDb.schemas?.[schema] || schemaNode
+      return { ...s, [connId]: { ...s[connId], [db]: { ...curDb, schemas: { ...curDb.schemas, [schema]: { ...curSchema, open: true, loading: true, error: undefined } } } } }
+    })
+
+    try {
+      const { objects } = await apiListObjects(userId, connId, db, schema)
+      setState(s => {
+        const curDb = s[connId]?.[db]
+        if (!curDb) return s
+        const curSchema = curDb.schemas?.[schema] || schemaNode
+        return { ...s, [connId]: { ...s[connId], [db]: { ...curDb, schemas: { ...curDb.schemas, [schema]: { ...curSchema, open: true, loading: false, objects, error: undefined } } } } }
+      })
+    } catch (err) {
+      setState(s => {
+        const curDb = s[connId]?.[db]
+        if (!curDb) return s
+        const curSchema = curDb.schemas?.[schema] || schemaNode
+        return { ...s, [connId]: { ...s[connId], [db]: { ...curDb, schemas: { ...curDb.schemas, [schema]: { ...curSchema, open: true, loading: false, objects: [], error: extractErrorMessage(err) } } } } }
+      })
     }
   }
 
@@ -211,6 +302,11 @@ export default function ConnectionTree({ refreshKey }: Props) {
       return
     }
 
+    if (SCHEMA_CAPABLE_TYPES.has(conn.db_type)) {
+      await loadSchemas(conn.id, db, node)
+      return
+    }
+
     setState((s) => ({ ...s, [conn.id]: { ...s[conn.id], [db]: { ...node, open: true, loading: true, error: undefined } } }))
 
     try {
@@ -261,10 +357,15 @@ export default function ConnectionTree({ refreshKey }: Props) {
     let pkCols: string[] = []
     if (isOrderable) {
       try {
-        const info = await apiDescribeTable(userId, target.connId, target.name, undefined, target.db)
+        const info = await apiDescribeTable(userId, target.connId, target.name, target.schema, target.db)
         pkCols = info.primary_keys ?? []
       } catch {}
     }
+
+    // Non-default schemas need explicit "schema"."table" qualification —
+    // Postgres/CockroachDB otherwise resolve unqualified names against
+    // search_path (public), which silently queries the wrong table.
+    const hasSchema = !!target.schema && target.schema !== DEFAULT_SCHEMA
 
     // SQL / Redis / Cassandra → query result table
     let sql: string
@@ -276,13 +377,15 @@ export default function ConnectionTree({ refreshKey }: Props) {
       sql = `GET ${target.name}`
     } else if (conn.db_type === 'mssql') {
       const orderBy = pkCols.length ? ` ORDER BY ${pkCols.map(c => `[${c}] DESC`).join(', ')}` : ''
-      sql = `SELECT TOP ${limit} * FROM [${target.name}]${orderBy}`
+      const qualified = hasSchema ? `[${target.schema}].[${target.name}]` : `[${target.name}]`
+      sql = `SELECT TOP ${limit} * FROM ${qualified}${orderBy}`
       queryDb = target.db
     } else if (conn.db_type === 'cassandra') {
       sql = `SELECT * FROM ${target.db}.${target.name} LIMIT ${limit}`
     } else {
       const orderBy = pkCols.length ? ` ORDER BY ${pkCols.map(c => `"${c}" DESC`).join(', ')}` : ''
-      sql = `SELECT * FROM "${target.name}"${orderBy} LIMIT ${limit}`
+      const qualified = hasSchema ? `"${target.schema}"."${target.name}"` : `"${target.name}"`
+      sql = `SELECT * FROM ${qualified}${orderBy} LIMIT ${limit}`
       queryDb = target.db
     }
 
@@ -312,7 +415,7 @@ export default function ConnectionTree({ refreshKey }: Props) {
     })
     setActiveMainTab(tabId)
     try {
-      const info = await apiDescribeTable(userId, target.connId, target.name, undefined, target.db)
+      const info = await apiDescribeTable(userId, target.connId, target.name, target.schema, target.db)
       const result: QueryResult = {
         columns: ['column', 'type', 'nullable', 'default', 'pk'],
         rows: info.columns.map(col => ({
@@ -331,6 +434,7 @@ export default function ConnectionTree({ refreshKey }: Props) {
   }
 
   const handleExportSql = (target: ContextMenuTarget) => {
+    // Export currently only supports the connection's default/public schema.
     setExportSqlTarget({ connId: target.connId, db: target.db, table: target.name })
   }
 
@@ -361,7 +465,7 @@ export default function ConnectionTree({ refreshKey }: Props) {
     const { type, target } = action
     if (type === 'truncate') {
       try {
-        await apiRunDdl(userId, target.connId, 'truncate', target.name, 'table', target.db)
+        await apiRunDdl(userId, target.connId, 'truncate', target.name, 'table', target.db, target.schema)
         appendAlterScript(`TRUNCATE TABLE ${target.name};`, true)
       } catch (err: any) {
         alert(err?.response?.data?.detail || 'Truncate failed.')
@@ -371,23 +475,104 @@ export default function ConnectionTree({ refreshKey }: Props) {
       const ddlAction = isView ? 'drop_view' : 'drop_table'
       const objType = isView ? 'view' : 'table'
       try {
-        await apiRunDdl(userId, target.connId, ddlAction, target.name, objType, target.db)
+        await apiRunDdl(userId, target.connId, ddlAction, target.name, objType, target.db, target.schema)
         appendAlterScript(isView ? `DROP VIEW ${target.name};` : `DROP TABLE ${target.name};`, true)
-        const node = state[target.connId]?.[target.db]
-        if (node) {
-          setState(s => ({ ...s, [target.connId]: { ...s[target.connId], [target.db]: { ...node, loading: true } } }))
-          try {
-            const { objects } = await apiListObjects(userId, target.connId, target.db)
-            setState(s => ({ ...s, [target.connId]: { ...s[target.connId], [target.db]: { ...node, loading: false, objects } } }))
-          } catch {
-            setState(s => ({ ...s, [target.connId]: { ...s[target.connId], [target.db]: { ...node, loading: false } } }))
-          }
-        }
+        await refreshObjectList(target.connId, target.db, target.schema)
       } catch (err: any) {
         alert(err?.response?.data?.detail || 'Drop failed.')
       }
     }
   }
+
+  // Re-list objects after a drop, targeting the schema node when the
+  // connection has one, or the database node's flat object list otherwise.
+  const refreshObjectList = async (connId: string, db: string, schema?: string) => {
+    if (schema) {
+      const dbNode = state[connId]?.[db]
+      const schemaNode = dbNode?.schemas?.[schema]
+      if (!dbNode || !schemaNode) return
+      setState(s => ({ ...s, [connId]: { ...s[connId], [db]: { ...dbNode, schemas: { ...dbNode.schemas, [schema]: { ...schemaNode, loading: true } } } } }))
+      try {
+        const { objects } = await apiListObjects(userId, connId, db, schema)
+        setState(s => {
+          const curDb = s[connId]?.[db]
+          if (!curDb) return s
+          const curSchema = curDb.schemas?.[schema] || schemaNode
+          return { ...s, [connId]: { ...s[connId], [db]: { ...curDb, schemas: { ...curDb.schemas, [schema]: { ...curSchema, loading: false, objects } } } } }
+        })
+      } catch {
+        setState(s => {
+          const curDb = s[connId]?.[db]
+          if (!curDb) return s
+          const curSchema = curDb.schemas?.[schema] || schemaNode
+          return { ...s, [connId]: { ...s[connId], [db]: { ...curDb, schemas: { ...curDb.schemas, [schema]: { ...curSchema, loading: false } } } } }
+        })
+      }
+      return
+    }
+    const node = state[connId]?.[db]
+    if (!node) return
+    setState(s => ({ ...s, [connId]: { ...s[connId], [db]: { ...node, loading: true } } }))
+    try {
+      const { objects } = await apiListObjects(userId, connId, db)
+      setState(s => ({ ...s, [connId]: { ...s[connId], [db]: { ...node, loading: false, objects } } }))
+    } catch {
+      setState(s => ({ ...s, [connId]: { ...s[connId], [db]: { ...node, loading: false } } }))
+    }
+  }
+
+  // Renders the Tables/Views/Collections/Keys groups shared by both the
+  // flat database-level object list and the per-schema object list.
+  const renderObjects = (conn: DbConnection, db: string, schema: string | undefined, objects: DbObject[], indent: number) => (
+    <>
+      {(['table', 'view', 'collection', 'key'] as const).map((type) => {
+        const items = objects.filter((o) => o.type === type).sort((a, b) => a.name.localeCompare(b.name))
+        if (!items.length) return null
+        const Icon  = type === 'table' ? Table2 : type === 'view' ? Eye : type === 'collection' ? Box : Key
+        const label = type === 'table' ? 'Tables' : type === 'view' ? 'Views' : type === 'collection' ? 'Collections' : 'Keys'
+        return (
+          <div key={type}>
+            <div className="tree-item text-gray-600" style={{ paddingLeft: `${indent}px` }}>
+              <Layers size={13} />
+              <span className="uppercase text-[13px] tracking-wider">{label}</span>
+              <span className="text-[11px] text-gray-500 dark:text-gray-400 ml-1">({items.length})</span>
+            </div>
+            {items.map((obj) => {
+              const isVectorCollection = VECTOR_DB_TYPES.has(conn.db_type) && obj.type === 'collection'
+              return (
+                <div
+                  key={obj.name}
+                  className={`tree-item ${ctxMenu?.connId === conn.id && ctxMenu?.db === db && ctxMenu?.schema === schema && ctxMenu?.name === obj.name ? 'tree-item-ctx-active' : ''}`}
+                  style={{ paddingLeft: `${indent + 12}px` }}
+                  onClick={() => {
+                    setActiveConnection(conn.id)
+                    if (isVectorCollection) {
+                      openVectorTab({ collection: obj.name, connId: conn.id, db, dbType: conn.db_type, totalCount: obj.count })
+                    }
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    if (!isVectorCollection) {
+                      setCtxMenu({ connId: conn.id, connType: conn.db_type, db, schema, name: obj.name, type: obj.type, x: e.clientX, y: e.clientY })
+                    }
+                  }}
+                >
+                  <Icon size={16} className="flex-shrink-0 text-gray-400" />
+                  <span className="truncate font-mono text-[16px] font-medium flex-1 min-w-0">{obj.name}</span>
+                  {isVectorCollection && obj.count != null && (
+                    <span className="text-[10px] text-gray-600 flex-shrink-0 tabular-nums ml-1">{obj.count.toLocaleString()}</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )
+      })}
+      {objects.length === 0 && (
+        <div className="tree-item text-gray-600" style={{ paddingLeft: `${indent}px` }}>No objects found</div>
+      )}
+    </>
+  )
 
   if (connections.length === 0) {
     return (
@@ -506,6 +691,14 @@ export default function ConnectionTree({ refreshKey }: Props) {
                             : <LogoIcon size={16} className="flex-shrink-0" />
                           }
                           <span className="truncate flex-1">{db}</span>
+                          {(() => {
+                            const login = conn.db_credentials?.find(c => c.database === db)
+                            return login && (
+                              <span title={`Uses login "${login.username}"`} className="flex-shrink-0 text-gray-500">
+                                <KeyRound size={12} />
+                              </span>
+                            )
+                          })()}
                           <button
                             onClick={(e) => { e.stopPropagation(); refreshDb(conn.id, db) }}
                             className="hidden group-hover/db:flex btn-ghost p-0.5 flex-shrink-0"
@@ -515,17 +708,75 @@ export default function ConnectionTree({ refreshKey }: Props) {
                           </button>
                         </div>
 
-                        {/* Tables & Views */}
+                        {/* Schemas (multi-schema engines) or Tables & Views directly (everyone else) */}
                         {node.open && (
                           <div>
-                            {node.loading ? (
+                            {SCHEMA_CAPABLE_TYPES.has(conn.db_type) ? (
+                              node.schemasLoading ? (
+                                <div className="tree-item pl-12 text-gray-600">
+                                  <Loader2 size={13} className="animate-spin" />
+                                  <span>Loading…</span>
+                                </div>
+                              ) : node.schemasError ? (
+                                <div className="pl-12 pr-2 py-1.5 text-[13px] text-red-400 break-words flex items-start gap-1.5">
+                                  <span className="flex-1">{node.schemasError}{loginLink(conn, db, node.schemasError)}</span>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); refreshDb(conn.id, db) }}
+                                    className="btn-ghost p-0.5 flex-shrink-0"
+                                    title="Retry"
+                                  >
+                                    <RefreshCw size={13} />
+                                  </button>
+                                </div>
+                              ) : (
+                                Object.entries(node.schemas || {}).sort(([a], [b]) => a.localeCompare(b)).map(([schema, schemaNode]) => (
+                                  <div key={schema}>
+                                    <div
+                                      onClick={() => toggleSchema(conn.id, db, schema)}
+                                      className="tree-item"
+                                      style={{ paddingLeft: '32px' }}
+                                    >
+                                      {schemaNode.open ? <ChevronDown size={13} className="flex-shrink-0" /> : <ChevronRight size={13} className="flex-shrink-0" />}
+                                      <Layers size={14} className="flex-shrink-0 text-gray-500" />
+                                      <span className="truncate flex-1 text-[15px]">
+                                        {schema}
+                                        {schema === DEFAULT_SCHEMA && <span className="text-[11px] text-gray-500 ml-1">(default)</span>}
+                                      </span>
+                                    </div>
+                                    {schemaNode.open && (
+                                      <div>
+                                        {schemaNode.loading ? (
+                                          <div className="tree-item pl-16 text-gray-600">
+                                            <Loader2 size={13} className="animate-spin" />
+                                            <span>Loading…</span>
+                                          </div>
+                                        ) : schemaNode.error ? (
+                                          <div className="pl-16 pr-2 py-1.5 text-[13px] text-red-400 break-words flex items-start gap-1.5">
+                                            <span className="flex-1">{schemaNode.error}{loginLink(conn, db, schemaNode.error)}</span>
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); toggleSchema(conn.id, db, schema, true) }}
+                                              className="btn-ghost p-0.5 flex-shrink-0"
+                                              title="Retry"
+                                            >
+                                              <RefreshCw size={13} />
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          renderObjects(conn, db, schema, schemaNode.objects || [], 44)
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))
+                              )
+                            ) : node.loading ? (
                               <div className="tree-item pl-12 text-gray-600">
                                 <Loader2 size={13} className="animate-spin" />
                                 <span>Loading…</span>
                               </div>
                             ) : node.error ? (
                               <div className="pl-12 pr-2 py-1.5 text-[13px] text-red-400 break-words flex items-start gap-1.5">
-                                <span className="flex-1">{node.error}</span>
+                                <span className="flex-1">{node.error}{loginLink(conn, db, node.error)}</span>
                                 <button
                                   onClick={(e) => { e.stopPropagation(); refreshDb(conn.id, db) }}
                                   className="btn-ghost p-0.5 flex-shrink-0"
@@ -535,54 +786,7 @@ export default function ConnectionTree({ refreshKey }: Props) {
                                 </button>
                               </div>
                             ) : (
-                              <>
-                                {(['table', 'view', 'collection', 'key'] as const).map((type) => {
-                                  const items = (node.objects || []).filter((o) => o.type === type).sort((a, b) => a.name.localeCompare(b.name))
-                                  if (!items.length) return null
-                                  const Icon  = type === 'table' ? Table2 : type === 'view' ? Eye : type === 'collection' ? Box : Key
-                                  const label = type === 'table' ? 'Tables' : type === 'view' ? 'Views' : type === 'collection' ? 'Collections' : 'Keys'
-                                  return (
-                                    <div key={type}>
-                                      <div className="tree-item text-gray-600" style={{ paddingLeft: '32px' }}>
-                                        <Layers size={13} />
-                                        <span className="uppercase text-[13px] tracking-wider">{label}</span>
-                                        <span className="text-[11px] text-gray-500 dark:text-gray-400 ml-1">({items.length})</span>
-                                      </div>
-                                      {items.map((obj) => {
-                                        const isVectorCollection = VECTOR_DB_TYPES.has(conn.db_type) && obj.type === 'collection'
-                                        return (
-                                          <div
-                                            key={obj.name}
-                                            className={`tree-item ${ctxMenu?.connId === conn.id && ctxMenu?.db === db && ctxMenu?.name === obj.name ? 'tree-item-ctx-active' : ''}`}
-                                            style={{ paddingLeft: '44px' }}
-                                            onClick={() => {
-                                              setActiveConnection(conn.id)
-                                              if (isVectorCollection) {
-                                                openVectorTab({ collection: obj.name, connId: conn.id, db, dbType: conn.db_type, totalCount: obj.count })
-                                              }
-                                            }}
-                                            onContextMenu={(e) => {
-                                              e.preventDefault()
-                                              if (!isVectorCollection) {
-                                                setCtxMenu({ connId: conn.id, connType: conn.db_type, db, name: obj.name, type: obj.type, x: e.clientX, y: e.clientY })
-                                              }
-                                            }}
-                                          >
-                                            <Icon size={16} className="flex-shrink-0 text-gray-400" />
-                                            <span className="truncate font-mono text-[16px] font-medium flex-1 min-w-0">{obj.name}</span>
-                                            {isVectorCollection && obj.count != null && (
-                                              <span className="text-[10px] text-gray-600 flex-shrink-0 tabular-nums ml-1">{obj.count.toLocaleString()}</span>
-                                            )}
-                                          </div>
-                                        )
-                                      })}
-                                    </div>
-                                  )
-                                })}
-                                {(node.objects || []).length === 0 && (
-                                  <div className="tree-item text-gray-600 pl-12">No objects found</div>
-                                )}
-                              </>
+                              renderObjects(conn, db, undefined, node.objects || [], 32)
                             )}
                           </div>
                         )}
@@ -645,6 +849,15 @@ export default function ConnectionTree({ refreshKey }: Props) {
             <RefreshCw size={15} />
             <span>Refresh</span>
           </button>
+          {DB_LOGIN_TYPES.has(dbCtxConnType) && (
+            <button
+              className="ctx-item hover:text-gray-900 dark:hover:text-white"
+              onClick={() => { setLoginTarget({ connId: dbCtxMenu.connId, db: dbCtxMenu.db }); setDbCtxMenu(null) }}
+            >
+              <KeyRound size={15} />
+              <span>Database Login…</span>
+            </button>
+          )}
           <div className="border-t border-surface-50 my-1" />
           <button
             className="ctx-item hover:text-gray-900 dark:hover:text-white"
@@ -701,6 +914,24 @@ export default function ConnectionTree({ refreshKey }: Props) {
       {apiConfigTarget && (
         <ApiConfigModal connId={apiConfigTarget.connId} database={apiConfigTarget.db} onClose={() => setApiConfigTarget(null)} />
       )}
+      {loginTarget && (() => {
+        const conn = connections.find(c => c.id === loginTarget.connId)
+        if (!conn) return null
+        return (
+          <DbCredentialsDialog
+            conn={conn}
+            database={loginTarget.db}
+            reason={loginTarget.reason}
+            onClose={() => setLoginTarget(null)}
+            onSaved={(db_credentials) => {
+              updateConnection({ ...conn, db_credentials })
+              setLoginTarget(null)
+              const node = state[conn.id]?.[loginTarget.db]
+              if (node?.open) refreshDb(conn.id, loginTarget.db)
+            }}
+          />
+        )
+      })()}
       {exportSqlTarget && (
         <ExportSqlModal
           connId={exportSqlTarget.connId}

@@ -6,7 +6,7 @@ from typing import List, Optional
 
 import datetime as _dt
 import decimal
-from sqlalchemy import MetaData, Table, create_engine, text
+from sqlalchemy import MetaData, Table, text
 from sqlalchemy.schema import CreateTable, DropTable
 
 from app.models.connection import DbConnection
@@ -80,10 +80,10 @@ class ExportService:
         engine = db_service.get_engine(conn)
         schema = None
         temp_engine = None
-        if database and conn.db_type in ("postgresql", "mssql", "db2", "cockroachdb", "snowflake"):
-            temp_engine = create_engine(engine.url.set(database=database), pool_pre_ping=True)
-            engine = temp_engine
-        elif database and conn.db_type in ("mysql", "mariadb"):
+        engine, is_temp = db_service.get_adapter(conn).engine_for(database)
+        if is_temp:
+            temp_engine = engine
+        if database and conn.db_type in ("mysql", "mariadb"):
             schema = database
         return engine, schema, temp_engine
 

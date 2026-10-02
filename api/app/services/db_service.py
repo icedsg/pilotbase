@@ -10,7 +10,7 @@ import json
 import re
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
 from urllib.parse import urlsplit
 
 from cryptography.fernet import Fernet
@@ -133,9 +133,20 @@ class SQLAdapter(BaseAdapter):
         # protection against a hung db2 connection.
         return {}
 
-    def __init__(self, conn: DbConnection, url: str, extra: Optional[Dict[str, Any]] = None):
+    # Engines whose URL names the database, so browsing another database on
+    # the same server needs its own engine (MySQL/MariaDB qualify by schema).
+    _DB_IN_URL_TYPES = ("postgresql", "mssql", "db2", "cockroachdb", "snowflake")
+
+    def __init__(
+        self,
+        conn: DbConnection,
+        url: str,
+        extra: Optional[Dict[str, Any]] = None,
+        db_creds: Optional[Dict[str, Tuple[str, str]]] = None,
+    ):
         from sqlalchemy import create_engine
         extra = extra or {}
+        self._db_creds = db_creds or {}
         connect_args = self._connect_args(conn.db_type, self.CONNECT_TIMEOUT_SECONDS)
         if conn.db_type == "snowflake" and extra.get("auth_token"):
             # OAuth access token instead of a password — the connector takes
@@ -155,8 +166,24 @@ class SQLAdapter(BaseAdapter):
         else:
             engine_kwargs.update(pool_size=3, max_overflow=5)
         self._engine = create_engine(url, **engine_kwargs)
+        self._connect_args_used = connect_args
         self._db_type = conn.db_type
         self._database = conn.database
+
+    def engine_for(self, database: Optional[str]):
+        """(engine, is_temp) for working in `database`. A temp engine is built
+        when the database lives in the URL, or when it has its own saved login
+        (DbCredential); the caller must dispose() it."""
+        from sqlalchemy import create_engine
+        if not database:
+            return self._engine, False
+        cred = self._db_creds.get(database)
+        if self._db_type not in self._DB_IN_URL_TYPES and not (cred and self._db_type in ("mysql", "mariadb")):
+            return self._engine, False
+        url = self._engine.url.set(database=database)
+        if cred:
+            url = url.set(username=cred[0], password=cred[1])
+        return create_engine(url, pool_pre_ping=True, connect_args=self._connect_args_used), True
 
     def test_connection(self) -> bool:
         from sqlalchemy import text
@@ -291,29 +318,36 @@ class SQLAdapter(BaseAdapter):
                 return [r[0] for r in rows if r[0] not in self._CRDB_SYSTEM_DBS]
         return [self._database or "main"]
 
-    def list_schemas(self) -> List[str]:
-        from sqlalchemy import inspect as sa_inspect, text
-        if self._db_type == "duckdb":
-            # duckdb-engine's get_schema_names returns every attached catalog
-            # qualified ("system.main", "temp.main", "<file>.main", ...) — only
-            # the schemas of the database we actually opened are meaningful.
-            with self._engine.connect() as c:
-                rows = c.execute(text(
-                    "SELECT schema_name FROM information_schema.schemata "
-                    "WHERE catalog_name = current_database() ORDER BY schema_name"
-                ))
-                return [r[0] for r in rows]
-        return sa_inspect(self._engine).get_schema_names()
+    def list_schemas(self, database: Optional[str] = None) -> List[str]:
+        from sqlalchemy import create_engine, inspect as sa_inspect, text
+        engine = self._engine
+        temp_engine = None
+        try:
+            engine, is_temp = self.engine_for(database)
+            temp_engine = engine if is_temp else None
+            if self._db_type == "duckdb":
+                # duckdb-engine's get_schema_names returns every attached catalog
+                # qualified ("system.main", "temp.main", "<file>.main", ...) — only
+                # the schemas of the database we actually opened are meaningful.
+                with engine.connect() as c:
+                    rows = c.execute(text(
+                        "SELECT schema_name FROM information_schema.schemata "
+                        "WHERE catalog_name = current_database() ORDER BY schema_name"
+                    ))
+                    return [r[0] for r in rows]
+            return sa_inspect(engine).get_schema_names()
+        finally:
+            if temp_engine:
+                temp_engine.dispose()
 
     def list_objects(self, schema: Optional[str] = None, database: Optional[str] = None) -> List[Dict]:
         from sqlalchemy import create_engine, inspect as sa_inspect
         engine = self._engine
         temp_engine = None
         try:
-            if database and self._db_type in ("postgresql", "mssql", "db2", "cockroachdb", "snowflake"):
-                temp_engine = create_engine(engine.url.set(database=database), pool_pre_ping=True)
-                engine = temp_engine
-            elif database and self._db_type in ("mysql", "mariadb"):
+            engine, is_temp = self.engine_for(database)
+            temp_engine = engine if is_temp else None
+            if database and self._db_type in ("mysql", "mariadb"):
                 schema = database
             inspector = sa_inspect(engine)
             tables = [{"name": t, "type": "table"} for t in inspector.get_table_names(schema=schema)]
@@ -328,10 +362,9 @@ class SQLAdapter(BaseAdapter):
         engine = self._engine
         temp_engine = None
         try:
-            if database and self._db_type in ("postgresql", "mssql", "db2", "cockroachdb", "snowflake"):
-                temp_engine = create_engine(engine.url.set(database=database), pool_pre_ping=True)
-                engine = temp_engine
-            elif database and self._db_type in ("mysql", "mariadb"):
+            engine, is_temp = self.engine_for(database)
+            temp_engine = engine if is_temp else None
+            if database and self._db_type in ("mysql", "mariadb"):
                 schema = database
             inspector = sa_inspect(engine)
             if self._db_type == "duckdb":
@@ -388,10 +421,9 @@ class SQLAdapter(BaseAdapter):
         engine = self._engine
         temp_engine = None
         try:
-            if database and self._db_type in ("postgresql", "mssql", "db2", "cockroachdb", "snowflake"):
-                temp_engine = create_engine(engine.url.set(database=database), pool_pre_ping=True)
-                engine = temp_engine
-            elif database and self._db_type in ("mysql", "mariadb"):
+            engine, is_temp = self.engine_for(database)
+            temp_engine = engine if is_temp else None
+            if database and self._db_type in ("mysql", "mariadb"):
                 pass  # MySQL uses qualified table names (db.table) in the query itself
 
             statements = [s.strip() for s in sqlparse.split(query) if s.strip()] or [query]
@@ -1573,10 +1605,42 @@ class DatabaseService:
         db_part = f"/{conn.database}" if conn.database else ""
         return f"{driver}://{conn.username}:{password}@{host_port}{db_part}"
 
+    def _load_db_creds(self, conn: DbConnection) -> Dict[str, Tuple[str, str]]:
+        """Per-database logins ({database: (username, password)}) saved on a
+        connection; empty for unsaved/transient connections."""
+        creds: Dict[str, Tuple[str, str]] = {}
+        for c in conn.db_credentials or []:
+            password = self.decrypt_password(c.password_encrypted) if c.password_encrypted else ""
+            creds[c.database] = (c.username, password)
+        return creds
+
+    def test_db_credential(self, conn: DbConnection, database: str, username: str, password: str) -> tuple:
+        """Try `username`/`password` against `database` on conn's server.
+        Returns (success, error)."""
+        if conn.db_type not in _SQL_TYPES:
+            return False, f"Per-database logins aren't supported for {conn.db_type}."
+        adapter = None
+        try:
+            adapter = SQLAdapter(conn, self._build_sql_url(conn), self._load_extra(conn), {database: (username, password)})
+            engine, is_temp = adapter.engine_for(database)
+            try:
+                from sqlalchemy import text
+                with engine.connect() as c:
+                    c.execute(text("SELECT 1"))
+            finally:
+                if is_temp:
+                    engine.dispose()
+            return True, ""
+        except Exception as e:
+            return False, str(e)
+        finally:
+            if adapter:
+                adapter.close()
+
     def _make_adapter(self, conn: DbConnection) -> BaseAdapter:
         extra = self._load_extra(conn)
         if conn.db_type in _SQL_TYPES:
-            return SQLAdapter(conn, self._build_sql_url(conn), extra)
+            return SQLAdapter(conn, self._build_sql_url(conn), extra, self._load_db_creds(conn))
 
         cls = _ADAPTER_MAP.get(conn.db_type)
         if cls is None:
@@ -1693,10 +1757,10 @@ class DatabaseService:
     def list_databases(self, conn: DbConnection) -> List[str]:
         return self.get_adapter(conn).list_databases()
 
-    def list_schemas(self, conn: DbConnection) -> List[str]:
+    def list_schemas(self, conn: DbConnection, database: Optional[str] = None) -> List[str]:
         adapter = self.get_adapter(conn)
         if isinstance(adapter, SQLAdapter):
-            return adapter.list_schemas()
+            return adapter.list_schemas(database)
         return []
 
     def list_objects(self, conn: DbConnection, schema: Optional[str] = None, database: Optional[str] = None) -> List[Dict]:

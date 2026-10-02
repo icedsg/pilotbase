@@ -20,7 +20,7 @@ hidden_imports = [
 if platform.machine().lower() in ("x86_64", "amd64"):
     hidden_imports.append("ibm_db_sa")
 
-for pkg in ("chromadb", "pymilvus", "snowflake", "langchain_core", "langgraph"):
+for pkg in ("chromadb", "pymilvus", "snowflake", "langchain_core", "langgraph", "mcp", "sse_starlette"):
     hidden_imports += collect_submodules(pkg)
 
 a = Analysis(

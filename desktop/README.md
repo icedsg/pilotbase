@@ -124,6 +124,12 @@ gatekeeping notes above for what that means for anyone installing them.
 - **Network**: the backend only ever binds to `127.0.0.1` on a random port with a per-launch
   secret token — it is never reachable from the network, and the app window can't navigate
   anywhere else.
+- **MCP (Claude Desktop / Cowork)**: the app runs an MCP server so Claude can explore your
+  databases through Pilotbase. Choose **Help → Copy Claude MCP config**, paste the snippet into
+  Claude Desktop's `claude_desktop_config.json` (Settings → Developer → Edit Config), and
+  restart Claude Desktop. The **MCP** indicator in the top-right status panel shows
+  `read-only` (default) or `read-write` (launched with `MCP_ALLOW_WRITES=true`); hover it to see
+  the tool count. Pilotbase must be open while Claude uses it. See [docs/mcp.md](../docs/mcp.md).
 - **Uninstalling / resetting**: uninstall the app normally, then delete the data folder above
   if you want to remove your databases connections and settings too (this is not done for you).
 
@@ -134,5 +140,9 @@ gatekeeping notes above for what that means for anyone installing them.
   regular backend issues (bad `requirements.txt` install, a locked SQLite file, etc.).
 - **Blank window**: usually means `api/static` wasn't built/copied before running `npm run dev`
   — repeat step 1 above.
+- **Claude says "Pilotbase is not running"**: open the Pilotbase app. The MCP bridge finds the
+  backend through `<data folder>/mcp-endpoint.json`, which only exists while the app is running.
+  If Claude doesn't list the Pilotbase tools at all, check that the `command` path in the copied
+  config still matches your install location (re-copy it after moving or reinstalling).
 - **Port already in use**: shouldn't happen (the OS assigns the port), but if you see it, another
   process is likely holding `127.0.0.1` briefly — just relaunch.

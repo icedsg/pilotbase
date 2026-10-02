@@ -55,6 +55,9 @@ def score_session(
         return 0.0, 0.0
     overlap = len(query_tokens & doc_tokens)
     keyword_score = overlap / len(query_tokens)
+    # SQLite (desktop) returns naive datetimes; they're stored as UTC.
+    if updated_at.tzinfo is None:
+        updated_at = updated_at.replace(tzinfo=timezone.utc)
     age_hours = max((now - updated_at).total_seconds() / 3600.0, 0.0)
     recency_score = 0.5 ** (age_hours / HALF_LIFE_HOURS)
     combined = KEYWORD_WEIGHT * keyword_score + RECENCY_WEIGHT * recency_score

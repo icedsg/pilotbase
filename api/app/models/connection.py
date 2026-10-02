@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -29,6 +29,27 @@ class DbConnection(Base):
         "ConnectionAccess", back_populates="connection", cascade="all, delete-orphan"
     )
     creator: Mapped["User"] = relationship("User", foreign_keys=[created_by])  # type: ignore[name-defined]
+    # selectin: loaded with every DbConnection so adapters (built in worker
+    # threads, outside the session) never trigger a lazy load.
+    db_credentials: Mapped[list["DbCredential"]] = relationship(
+        "DbCredential", back_populates="connection", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class DbCredential(Base):
+    """Optional login for one database on a connection's server, used instead
+    of the connection's own username/password when browsing/querying it."""
+    __tablename__ = "db_credentials"
+    __table_args__ = (UniqueConstraint("connection_id", "database", name="uq_db_credentials_conn_db"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    connection_id: Mapped[str] = mapped_column(String, ForeignKey("db_connections.id"), index=True)
+    database: Mapped[str] = mapped_column(String, nullable=False)
+    username: Mapped[str] = mapped_column(String, nullable=False)
+    password_encrypted: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    connection: Mapped["DbConnection"] = relationship("DbConnection", back_populates="db_credentials")
 
 
 class ConnectionAccess(Base):

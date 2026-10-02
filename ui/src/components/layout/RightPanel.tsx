@@ -8,7 +8,6 @@ import {
   apiListChatSessions, apiGetChatSessionMessages,
 } from '../../api/client'
 import { formatChatTimestamp } from '../../lib/formatTimestamp'
-import { isDesktop } from '../../lib/desktop'
 import ChatCodeBlock from './ChatCodeBlock'
 import type { ChatMessage, ChatSessionSummary } from '../../types'
 
@@ -235,7 +234,6 @@ export default function RightPanel({ onClose }: Props) {
   return (
     <div
       className="h-full flex flex-col overflow-hidden border-l border-surface-50"
-      style={isDesktop ? { paddingBottom: 274 } : undefined}
     >
       <div className="flex items-center justify-between px-3 py-2 border-b border-surface-50 flex-shrink-0">
         <div className="flex items-center gap-1.5 min-w-0">

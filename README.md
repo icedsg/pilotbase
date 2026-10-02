@@ -15,7 +15,7 @@ Stop juggling pgAdmin, MongoDB Compass, RedisInsight, and separate vector DB das
 - **One tool for every database type** — SQL, document, key-value, and vector, with a consistent interface across all of them
 - **A true universal database client** — the kind of cross-engine database IDE and SQL client that tools like DBeaver or TablePlus offer per-engine, but with NoSQL and vector databases included too
 - **AI agent that understands your data** — ask questions in plain English, get query results, schema explanations, and insights powered by a local or hosted LLM
-- **Zero lock-in** — source-available, self-hosted, runs in Docker in minutes or as a native desktop app
+- **Zero lock-in** — open source (MIT), self-hosted, runs in Docker in minutes or as a native desktop app
 - **Built for AI-era data stacks** — first-class support for vector databases and chunk-level browsing, built for teams that run RAG pipelines alongside traditional databases
 
 ---
@@ -42,6 +42,13 @@ Stop juggling pgAdmin, MongoDB Compass, RedisInsight, and separate vector DB das
 - On-demand database backups
 - Export as SQL
 - Per-connection public REST API generation
+
+### MCP Server (Desktop App)
+- Built-in [MCP](https://modelcontextprotocol.io) server lets **Claude Desktop / Claude Cowork** (or any MCP client) explore your databases through Pilotbase. It can list connections, browse schemas, describe tables, run queries, export SQL, and diff schemas
+- Uses the connections already saved in Pilotbase; credentials never leave the app
+- Read-only by default; set `MCP_ALLOW_WRITES=true` to enable DDL, migrations, connection management and other write tools
+- One-click setup: **Help → Copy Claude MCP config**; live status shown in the top-right **MCP** indicator
+- Pilotbase's own AI agent is not exposed over MCP
 
 ### AI Agent (LangGraph + ReAct)
 - Conversational assistant connected to your active database
@@ -127,6 +134,8 @@ Prefer a native app over Docker? Pilotbase Desktop wraps the same FastAPI backen
 | Linux (x64) | `Pilotbase-<version>-linux-x64.AppImage` |
 
 Prefer to build it yourself instead? See the **[Desktop build guide](desktop/README.md)** for setup and packaging instructions, and the **[Desktop technical spec](docs/desktop-plan.md)** for architecture details. Tagged releases (`v*.*.*`) build installers for every platform via [GitHub Actions](.github/workflows/desktop.yml).
+
+**Use Pilotbase from Claude (MCP):** the desktop app includes an MCP server, so Claude Desktop and Claude Cowork can explore your databases through Pilotbase. With the app open, choose **Help → Copy Claude MCP config**, paste the snippet into Claude Desktop's `claude_desktop_config.json`, and restart Claude Desktop. The **MCP** indicator in the top-right status panel shows whether it's active and whether it's read-only or read-write. See **[MCP setup](docs/mcp.md)** for the full tool list.
 
 ---
 
@@ -260,7 +269,7 @@ pilotbase/
 ├── RELEASE_NOTES.md
 ├── CONTRIBUTING.md
 ├── CLA.md                      # Contributor License Agreement
-└── LICENSE                     # Pilotbase Limited Use License
+└── LICENSE                     # MIT License
 ```
 
 ---
@@ -323,7 +332,9 @@ Contributions are welcome.
 
 ## License
 
-[Pilotbase Limited Use License](LICENSE) — source-available: free to download, self-host, and modify for your own use. No redistribution, resale, or hosting it for third parties. Contributions are governed by the [CLA](CLA.md).
+[MIT License](LICENSE) — Copyright (c) 2026 Pilotbase (pilotbase.pro). Free to use, modify, self-host, and redistribute, including commercially, as long as the copyright and license notice are kept.
+
+The hosted [Pilotbase.pro](https://pilotbase.pro) product includes additional features beyond this open source edition. Those are offered under separate terms and are not part of this repository. Contributions are governed by the [CLA](CLA.md).
 
 ---
 

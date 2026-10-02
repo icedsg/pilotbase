@@ -13,6 +13,8 @@ def _parse_cli_and_set_env() -> argparse.Namespace:
     parser.add_argument("--port", type=int, default=None)
     parser.add_argument("--token", default=None)
     parser.add_argument("--data-dir", default=None)
+    parser.add_argument("--mcp-bridge", action="store_true",
+                        help="Run as a stdio MCP bridge to the running desktop sidecar, then exit.")
     args, _unknown = parser.parse_known_args()
 
     if args.host:
@@ -38,6 +40,13 @@ def _parse_cli_and_set_env() -> argparse.Namespace:
 
 _cli_args = _parse_cli_and_set_env()
 
+if _cli_args.mcp_bridge:
+    # Stdio bridge for Claude Desktop / Cowork (app/mcp/bridge.py). Runs before
+    # any other app import so it never touches the DB or prints to stdout.
+    from app.mcp import bridge
+    bridge.run(os.environ.get("DATA_DIR", ""))
+    sys.exit(0)
+
 import asyncio
 import logging
 import socket
@@ -56,6 +65,7 @@ from app.database import init_db
 from app.middleware.local_token import LocalTokenMiddleware
 from app.routers import auth, connections, query, query_history, backup, migration, ai, chat_sessions, vector, papi, export, settings as settings_router
 from app.websocket.manager import ws_router, manager
+from app.mcp.server import mcp as mcp_server, mcp_http_app
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s — %(message)s")
 log = logging.getLogger("pilotbase")
@@ -67,7 +77,11 @@ async def lifespan(app: FastAPI):
     manager.loop = asyncio.get_running_loop()
     await init_db()
     log.info("Database ready.")
-    yield
+    if settings.mcp_enabled:
+        async with mcp_server.session_manager.run():
+            yield
+    else:
+        yield
     log.info("Pilotbase stopped.")
 
 
@@ -107,13 +121,26 @@ app.include_router(papi.router,        prefix="/api/v1/papi",          tags=["pu
 app.include_router(export.router,      prefix="/api/v1/export",        tags=["export"])
 app.include_router(settings_router.router, prefix="/api/v1/settings",   tags=["settings"])
 
+# MCP — routes added directly (not mounted) so the endpoint is exactly /mcp;
+# its session manager is started in lifespan above.
+if settings.mcp_enabled:
+    app.router.routes.extend(mcp_http_app.routes)
+
 # WebSocket
 app.include_router(ws_router, prefix="/ws", tags=["websocket"])
 
 
 @app.get("/api/v1/health", tags=["health"])
 async def health():
-    return {"status": "ok", "version": "0.1.0"}
+    mcp_info = {"enabled": settings.mcp_enabled, "allow_writes": settings.mcp_allow_writes}
+    if settings.mcp_enabled:
+        mcp_info["tools"] = len(await mcp_server.list_tools())
+    return {
+        "status": "ok",
+        "version": "0.1.0",
+        "desktop": bool(settings.local_api_token),
+        "mcp": mcp_info,
+    }
 
 
 # ── Serve React SPA ───────────────────────────────────────────────────────────

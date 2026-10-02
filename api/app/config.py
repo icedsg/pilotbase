@@ -40,6 +40,13 @@ class Settings(BaseSettings):
     local_api_token: str = ""
     data_dir: Optional[str] = None
 
+    # MCP server at /mcp (app/mcp/server.py) — non-AI features as tools for
+    # external agents. Mutating tools are only registered with mcp_allow_writes.
+    # mcp_user_anon_id picks the Pilotbase user MCP acts as (default: first admin).
+    mcp_enabled: bool = True
+    mcp_allow_writes: bool = False
+    mcp_user_anon_id: str = ""
+
     # External database connections — how long (seconds) to wait when
     # establishing a connection to a user-added database before giving up.
     # Applies to every engine adapter in app.services.db_service.

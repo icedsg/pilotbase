@@ -51,6 +51,7 @@ class DDLRequest(BaseModel):
     object_name: str
     object_type: str     # table | database
     database: Optional[str] = None
+    schema_name: Optional[str] = None
 
 
 @router.post("/ddl")
@@ -72,9 +73,9 @@ async def run_ddl(
         else:
             q = f"`{body.object_name}`"
     elif conn.db_type == "mssql":
-        q = f"[{body.object_name}]"
+        q = f"[{body.schema_name}].[{body.object_name}]" if body.schema_name and body.object_type != "database" else f"[{body.object_name}]"
     else:
-        q = f'"{body.object_name}"'
+        q = f'"{body.schema_name}"."{body.object_name}"' if body.schema_name and body.object_type != "database" else f'"{body.object_name}"'
 
     action_map = {
         ("truncate", "table"):           f'TRUNCATE TABLE {q}',

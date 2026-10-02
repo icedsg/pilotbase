@@ -18,6 +18,8 @@ export interface DbConnection {
   ssl_mode: string | null
   created_at: string
   is_default?: boolean
+  /** Databases on this server that use their own login instead of `username`. */
+  db_credentials?: { database: string; username: string }[]
 }
 
 export interface DbObject {

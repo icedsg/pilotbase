@@ -79,6 +79,7 @@ Add `argparse` with these flags. Every flag has an env-var fallback so Docker ke
 | `--host` | `HOST` | `0.0.0.0` | uvicorn host |
 | `--port` | `PORT` | `8000` | uvicorn port. `0` = let the OS choose. |
 | `--token` | `LOCAL_API_TOKEN` | empty | Enables the token middleware (§3.2) when non-empty. |
+| `--mcp-bridge` | — | off | Run as a stdio MCP bridge to the running app's `/mcp` endpoint, then exit (no server). Reads `<data-dir>/mcp-endpoint.json`. See [mcp.md](mcp.md). |
 | `--data-dir` | `DATA_DIR` | `.` | Base directory; when set and `DATABASE_URL` is unset, `DATABASE_URL` becomes `sqlite+aiosqlite:///<data-dir>/pilotbase.db` and `BACKUPS_DIR` becomes `<data-dir>/backups`. |
 
 Startup sequence in `main.py`: parse flags → run Alembic `upgrade head` programmatically
@@ -304,7 +305,10 @@ IPC channels: `desktop:open-external` (validated: only `http:`, `https:`, `file:
 
 Application menu: **Pilotbase** (About, Settings… `CmdOrCtrl+,`, Quit), **Edit** (standard roles),
 **View** (Reload, Zoom in/out/reset, Toggle Full Screen, Toggle DevTools in dev builds only),
-**Help** (Open logs folder, Open data folder, Pilotbase on GitHub → `openExternal`).
+**Help** (Open logs folder, Open data folder, Copy Claude MCP config, Pilotbase on GitHub → `openExternal`).
+
+On every sidecar start/restart, the main process writes `<userData>/mcp-endpoint.json`
+(`{url, token}`, mode `0600`) for the MCP bridge, and deletes it on quit.
 
 ## 6. Packaging and CI
 

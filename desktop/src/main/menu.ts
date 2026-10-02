@@ -1,4 +1,20 @@
-import { Menu, MenuItemConstructorOptions, shell } from 'electron'
+import { app, clipboard, Menu, MenuItemConstructorOptions, shell } from 'electron'
+import { join } from 'path'
+
+/** claude_desktop_config.json entry that launches the stdio MCP bridge
+ * (api/app/mcp/bridge.py) against this install's data dir. */
+function mcpConfigSnippet(dataDir: string): string {
+  const server = app.isPackaged
+    ? {
+        command: join(process.resourcesPath, 'sidecar', 'pilotbase-api' + (process.platform === 'win32' ? '.exe' : '')),
+        args: ['--mcp-bridge', '--data-dir', dataDir],
+      }
+    : {
+        command: 'python',
+        args: [join(__dirname, '..', '..', '..', 'api', 'main.py'), '--mcp-bridge', '--data-dir', dataDir],
+      }
+  return JSON.stringify({ mcpServers: { pilotbase: server } }, null, 2)
+}
 
 export function buildMenu(
   dataDir: string,
@@ -38,6 +54,7 @@ export function buildMenu(
       submenu: [
         { label: 'Open logs folder', click: () => shell.openPath(logsDir) },
         { label: 'Open data folder', click: () => shell.openPath(dataDir) },
+        { label: 'Copy Claude MCP config', click: () => clipboard.writeText(mcpConfigSnippet(dataDir)) },
         { label: 'Pilotbase on GitHub', click: () => shell.openExternal('https://github.com/icedsg/pilotbase') },
       ],
     },

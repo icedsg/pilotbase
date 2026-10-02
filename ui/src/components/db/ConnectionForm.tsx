@@ -190,8 +190,17 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
         onSaved({ ...connection!, name: form.name, host: form.host as any, port: form.port as any, database: form.database as any, username: form.username as any, ssl_mode: form.ssl_mode as any })
       } else {
         const extra_params = buildExtraParams()
-        const { api_key: _discard, warehouse: _discard2, role: _discard3, auth_token: _discard4, ...rest } = form
-        await apiCreateConnection(userId, { ...rest, extra_params } as any)
+        await apiCreateConnection(userId, {
+          name:     form.name,
+          db_type:  form.db_type,
+          host:     form.host     || undefined,
+          port:     portValue,
+          database: form.database || undefined,
+          username: form.username || undefined,
+          password: form.password || undefined,
+          ssl_mode: form.ssl_mode || undefined,
+          extra_params,
+        } as any)
         onSaved()
       }
     } catch (e: any) {

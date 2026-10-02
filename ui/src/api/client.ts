@@ -25,7 +25,14 @@ const http = axios.create({
 
 // ── Health ────────────────────────────────────────────────────────────────────
 
-export const apiHealth = (): Promise<{ status: string; version: string }> =>
+export interface HealthInfo {
+  status: string
+  version: string
+  desktop?: boolean
+  mcp?: { enabled: boolean; allow_writes: boolean; tools?: number }
+}
+
+export const apiHealth = (): Promise<HealthInfo> =>
   http.get('/health').then(r => r.data)
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -55,6 +62,16 @@ export const apiDeleteConnection = (userId: string, connId: string) =>
 
 export const apiTestConnection = (userId: string, connId: string): Promise<{ success: boolean }> =>
   http.post(`/connections/${connId}/test`, { user_anon_id: userId }).then(r => r.data)
+
+export const apiSetDbCredential = (
+  userId: string, connId: string, database: string, username: string, password?: string,
+): Promise<{ success: boolean; error: string }> =>
+  http.put(`/connections/${connId}/db-credentials/${encodeURIComponent(database)}`, { user_anon_id: userId, username, password })
+    .then(r => r.data)
+
+export const apiDeleteDbCredential = (userId: string, connId: string, database: string) =>
+  http.delete(`/connections/${connId}/db-credentials/${encodeURIComponent(database)}`, { params: { user_anon_id: userId } })
+    .then(r => r.data)
 
 export const apiTestConnectionParams = (
   userId: string,
@@ -89,6 +106,9 @@ export const apiGetDbVersion = (userId: string, connId: string): Promise<{ versi
 export const apiListDatabases = (userId: string, connId: string): Promise<{ databases: string[] }> =>
   http.get(`/connections/${connId}/databases`, { params: { user_anon_id: userId } }).then(r => r.data)
 
+export const apiListSchemas = (userId: string, connId: string, database?: string): Promise<{ schemas: string[] }> =>
+  http.get(`/connections/${connId}/schemas`, { params: { user_anon_id: userId, database } }).then(r => r.data)
+
 export const apiListObjects = (userId: string, connId: string, database?: string, schema?: string): Promise<{ objects: DbObject[] }> =>
   http.get(`/connections/${connId}/objects`, { params: { user_anon_id: userId, database, schema } }).then(r => r.data)
 
@@ -100,8 +120,8 @@ export const apiDescribeTable = (userId: string, connId: string, table: string, 
 export const apiExecuteQuery = (userId: string, connId: string, query: string, database?: string): Promise<QueryResult> =>
   http.post('/query/execute', { user_anon_id: userId, connection_id: connId, query, database }).then(r => r.data)
 
-export const apiRunDdl = (userId: string, connId: string, action: string, objectName: string, objectType: string, database?: string) =>
-  http.post('/query/ddl', { user_anon_id: userId, connection_id: connId, action, object_name: objectName, object_type: objectType, database }).then(r => r.data)
+export const apiRunDdl = (userId: string, connId: string, action: string, objectName: string, objectType: string, database?: string, schema?: string) =>
+  http.post('/query/ddl', { user_anon_id: userId, connection_id: connId, action, object_name: objectName, object_type: objectType, database, schema_name: schema }).then(r => r.data)
 
 export const apiGetQueryHistory = (limit = 200): Promise<{ entries: QueryHistoryEntry[] }> =>
   http.get('/query/history', { params: { limit } }).then(r => r.data)

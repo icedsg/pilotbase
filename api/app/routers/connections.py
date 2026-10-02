@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.anon_auth import get_auth_backend
 from app.auth.permissions import require_admin
 from app.database import get_session
-from app.models.connection import ConnectionAccess, DbConnection
+from app.models.connection import ConnectionAccess, DbConnection, DbCredential
 from app.models.user import User, UserRole
 from app.routers._common import get_connection_or_404
 from app.services import papi_service
@@ -130,6 +130,12 @@ class ConnectionTestParams(BaseModel):
     extra_params: Optional[str] = None
 
 
+class DbCredentialBody(BaseModel):
+    user_anon_id: str
+    username: str
+    password: Optional[str] = None
+
+
 class CreateDatabaseBody(BaseModel):
     user_anon_id: str
     db_name: str
@@ -179,6 +185,7 @@ async def list_connections(
             "ssl_mode": c.ssl_mode,
             "created_at": c.created_at,
             "is_default": c.name in _default_names,
+            "db_credentials": [{"database": d.database, "username": d.username} for d in c.db_credentials],
         }
         for c in conns
     ]
@@ -332,6 +339,24 @@ async def list_databases(
     return {"databases": dbs}
 
 
+@router.get("/{conn_id}/schemas")
+async def list_schemas(
+    conn_id: str,
+    user_anon_id: str,
+    database: Optional[str] = None,
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(select(DbConnection).where(DbConnection.id == conn_id))
+    conn = result.scalar_one_or_none()
+    if not conn:
+        raise HTTPException(status_code=404, detail="Connection not found.")
+    try:
+        schemas = await db_service.run_off_loop(db_service.list_schemas, conn, database)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return {"schemas": schemas}
+
+
 @router.get("/{conn_id}/objects")
 async def list_objects(
     conn_id: str,
@@ -349,6 +374,73 @@ async def list_objects(
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
     return {"objects": objects}
+
+
+# ── Per-database logins ───────────────────────────────────────────────────────
+# A server often has a separate user per database (e.g. a managed Postgres with
+# one role per app). These override the connection's own username/password for
+# that one database only.
+
+@router.get("/{conn_id}/db-credentials")
+async def list_db_credentials(
+    conn_id: str,
+    user_anon_id: str,
+    session: AsyncSession = Depends(get_session),
+):
+    conn = await get_connection_or_404(conn_id, session)
+    return [{"database": c.database, "username": c.username} for c in conn.db_credentials]
+
+
+@router.put("/{conn_id}/db-credentials/{database}")
+async def set_db_credential(
+    conn_id: str,
+    database: str,
+    body: DbCredentialBody,
+    session: AsyncSession = Depends(get_session),
+):
+    """Tests the login against `database` first; saves it only if it works."""
+    await require_admin(body.user_anon_id, session)
+    conn = await get_connection_or_404(conn_id, session)
+    existing = next((c for c in conn.db_credentials if c.database == database), None)
+
+    password = body.password
+    if not password and existing and existing.password_encrypted and existing.username == body.username:
+        password = db_service.decrypt_password(existing.password_encrypted)  # blank = keep current
+    ok, error = await db_service.run_off_loop(
+        db_service.test_db_credential, conn, database, body.username, password or "",
+    )
+    if not ok:
+        return {"success": False, "error": error}
+
+    encrypted = db_service.encrypt_password(password) if password else None
+    if existing:
+        existing.username = body.username
+        existing.password_encrypted = encrypted
+    else:
+        conn.db_credentials.append(DbCredential(
+            id=secrets.token_hex(16), database=database,
+            username=body.username, password_encrypted=encrypted,
+        ))
+    db_service.drop_adapter(conn_id)
+    await session.commit()
+    return {"success": True, "error": ""}
+
+
+@router.delete("/{conn_id}/db-credentials/{database}")
+async def delete_db_credential(
+    conn_id: str,
+    database: str,
+    user_anon_id: str,
+    session: AsyncSession = Depends(get_session),
+):
+    await require_admin(user_anon_id, session)
+    conn = await get_connection_or_404(conn_id, session)
+    for c in list(conn.db_credentials):
+        if c.database == database:
+            conn.db_credentials.remove(c)
+    db_service.drop_adapter(conn_id)
+    await session.commit()
+    return {"message": "Removed."}
 
 
 @router.get("/{conn_id}/table/{table_name}")

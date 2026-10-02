@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import Logo from '../common/Logo'
 import { useStore } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
-import { apiHealth, apiGetLlmStatus } from '../../api/client'
+import { apiHealth, apiGetLlmStatus, HealthInfo } from '../../api/client'
 
 type Status = 'checking' | 'up' | 'down'
 
@@ -13,6 +13,8 @@ export default function TopBar() {
   const { userId } = useUserSession()
   const [apiStatus, setApiStatus] = useState<Status>('checking')
   const [aiStatus, setAiStatus] = useState<Status>('checking')
+  const [mcp, setMcp] = useState<HealthInfo['mcp'] | null>(null)
+  const [isDesktop, setIsDesktop] = useState(false)
 
   const resetToNormalView = () => {
     if (activeConnectionId) focusConnectionQueryTab(activeConnectionId)
@@ -27,10 +29,17 @@ export default function TopBar() {
 
     const check = async () => {
       try {
-        await apiHealth()
-        if (!cancelled) setApiStatus('up')
+        const h = await apiHealth()
+        if (!cancelled) {
+          setApiStatus('up')
+          setIsDesktop(!!h.desktop)
+          setMcp(h.mcp ?? null)
+        }
       } catch {
-        if (!cancelled) setApiStatus('down')
+        if (!cancelled) {
+          setApiStatus('down')
+          setMcp(null)
+        }
       }
 
       if (!userId) return
@@ -63,26 +72,42 @@ export default function TopBar() {
           downText="unavailable"
           onConfigure={aiStatus === 'down' ? () => setSettingsModalOpen(true) : undefined}
         />
+        {/* MCP server (/mcp) — only on desktop, where Claude Desktop / Cowork
+            connect through the stdio bridge (Help → Copy Claude MCP config). */}
+        {isDesktop && mcp && (
+          <StatusPill
+            label="MCP"
+            status={mcp.enabled ? 'up' : 'down'}
+            upText={mcp.allow_writes ? 'read-write' : 'read-only'}
+            downText="off"
+            title={
+              mcp.enabled
+                ? `MCP: ${mcp.tools ?? 0} tools, ${mcp.allow_writes ? 'writes enabled' : 'read-only'}. Connect Claude via Help → Copy Claude MCP config.`
+                : 'MCP: disabled (MCP_ENABLED=false)'
+            }
+          />
+        )}
       </div>
     </header>
   )
 }
 
 function StatusPill({
-  label, status, upText, downText, onConfigure,
+  label, status, upText, downText, onConfigure, title,
 }: {
   label: string
   status: Status
   upText: string
   downText: string
   onConfigure?: () => void
+  title?: string
 }) {
   const dot = status === 'up' ? 'bg-green-400' : status === 'down' ? 'bg-red-400' : 'bg-gray-500 animate-pulse'
   const text = status === 'checking' ? 'checking…' : status === 'up' ? upText : downText
   const textColor = status === 'up' ? 'text-green-400' : status === 'down' ? 'text-red-400' : 'text-gray-500'
 
   return (
-    <span className="flex items-center gap-1.5 text-xs" title={`${label}: ${text}`}>
+    <span className="flex items-center gap-1.5 text-xs" title={title ?? `${label}: ${text}`}>
       <span className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${dot}`} />
       <span className="text-gray-400">{label}:</span>
       {onConfigure ? (

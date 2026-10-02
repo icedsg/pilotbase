@@ -24,9 +24,6 @@ from app.services.db_service import db_service, duckdb_reflect_columns, duckdb_r
 
 _UNSUPPORTED_TYPES = {"redis", "qdrant", "chroma", "weaviate", "pinecone", "milvus", "cassandra", "dynamodb", "couchdb"}
 
-# Dialects where "database" means a separate catalog reachable only by
-# reconnecting with a different database in the connection URL.
-_RECONNECT_DIALECTS = {"postgresql", "mssql", "db2", "cockroachdb", "snowflake"}
 
 
 class BackupUnsupportedError(Exception):
@@ -101,17 +98,16 @@ class BackupService:
         works for any SQL driver, used whenever pg_dump/mysqldump aren't available.
         Returns the number of tables written (0 usually means the target database
         was wrong/empty, not that the dump failed)."""
-        from sqlalchemy import create_engine, inspect, text
+        from sqlalchemy import inspect, text
 
         base_engine = db_service.get_engine(conn)
         engine = base_engine
         temp_engine = None
         schema: Optional[str] = None
         try:
-            if database and conn.db_type in _RECONNECT_DIALECTS:
-                temp_engine = create_engine(base_engine.url.set(database=database), pool_pre_ping=True)
-                engine = temp_engine
-            elif database and conn.db_type in ("mysql", "mariadb"):
+            engine, is_temp = db_service.get_adapter(conn).engine_for(database)
+            temp_engine = engine if is_temp else None
+            if database and conn.db_type in ("mysql", "mariadb"):
                 schema = database
 
             inspector = inspect(engine)

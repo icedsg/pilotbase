@@ -14,6 +14,9 @@ All settings are read from environment variables or `api/.env`. In Docker, `dock
 | `OLLAMA_FLASH_MODEL` | `gemma4:cloud` | Faster model for lightweight agent steps |
 | `OLLAMA_API_KEY` | `ollama` | API key (`ollama` for local, real key for hosted providers) |
 | `AUTH_BACKEND` | `anon` | `anon` for single-user/anonymous, or dotted path to a custom `AuthBackend` class |
+| `MCP_ENABLED` | `true` | Serve the MCP endpoint at `/mcp` (see [MCP](mcp.md)) |
+| `MCP_ALLOW_WRITES` | `false` | Register mutating MCP tools; when off, `run_query` only accepts read-only statements |
+| `MCP_USER_ANON_ID` | _(empty)_ | Pilotbase user MCP calls act as; defaults to the first admin |
 | `ENVIRONMENT` | `development` | Set to `production` for tighter CORS and security defaults |
 | `CORS_ORIGINS` | `http://localhost:5173,...` | Comma-separated allowed origins |
 | `DB_CONNECT_TIMEOUT_SECONDS` | `10` | Seconds to wait when connecting to a user-added database (any engine) before giving up. Lower it to fail faster against unreachable hosts; raise it for engines with a naturally slow handshake. |

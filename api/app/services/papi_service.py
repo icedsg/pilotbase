@@ -65,17 +65,11 @@ def _quote_ident(db_type: str, name: str) -> str:
 # connection was created. Mirrors the temp-engine pattern already used by
 # SQLAdapter.list_objects/describe_table/execute_query in db_service.py.
 
-_SCOPED_ENGINE_DIALECTS = ("postgresql", "mssql", "db2", "cockroachdb", "snowflake")
-
-
 def _scoped_engine(conn: DbConnection, database: str):
     """Returns (engine, is_temporary). Caller must .dispose() the engine when
     is_temporary is True."""
-    from sqlalchemy import create_engine
-    base_engine = db_service.get_engine(conn)
-    if conn.db_type in _SCOPED_ENGINE_DIALECTS:
-        return create_engine(base_engine.url.set(database=database), pool_pre_ping=True), True
-    return base_engine, False
+    db_service.get_engine(conn)  # raises for non-SQL connections
+    return db_service.get_adapter(conn).engine_for(database)
 
 
 def _qualified_table(conn: DbConnection, database: str, table: str) -> str:
