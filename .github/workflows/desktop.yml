@@ -11,17 +11,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Pinned runner images (not *-latest) so a GitHub image rollover can't
+        # silently change the build host. The runner OS is only the build host;
+        # the minimum OS users need is set by Electron (macOS 11+, Windows 10+).
+        # Linux stays on the oldest supported LTS: an AppImage only runs on
+        # distros with a glibc at least as new as the one it was built against.
         include:
-          - os: windows-latest
+          - os: windows-2025
             platform: win
             arch: --x64
-          - os: macos-14
+          - os: macos-26
             platform: mac-arm64
             arch: --arm64
-          - os: macos-13
+          - os: macos-26-intel
             platform: mac-x64
             arch: --x64
-          - os: ubuntu-22.04
+          - os: ubuntu-24.04
             platform: linux
             arch: --x64
 
@@ -29,12 +34,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: "20"
+          node-version: "22"
 
       - name: Build frontend
         working-directory: ui
@@ -43,7 +48,7 @@ jobs:
           npm run build
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
@@ -97,13 +102,22 @@ jobs:
         # Build only this runner's arch. The PyInstaller sidecar is host-arch
         # only, so letting electron-builder.yml's `arch: [x64, arm64]` fan out
         # would package this runner's sidecar into the other arch's installer.
-        run: npm run build -- ${{ matrix.arch }}
+        # Empty secrets still arrive as empty env vars, and electron-builder
+        # resolves an empty CSC_LINK to the cwd ("not a file"), so drop them
+        # to fall back to an unsigned build.
+        shell: bash
+        run: |
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            if [ -z "${!v}" ]; then unset "$v"; fi
+          done
+          if [ -z "$CSC_LINK" ]; then export CSC_IDENTITY_AUTO_DISCOVERY=false; fi
+          npm run build -- ${{ matrix.arch }}
 
       # Only the distributables. desktop/release/ also holds win-unpacked/,
       # builder-debug.yml, builder-effective-config.yaml and .blockmap files,
       # none of which belong on a public release.
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pilotbase-${{ matrix.platform }}
           path: |
@@ -125,7 +139,7 @@ jobs:
 
     steps:
       - name: Download build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
@@ -133,7 +147,7 @@ jobs:
       # One publish after all four builds succeed, rather than four jobs racing
       # to create the same release.
       - name: Attach to GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           fail_on_unmatched_files: true
