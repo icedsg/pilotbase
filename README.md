@@ -317,16 +317,43 @@ Contributions are welcome.
 
 ---
 
-## Screenshots
+## Guides & Screenshots
 
-> Screenshots coming soon. To contribute screenshots, open a PR adding them to `docs/screenshots/`.
+Walkthroughs with real screenshots live on **[pilotbase.pro](https://pilotbase.pro)**:
 
-<!-- Uncomment as screenshots are added:
-![Connection Tree showing multiple DB types](docs/screenshots/connection-tree.png)
-![Monaco SQL editor with results table](docs/screenshots/query-editor.png)
-![Vector chunk browser with similarity search](docs/screenshots/vector-chunks.png)
-![AI agent answering a natural language question](docs/screenshots/ai-agent.png)
--->
+- [Ask your database a question — the AI agent writes the query](https://pilotbase.pro/articles/ai-agent-writes-the-query)
+- [Migrate, back up, and expose your data safely](https://pilotbase.pro/articles/migrate-backup-expose-safely) — migration, backups, Export as SQL, generated API
+- [One tool now covers 19 database engines](https://pilotbase.pro/articles/one-tool-nineteen-database-engines)
+- [Vector databases are first-class citizens](https://pilotbase.pro/articles/vector-databases-first-class)
+- [Pilotbase is now a native desktop app](https://pilotbase.pro/articles/pilotbase-native-desktop-app)
+- [Open source under MIT, and yours to self-host](https://pilotbase.pro/articles/source-available-self-host)
+- [pgAdmin 4 vs Pilotbase: the same Postgres jobs, side by side](https://pilotbase.pro/articles/pgadmin-vs-pilotbase)
+
+### AI agent
+
+![Pilotbase AI agent writing a SELECT for "top 10 orders by value" and running it in the query editor](https://pilotbase.pro/media/pilotbase/ai-agent-query-in-editor.jpg)
+
+*"Show me the top 10 orders by value": the agent writes the query, puts it in the editor and runs it.*
+
+![Pilotbase AI agent showing a proposed UPDATE with Approve & commit and Reject buttons](https://pilotbase.pro/media/pilotbase/ai-agent-approval-plan.jpg)
+
+*Writes become a plan you approve. Nothing touches the table until you click **Approve & commit**.*
+
+### Migration
+
+![Pilotbase comparing PostgreSQL tables against a MySQL target before migration](https://pilotbase.pro/media/pilotbase/ops-migration-compare.jpg)
+
+*PostgreSQL → MySQL: every table, where it exists, rows on each side and source size.*
+
+![Pilotbase migration plan review listing per-table changes with a Run Migration button](https://pilotbase.pro/media/pilotbase/ops-migration-plan.jpg)
+
+*The plan review: exclude any change, then **Run Migration**.*
+
+### Export as SQL
+
+![Pilotbase Export as SQL dialog showing generated CREATE TABLE and INSERT statements](https://pilotbase.pro/media/pilotbase/ops-export-sql.jpg)
+
+*Pick tables and options on the left, preview the script on the right.*
 
 ---
 
