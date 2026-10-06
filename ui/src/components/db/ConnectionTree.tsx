@@ -19,6 +19,7 @@ import ApiConfigModal from '../papi/ApiConfigModal'
 import ExportSqlModal from './ExportSqlModal'
 import DbCredentialsDialog, { DB_LOGIN_TYPES } from './DbCredentialsDialog'
 import type { DbConnection, DbObject, QueryResult } from '../../types'
+import { isDesktop } from '../../lib/desktop'
 
 interface SchemaNode {
   schema: string
@@ -49,6 +50,10 @@ type ConnectionState = Record<string, Record<string, TreeNode>>
 const VECTOR_DB_TYPES    = new Set(['qdrant', 'chroma', 'weaviate', 'pinecone', 'milvus'])
 const ADMIN_CAPABLE_TYPES = new Set(['postgresql', 'mysql', 'mariadb', 'mssql', 'cockroachdb', 'snowflake', 'oracle'])
 const NOSQL_DOC_TYPES    = new Set(['mongodb', 'dynamodb'])
+// Generated API (papi): server engines only. Hidden in the desktop app, whose
+// sidecar only listens on 127.0.0.1 behind a per-launch token, so outside apps
+// can't call it (see papi_service._ensure_available).
+const PAPI_DB_TYPES      = new Set(['postgresql', 'mysql', 'mariadb', 'mssql', 'mongodb'])
 // Engines where "schema" is a distinct namespace within a database, worth its
 // own tree level. mysql/mariadb treat schema as a synonym for database (already
 // modeled one level up) and sqlite/duckdb are effectively single-schema.
@@ -830,6 +835,7 @@ export default function ConnectionTree({ refreshKey }: Props) {
 
       {dbCtxMenu && (() => {
         const dbCtxConnType = connections.find(c => c.id === dbCtxMenu.connId)?.db_type || ''
+        const canEnableApi = !isDesktop && PAPI_DB_TYPES.has(dbCtxConnType)
         const canExportSql = !VECTOR_DB_TYPES.has(dbCtxConnType) && !NOSQL_DOC_TYPES.has(dbCtxConnType) && dbCtxConnType !== 'redis'
         return (
         <div
@@ -873,13 +879,15 @@ export default function ConnectionTree({ refreshKey }: Props) {
             <GitMerge size={15} />
             <span>Plan Migration</span>
           </button>
-          <button
-            className="ctx-item hover:text-gray-900 dark:hover:text-white"
-            onClick={() => { setApiConfigTarget(dbCtxMenu); setDbCtxMenu(null) }}
-          >
-            <Webhook size={15} />
-            <span>Enable API</span>
-          </button>
+          {canEnableApi && (
+            <button
+              className="ctx-item hover:text-gray-900 dark:hover:text-white"
+              onClick={() => { setApiConfigTarget(dbCtxMenu); setDbCtxMenu(null) }}
+            >
+              <Webhook size={15} />
+              <span>Enable API</span>
+            </button>
+          )}
           {canExportSql && (
             <button
               className="ctx-item hover:text-gray-900 dark:hover:text-white"

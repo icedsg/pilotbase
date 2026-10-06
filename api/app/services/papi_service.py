@@ -27,6 +27,7 @@ from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.models.connection import DbConnection
 from app.models.papi_config import PapiConfig
 from app.models.papi_table_config import PapiTableConfig
@@ -41,6 +42,31 @@ _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 class PapiError(Exception):
     """Raised for papi-specific failures (disabled, unsupported db_type, bad identifier)."""
+
+
+# File databases are addressed by a filesystem path, which is neither a valid
+# identifier nor usable as a URL path segment, so they can't be served yet.
+_FILE_DB_TYPES = ("sqlite", "duckdb")
+
+
+def _ensure_available(conn: DbConnection) -> None:
+    """Refuse to switch the generated API on where outside apps can't reach it.
+    The desktop sidecar listens on 127.0.0.1 with a random port and rejects
+    every request without the per-launch local token (LocalTokenMiddleware),
+    so a mobile app or external service could never call it."""
+    if settings.local_api_token:
+        raise PapiError(
+            "The generated API isn't available in the desktop app: it only listens on this computer, "
+            "on a port and token that change every launch. Use the Docker version on a server instead."
+        )
+    if conn.db_type in _FILE_DB_TYPES:
+        raise PapiError(f"Generated API isn't supported for {conn.db_type} file databases yet.")
+
+
+def _sql_ts(dt: datetime) -> datetime:
+    """System timestamp columns are plain TIMESTAMP (no time zone). Bind naive
+    UTC so the driver doesn't shift an aware value into the server's zone."""
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
 
 
 def _validate_ident(name: str) -> str:
@@ -153,6 +179,59 @@ async def get_secret(session: AsyncSession, connection_id: str, database: str) -
 
 # ── Enable / disable ─────────────────────────────────────────────────────────────
 
+_UUID_SQL = {
+    "postgresql": "md5(random()::text || clock_timestamp()::text)::uuid::text",
+    "mysql":      "UUID()",
+    "mariadb":    "UUID()",
+    "mssql":      "CONVERT(VARCHAR(36), NEWID())",
+}
+
+
+def _backfill_sql_table(c, conn: DbConnection, database: str, table: str) -> None:
+    """Rows that existed before the API was enabled (or were inserted directly
+    since) have no guid, so the by-guid routes can't reach them and the list
+    route can't order them. Give them a guid and timestamps; existing values
+    are kept."""
+    from sqlalchemy import text
+    ident = lambda n: _quote_ident(conn.db_type, n)  # noqa: E731
+    uuid_sql = _UUID_SQL.get(conn.db_type, _UUID_SQL["postgresql"])
+    not_deleted = _bool_literal(conn.db_type, False)
+    c.execute(text(
+        f'UPDATE {_qualified_table(conn, database, table)} SET '
+        f'{ident("guid")} = {uuid_sql}, '
+        f'{ident("created_at")} = COALESCE({ident("created_at")}, :now), '
+        f'{ident("last_updated")} = COALESCE({ident("last_updated")}, :now), '
+        f'{ident("is_deleted")} = COALESCE({ident("is_deleted")}, {not_deleted}) '
+        f'WHERE {ident("guid")} IS NULL'
+    ), {"now": _sql_ts(datetime.now(timezone.utc))})
+
+
+def _backfill_mongo_collection(conn: DbConnection, database: str, table: str) -> None:
+    client, _ = db_service.get_mongo_client(conn)
+    coll = client[database][table]
+    now = datetime.now(timezone.utc)
+    for doc in coll.find({"guid": {"$exists": False}}, {"_id": 1}):
+        coll.update_one({"_id": doc["_id"]}, {"$set": {"guid": str(uuid.uuid4())}})
+    coll.update_many({"created_at": {"$exists": False}}, {"$set": {"created_at": now}})
+    coll.update_many({"last_updated": {"$exists": False}}, {"$set": {"last_updated": now}})
+    coll.update_many({"is_deleted": {"$exists": False}}, {"$set": {"is_deleted": False}})
+
+
+def backfill_table(conn: DbConnection, database: str, table: str) -> None:
+    _validate_ident(table)
+    adapter = db_service.get_adapter(conn)
+    if isinstance(adapter, SQLAdapter):
+        engine, is_temp = _scoped_engine(conn, database)
+        try:
+            with engine.begin() as c:
+                _backfill_sql_table(c, conn, database, table)
+        finally:
+            if is_temp:
+                engine.dispose()
+    elif isinstance(adapter, MongoAdapter):
+        _backfill_mongo_collection(conn, database, table)
+
+
 def _provision_sql_tables(conn: DbConnection, database: str) -> None:
     from sqlalchemy import inspect as sa_inspect, text
     engine, is_temp = _scoped_engine(conn, database)
@@ -166,6 +245,8 @@ def _provision_sql_tables(conn: DbConnection, database: str) -> None:
                 for col in missing:
                     ddl = _system_column_ddl(conn.db_type, col)
                     c.execute(text(f'ALTER TABLE {_qualified_table(conn, database, table)} ADD COLUMN {ddl}'))
+                if table != "apitokens":
+                    _backfill_sql_table(c, conn, database, table)
     finally:
         if is_temp:
             engine.dispose()
@@ -206,6 +287,7 @@ def _ensure_mongo_apitokens_collection(conn: DbConnection, database: str) -> Non
 
 
 async def enable_for_connection(session: AsyncSession, conn: DbConnection, database: str) -> None:
+    _ensure_available(conn)
     _validate_ident(database)
     adapter = db_service.get_adapter(conn)
     if isinstance(adapter, SQLAdapter):
@@ -262,9 +344,11 @@ async def _get_table_config(
 async def enable_table(
     session: AsyncSession, conn: DbConnection, database: str, table_name: str, activated_by: Optional[str],
 ) -> PapiTableConfig:
+    _ensure_available(conn)
     _validate_ident(table_name)
     if table_name not in list_exposed_tables(conn, database):
         raise PapiError(f"Table '{table_name}' not found in database '{database}' on this connection.")
+    backfill_table(conn, database, table_name)
 
     cfg = await _get_table_config(session, conn.id, database, table_name)
     if cfg:
@@ -317,7 +401,8 @@ def _insert_apitoken_row(conn: DbConnection, database: str, jti: str, created_at
                     f'INSERT INTO {table} '
                     f'({ident("id")}, {ident("created_at")}, {ident("expires_at")}, {ident("revoked")}, {ident("ip")}, {ident("user_agent")}) '
                     f'VALUES (:id, :created_at, :expires_at, {not_revoked}, :ip, :user_agent)'
-                ), {"id": jti, "created_at": created_at, "expires_at": expires_at, "ip": ip or "", "user_agent": user_agent or ""})
+                ), {"id": jti, "created_at": _sql_ts(created_at), "expires_at": _sql_ts(expires_at),
+                      "ip": ip or "", "user_agent": user_agent or ""})
         finally:
             if is_temp:
                 engine.dispose()
@@ -435,14 +520,17 @@ def get_row(conn: DbConnection, database: str, table: str, guid: str) -> Optiona
             ident = lambda n: _quote_ident(conn.db_type, n)  # noqa: E731
             qtable = _qualified_table(conn, database, table)
             with engine.connect() as c:
-                row = c.execute(text(f'SELECT * FROM {qtable} WHERE {ident("guid")} = :guid'), {"guid": guid}).fetchone()
+                not_deleted = _bool_literal(conn.db_type, False)
+                row = c.execute(text(
+                    f'SELECT * FROM {qtable} WHERE {ident("guid")} = :guid AND {ident("is_deleted")} = {not_deleted}'
+                ), {"guid": guid}).fetchone()
             return dict(row._mapping) if row else None
         finally:
             if is_temp:
                 engine.dispose()
     if isinstance(adapter, MongoAdapter):
         client, _ = db_service.get_mongo_client(conn)
-        doc = client[database][table].find_one({"guid": guid})
+        doc = client[database][table].find_one({"guid": guid, "is_deleted": False})
         if doc:
             doc["_id"] = str(doc["_id"])
         return doc
@@ -468,8 +556,9 @@ def create_row(conn: DbConnection, database: str, table: str, body: Dict[str, An
             cols = [_validate_ident(k) for k in row]
             col_list = ", ".join(ident(c) for c in cols)
             placeholders = ", ".join(f":{c}" for c in cols)
+            params = {**row, "created_at": _sql_ts(now), "last_updated": _sql_ts(now)}
             with engine.begin() as c:
-                c.execute(text(f'INSERT INTO {qtable} ({col_list}) VALUES ({placeholders})'), row)
+                c.execute(text(f'INSERT INTO {qtable} ({col_list}) VALUES ({placeholders})'), params)
             return row
         finally:
             if is_temp:
@@ -496,17 +585,19 @@ def update_row(conn: DbConnection, database: str, table: str, guid: str, body: D
             qtable = _qualified_table(conn, database, table)
             cols = [_validate_ident(k) for k in row]
             set_clause = ", ".join(f'{ident(c)} = :{c}' for c in cols)
-            params = dict(row)
-            params["_guid"] = guid
+            params = {**row, "last_updated": _sql_ts(row["last_updated"]), "_guid": guid}
+            not_deleted = _bool_literal(conn.db_type, False)
             with engine.begin() as c:
-                result = c.execute(text(f'UPDATE {qtable} SET {set_clause} WHERE {ident("guid")} = :_guid'), params)
+                result = c.execute(text(
+                    f'UPDATE {qtable} SET {set_clause} WHERE {ident("guid")} = :_guid AND {ident("is_deleted")} = {not_deleted}'
+                ), params)
                 return result.rowcount
         finally:
             if is_temp:
                 engine.dispose()
     if isinstance(adapter, MongoAdapter):
         client, _ = db_service.get_mongo_client(conn)
-        result = client[database][table].update_one({"guid": guid}, {"$set": row})
+        result = client[database][table].update_one({"guid": guid, "is_deleted": False}, {"$set": row})
         return result.matched_count
     raise PapiError(f"Generated API is not supported for {conn.db_type}")
 
@@ -523,16 +614,20 @@ def soft_delete_row(conn: DbConnection, database: str, table: str, guid: str) ->
             ident = lambda n: _quote_ident(conn.db_type, n)  # noqa: E731
             qtable = _qualified_table(conn, database, table)
             is_deleted_true = _bool_literal(conn.db_type, True)
+            not_deleted = _bool_literal(conn.db_type, False)
             with engine.begin() as c:
                 result = c.execute(text(
-                    f'UPDATE {qtable} SET {ident("is_deleted")} = {is_deleted_true}, {ident("last_updated")} = :now WHERE {ident("guid")} = :guid'
-                ), {"now": now, "guid": guid})
+                    f'UPDATE {qtable} SET {ident("is_deleted")} = {is_deleted_true}, {ident("last_updated")} = :now '
+                    f'WHERE {ident("guid")} = :guid AND {ident("is_deleted")} = {not_deleted}'
+                ), {"now": _sql_ts(now), "guid": guid})
                 return result.rowcount
         finally:
             if is_temp:
                 engine.dispose()
     if isinstance(adapter, MongoAdapter):
         client, _ = db_service.get_mongo_client(conn)
-        result = client[database][table].update_one({"guid": guid}, {"$set": {"is_deleted": True, "last_updated": now}})
+        result = client[database][table].update_one(
+            {"guid": guid, "is_deleted": False}, {"$set": {"is_deleted": True, "last_updated": now}}
+        )
         return result.matched_count
     raise PapiError(f"Generated API is not supported for {conn.db_type}")

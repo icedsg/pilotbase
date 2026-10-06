@@ -41,7 +41,7 @@ Stop juggling pgAdmin, MongoDB Compass, RedisInsight, and separate vector DB das
 - Schema and data migration between connections — pick objects, review the plan, watch the run
 - On-demand database backups
 - Export as SQL
-- Per-connection public REST API generation
+- Generated REST API per database (Docker/server version): pick the tables, mint a token, and call list/get/create/update/delete from your own app. PostgreSQL, MySQL/MariaDB, SQL Server and MongoDB. Not available in the desktop app, whose backend only listens on `127.0.0.1` behind a per-launch token, or for SQLite/DuckDB files
 
 ### MCP Server (Desktop App)
 - Built-in [MCP](https://modelcontextprotocol.io) server lets **Claude Desktop / Claude Cowork** (or any MCP client) explore your databases through Pilotbase. It can list connections, browse schemas, describe tables, run queries, export SQL, and diff schemas

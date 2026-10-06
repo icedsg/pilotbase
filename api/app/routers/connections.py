@@ -577,10 +577,10 @@ async def papi_enable_table(
 ):
     await require_admin(body.user_anon_id, session)
     conn = await get_connection_or_404(conn_id, session)
-    status = await papi_service.get_status(session, conn_id, body.database)
-    if not status["enabled"]:
-        await papi_service.enable_for_connection(session, conn, body.database)
     try:
+        status = await papi_service.get_status(session, conn_id, body.database)
+        if not status["enabled"]:
+            await papi_service.enable_for_connection(session, conn, body.database)
         await papi_service.enable_table(session, conn, body.database, table_name, body.user_anon_id)
     except papi_service.PapiError as e:
         raise HTTPException(status_code=400, detail=str(e))
