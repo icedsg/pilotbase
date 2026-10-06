@@ -16,11 +16,14 @@ jobs:
         # the minimum OS users need is set by Electron (macOS 11+, Windows 10+).
         # Linux stays on the oldest supported LTS: an AppImage only runs on
         # distros with a glibc at least as new as the one it was built against.
+        # mac-arm64 is on macos-15: both arm64 DMGs built on macos-26
+        # (v3.0.0-beta8, beta9) came out corrupted ("image data corrupted" on
+        # open) while the same build on a local Mac gives a valid image.
         include:
           - os: windows-2025
             platform: win
             arch: --x64
-          - os: macos-26
+          - os: macos-15
             platform: mac-arm64
             arch: --arm64
           - os: macos-26-intel
@@ -112,6 +115,23 @@ jobs:
           done
           if [ -z "$CSC_LINK" ]; then export CSC_IDENTITY_AUTO_DISCOVERY=false; fi
           npm run build -- ${{ matrix.arch }}
+
+      # Never publish a DMG that won't open: check the image checksum, then
+      # mount it and check the app's code signature (ad-hoc or Developer ID).
+      - name: Verify macOS disk images
+        if: startsWith(matrix.platform, 'mac')
+        shell: bash
+        working-directory: desktop/release
+        run: |
+          set -e
+          for dmg in *.dmg; do
+            hdiutil verify "$dmg"
+            MNT=$(mktemp -d)
+            hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "$dmg"
+            codesign --verify --deep --strict --verbose=2 "$MNT/Pilotbase.app"
+            codesign -dv "$MNT/Pilotbase.app" 2>&1 | grep -E "Authority|Signature|TeamIdentifier" || true
+            hdiutil detach "$MNT"
+          done
 
       # Only the distributables. desktop/release/ also holds win-unpacked/,
       # builder-debug.yml, builder-effective-config.yaml and .blockmap files,

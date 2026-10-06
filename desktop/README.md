@@ -79,8 +79,13 @@ Output lands in `desktop/release/`:
 | Linux | `Pilotbase-<version>-linux-x64.AppImage` |
 
 Unsigned builds work fine for local testing, but expect OS gatekeeping on a fresh machine:
-- **macOS**: an unsigned/unnotarized `.dmg` is blocked by Gatekeeper — right-click the app →
-  **Open** (once) to bypass it, or `xattr -cr /Applications/Pilotbase.app` after install.
+- **macOS**: without a Developer ID certificate the app is only ad-hoc signed
+  (`scripts/after-pack.js`; Apple Silicon won't run an app whose signature is broken) and is not
+  notarized, so Gatekeeper blocks the first launch ("Apple could not verify Pilotbase"). Click
+  **Done**, then **System Settings → Privacy & Security → Open Anyway** (macOS 15+ no longer
+  offers right-click → Open), or run `xattr -cr /Applications/Pilotbase.app` after install.
+  Signing with a Developer ID certificate and notarizing removes the prompt; it needs an Apple
+  Developer Program membership and the `CSC_*`/`APPLE_*` secrets below.
 - **Windows**: an unsigned `.exe` triggers a SmartScreen "unknown publisher" warning — click
   **More info → Run anyway**.
 - **Linux**: the `.AppImage` needs `chmod +x` before it will run.
@@ -90,9 +95,9 @@ relevant secrets are configured — see `docs/desktop-plan.md` §6.3.
 
 ### Recommended: build all platforms via CI
 
-`.github/workflows/desktop.yml` runs the exact steps above across four runners (`windows-latest`,
-`macos-14` for arm64, `macos-13` for x64, `ubuntu-22.04`) in parallel and uploads all four
-artifacts, so this is the easiest way to get every platform's build without owning every
+`.github/workflows/desktop.yml` runs the exact steps above across four runners (`windows-2025`,
+`macos-15` for arm64, `macos-26-intel` for x64, `ubuntu-24.04`) in parallel and uploads all four
+artifacts (each macOS DMG is checksum-verified and its app's signature checked before upload), so this is the easiest way to get every platform's build without owning every
 platform's hardware. It triggers on any pushed tag matching `v*.*.*`:
 
 ```bash
