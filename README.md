@@ -1,10 +1,10 @@
 # Pilotbase
 
-**The first open-source universal database GUI — a single db browser and client that unifies relational, NoSQL, and vector databases in one interface.**
+**An open-source universal database GUI — a single db browser and client for relational, NoSQL, and vector databases, in one interface you can self-host.**
 
 Stop juggling pgAdmin, MongoDB Compass, RedisInsight, and separate vector DB dashboards. Pilotbase connects to your entire data stack — PostgreSQL, MySQL, SQLite, DuckDB, SQL Server, Oracle, Db2, CockroachDB, Snowflake, MongoDB, Redis, Cassandra, CouchDB, DynamoDB, Qdrant, ChromaDB, Weaviate, Pinecone, Milvus — and lets you query, browse, and manage everything from a single, modern web UI with an AI agent built in.
 
-> **Beta 1.2** — Core query, schema browsing, and connection management are stable. AI-assisted natural-language querying, schema/data migration, on-demand backups, and a native desktop app (Windows, macOS, Linux) are live. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for what's new.
+> **Beta** — Core query, schema browsing, and connection management are stable. AI-assisted natural-language querying, schema/data migration, on-demand backups, and a native desktop app (Windows, macOS, Linux) are live. The current build is on the [releases page](https://github.com/icedsg/pilotbase/releases) (latest tag: `v3.0.0-beta10`); see [RELEASE_NOTES.md](RELEASE_NOTES.md) for what's new.
 
 ![Pilotbase screenshot](docs/screenshots/main.png)
 
@@ -109,6 +109,46 @@ docker compose up --build
 Pilotbase will be live at **[http://localhost:8000](http://localhost:8000)**.
 
 The first run builds the React frontend and installs all dependencies inside the image — expect 2–3 minutes. Subsequent starts are instant.
+
+### Run the pre-built image
+
+Don't want to build? Every release is published to `ghcr.io/icedsg/pilotbase` (linux/amd64 and linux/arm64). Save this as `docker-compose.yml` in an empty folder, put the same `SECRET_KEY` and `ENCRYPTION_KEY` lines in a `.env` file next to it, and run `docker compose up -d`:
+
+```yaml
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: pilotbase
+      POSTGRES_USER: pilotbase
+      POSTGRES_PASSWORD: pilotbase_secret
+    volumes:
+      - pilotbase_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pilotbase"]
+      interval: 5s
+      retries: 10
+
+  app:
+    image: ghcr.io/icedsg/pilotbase:3.0.0-beta10
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: "postgresql+psycopg2://pilotbase:pilotbase_secret@db:5432/pilotbase"
+      SECRET_KEY: ${SECRET_KEY}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+    volumes:
+      - pilotbase_backups:/app/api/backups
+
+volumes:
+  pilotbase_pgdata:
+  pilotbase_backups:
+```
+
+Tags are listed on the [package page](https://github.com/icedsg/pilotbase/pkgs/container/pilotbase): each release has its version tag (`3.0.0-beta10`), and `edge` follows `master`. There is no `latest` tag while Pilotbase is in beta.
 
 That's all that's required to connect to your databases and start querying — the AI agent, backup location, migration, and per-connection public API are all optional and can be set up later, whenever you need them. For a full section-by-section walkthrough of every `api/.env` variable, with sample values and what's optional vs. required, see the **[Installation Guide](docs/installation.md)**.
 
@@ -361,10 +401,5 @@ Walkthroughs with real screenshots live on **[pilotbase.pro](https://pilotbase.p
 
 [MIT License](LICENSE) — Copyright (c) 2026 Pilotbase (pilotbase.pro). Free to use, modify, self-host, and redistribute, including commercially, as long as the copyright and license notice are kept.
 
-The hosted [Pilotbase.pro](https://pilotbase.pro) product includes additional features beyond this open source edition. Those are offered under separate terms and are not part of this repository. Contributions are governed by the [CLA](CLA.md).
+A hosted edition at [Pilotbase.pro](https://pilotbase.pro) is planned. Any additional features it has will be offered under separate terms and are not part of this repository. Contributions are governed by the [CLA](CLA.md).
 
----
-
-## [Pilotbase.pro](https://pilotbase.pro)
-
-Don't want to run the stack yourself? **[Pilotbase.pro](https://pilotbase.pro)** is a subscription service that hosts Pilotbase for you — with a private, dedicated container provisioned near your databases, so you connect and query with zero infrastructure to manage. Same Pilotbase, fully managed.
