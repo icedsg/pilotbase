@@ -84,8 +84,10 @@ Unsigned builds work fine for local testing, but expect OS gatekeeping on a fres
   notarized, so Gatekeeper blocks the first launch ("Apple could not verify Pilotbase"). Click
   **Done**, then **System Settings → Privacy & Security → Open Anyway** (macOS 15+ no longer
   offers right-click → Open), or run `xattr -cr /Applications/Pilotbase.app` after install.
-  Signing with a Developer ID certificate and notarizing removes the prompt; it needs an Apple
-  Developer Program membership and the `CSC_*`/`APPLE_*` secrets below.
+  Signing with a Developer ID certificate and notarizing removes the prompt. CI does both when
+  all five secrets are set (`CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`,
+  `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`) and then refuses to publish a macOS build that
+  isn't notarized; with any of them missing it falls back to the ad-hoc build.
 - **Windows**: an unsigned `.exe` triggers a SmartScreen "unknown publisher" warning — click
   **More info → Run anyway**.
 - **Linux**: the `.AppImage` needs `chmod +x` before it will run.
@@ -98,7 +100,8 @@ relevant secrets are configured — see `docs/desktop-plan.md` §6.3.
 `.github/workflows/desktop.yml` runs the exact steps above across four runners (`windows-2025`,
 `macos-15` for arm64, `macos-26-intel` for x64, `ubuntu-24.04`) in parallel and uploads all four
 artifacts (each macOS DMG is checksum-verified and its app's signature checked before upload), so this is the easiest way to get every platform's build without owning every
-platform's hardware. It triggers on any pushed tag matching `v*.*.*`:
+platform's hardware. It triggers on any pushed tag matching `v*.*.*` (Actions → Build Desktop
+App → Run workflow builds and verifies the same installers without publishing a release):
 
 ```bash
 git tag v0.1.0

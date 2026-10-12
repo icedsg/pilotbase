@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - "v*"
+  # Manual run: builds and verifies every installer without publishing a
+  # release (the version and release steps only run for a v* tag).
+  workflow_dispatch:
 
 jobs:
   build:
@@ -90,6 +93,7 @@ jobs:
         run: npm install
 
       - name: Set app version from tag
+        if: startsWith(github.ref, 'refs/tags/v')
         working-directory: desktop
         shell: bash
         run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
@@ -113,11 +117,31 @@ jobs:
           for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
             if [ -z "${!v}" ]; then unset "$v"; fi
           done
+          # macOS needs all five together: the Developer ID certificate, its
+          # password and the notarization login. A signed app that isn't
+          # notarized is still blocked by Gatekeeper, and a certificate without
+          # its password fails the build, so with anything missing build the
+          # ad-hoc signed app instead (scripts/after-pack.js).
+          if [ "${{ startsWith(matrix.platform, 'mac') }}" = "true" ]; then
+            MISSING=""
+            for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+              if [ -z "${!v}" ]; then MISSING="$MISSING $v"; fi
+            done
+            if [ -z "$MISSING" ]; then
+              echo "MAC_SIGNED=true" >> "$GITHUB_ENV"
+            else
+              echo "::warning::macOS build is ad-hoc signed, not notarized. Missing secrets:$MISSING"
+              unset CSC_LINK CSC_KEY_PASSWORD
+            fi
+          fi
           if [ -z "$CSC_LINK" ]; then export CSC_IDENTITY_AUTO_DISCOVERY=false; fi
           npm run build -- ${{ matrix.arch }}
 
       # Never publish a DMG that won't open: check the image checksum, then
       # mount it and check the app's code signature (ad-hoc or Developer ID).
+      # A Developer ID build must also be notarized with the ticket stapled and
+      # pass Gatekeeper, and the sidecar must still start from inside the
+      # signed bundle (hardened runtime).
       - name: Verify macOS disk images
         if: startsWith(matrix.platform, 'mac')
         shell: bash
@@ -129,7 +153,26 @@ jobs:
             MNT=$(mktemp -d)
             hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "$dmg"
             codesign --verify --deep --strict --verbose=2 "$MNT/Pilotbase.app"
-            codesign -dv "$MNT/Pilotbase.app" 2>&1 | grep -E "Authority|Signature|TeamIdentifier" || true
+            codesign -dv --verbose=2 "$MNT/Pilotbase.app" 2>&1 | grep -E "Authority|Signature|TeamIdentifier" || true
+            if [ "$MAC_SIGNED" = "true" ]; then
+              codesign -dv --verbose=2 "$MNT/Pilotbase.app" 2>&1 | grep -q "Authority=Developer ID Application"
+              xcrun stapler validate "$MNT/Pilotbase.app"
+              spctl --assess --type execute --verbose=2 "$MNT/Pilotbase.app" 2>&1 | tee "$RUNNER_TEMP/spctl.log"
+              grep -q "Notarized Developer ID" "$RUNNER_TEMP/spctl.log"
+            fi
+            export ENCRYPTION_KEY=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+            export SECRET_KEY=smoketest-secret
+            LOG="$RUNNER_TEMP/sidecar-dmg.log"
+            : > "$LOG"
+            "$MNT/Pilotbase.app/Contents/Resources/sidecar/pilotbase-api" --host 127.0.0.1 --port 0 --token smoketest --data-dir "$RUNNER_TEMP/pb-data-dmg" > "$LOG" 2>&1 &
+            PID=$!
+            for i in $(seq 1 30); do
+              if grep -q "PILOTBASE_READY" "$LOG" 2>/dev/null; then break; fi
+              sleep 1
+            done
+            grep -q "PILOTBASE_READY" "$LOG" || { echo "sidecar in $dmg did not start:"; cat "$LOG"; kill $PID 2>/dev/null || true; hdiutil detach -force "$MNT"; exit 1; }
+            kill $PID
+            wait $PID 2>/dev/null || true
             hdiutil detach "$MNT"
           done
 
@@ -149,6 +192,7 @@ jobs:
 
   release:
     name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
 
