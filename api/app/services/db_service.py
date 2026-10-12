@@ -396,6 +396,11 @@ class SQLAdapter(BaseAdapter):
             # treat every `:word` as a bind placeholder, which breaks any
             # literal containing a colon — DuckDB STRUCT/MAP literals
             # ({'a':1}), Postgres JSON ('{"a":1}'::jsonb), 'hh:mm' strings…
+            # Drivers with %-style placeholders (psycopg2, PyMySQL) still run the
+            # statement through %-formatting, so a literal % (LIKE 'a %',
+            # ' %' || x) must be doubled or the driver raises "not a sequence".
+            if c.dialect.driver in ("psycopg2", "pymysql"):
+                stmt = stmt.replace("%", "%%")
             result = c.exec_driver_sql(stmt)
         if result.returns_rows:
             columns = list(result.keys())
