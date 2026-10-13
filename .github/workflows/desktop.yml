@@ -22,6 +22,8 @@ jobs:
         # mac-arm64 is on macos-15: both arm64 DMGs built on macos-26
         # (v3.0.0-beta8, beta9) came out corrupted ("image data corrupted" on
         # open) while the same build on a local Mac gives a valid image.
+        # mac-x64 is on macos-15-intel: on macos-26-intel electron-builder's
+        # signing keychain setup fails (set-key-partition-list, SecKeychainUnlock).
         include:
           - os: windows-2025
             platform: win
@@ -29,7 +31,7 @@ jobs:
           - os: macos-15
             platform: mac-arm64
             arch: --arm64
-          - os: macos-26-intel
+          - os: macos-15-intel
             platform: mac-x64
             arch: --x64
           - os: ubuntu-24.04
@@ -110,8 +112,9 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         # Build only this runner's arch. The PyInstaller sidecar is host-arch
-        # only, so letting electron-builder.yml's `arch: [x64, arm64]` fan out
-        # would package this runner's sidecar into the other arch's installer.
+        # only, so the mac target in electron-builder.yml lists no arch: an
+        # arch list there wins over this flag and packages this runner's
+        # sidecar into the other arch's installer too.
         # Empty secrets still arrive as empty env vars, and electron-builder
         # resolves an empty CSC_LINK to the cwd ("not a file"), so drop them
         # to fall back to an unsigned build.

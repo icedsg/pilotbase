@@ -11,7 +11,7 @@ asar: true
 afterPack: scripts/after-pack.js
 win:   { target: [{ target: nsis, arch: [x64] }], artifactName: "Pilotbase-Setup-${version}-win-x64.exe" }
 nsis:  { oneClick: true, perMachine: false }
-mac:   { target: [{ target: dmg, arch: [x64, arm64] }], category: public.app-category.developer-tools,
+mac:   { target: [dmg], category: public.app-category.developer-tools,
          hardenedRuntime: true, entitlements: resources/entitlements.plist,
          entitlementsInherit: resources/entitlements.plist, notarize: true,
          artifactName: "Pilotbase-${version}-mac-${arch}.dmg" }
