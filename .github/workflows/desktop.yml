@@ -106,6 +106,9 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         # Build only this runner's arch. The PyInstaller sidecar is host-arch
         # only, so letting electron-builder.yml's `arch: [x64, arm64]` fan out
         # would package this runner's sidecar into the other arch's installer.
@@ -114,19 +117,33 @@ jobs:
         # to fall back to an unsigned build.
         shell: bash
         run: |
-          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+          for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID APPLE_API_KEY_P8 APPLE_API_KEY_ID APPLE_API_ISSUER; do
             if [ -z "${!v}" ]; then unset "$v"; fi
           done
-          # macOS needs all five together: the Developer ID certificate, its
-          # password and the notarization login. A signed app that isn't
-          # notarized is still blocked by Gatekeeper, and a certificate without
-          # its password fails the build, so with anything missing build the
-          # ad-hoc signed app instead (scripts/after-pack.js).
+          # macOS needs these together: the Developer ID certificate, its
+          # password and one complete notarization login (an App Store Connect
+          # API key, or the Apple ID with an app-specific password). A signed
+          # app that isn't notarized is still blocked by Gatekeeper, and a
+          # certificate without its password fails the build, so with anything
+          # missing build the ad-hoc signed app instead (scripts/after-pack.js).
           if [ "${{ startsWith(matrix.platform, 'mac') }}" = "true" ]; then
             MISSING=""
-            for v in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+            for v in CSC_LINK CSC_KEY_PASSWORD; do
               if [ -z "${!v}" ]; then MISSING="$MISSING $v"; fi
             done
+            if [ -n "$APPLE_API_KEY_P8" ] && [ -n "$APPLE_API_KEY_ID" ] && [ -n "$APPLE_API_ISSUER" ]; then
+              # electron-builder takes the key as a file path, and prefers the
+              # Apple ID login when both are present.
+              echo "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+              export APPLE_API_KEY="$RUNNER_TEMP/AuthKey.p8"
+              unset APPLE_ID APPLE_APP_SPECIFIC_PASSWORD
+            else
+              unset APPLE_API_KEY_ID APPLE_API_ISSUER
+              for v in APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
+                if [ -z "${!v}" ]; then MISSING="$MISSING $v"; fi
+              done
+            fi
+            unset APPLE_API_KEY_P8
             if [ -z "$MISSING" ]; then
               echo "MAC_SIGNED=true" >> "$GITHUB_ENV"
             else
