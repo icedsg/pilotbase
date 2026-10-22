@@ -22,7 +22,7 @@ mac:   { target: [dmg], category: public.app-category.developer-tools,
 mas:  { hardenedRuntime: false, entitlements: resources/entitlements.mas.plist,
         entitlementsInherit: resources/entitlements.mas.inherit.plist,
         entitlementsLoginHelper: resources/entitlements.mas.inherit.plist,
-        notarize: false, minimumSystemVersion: "12.0",
+        notarize: false,
         # Sign only the sidecar's Mach-O files (pilotbase-api, Python, .so,
         # .dylib); its ~3,000 data files are sealed by the app signature.
         signIgnore: ['/sidecar/(?!.*\.(so|dylib)$)(?!pilotbase-api$)(?!.*/Python$).+'],

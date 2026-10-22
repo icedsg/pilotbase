@@ -24,7 +24,9 @@ npx tsc -p .
 # electron-builder 25 signs a mas app twice: first with the mac options, then
 # with the mas ones. mac.identity=null skips the first (slow, wrong entitlements)
 # pass; the team name picks the 3rd Party Mac Developer identities for the second.
-npx electron-builder --mac mas "--$ARCH" -c.mac.identity=null \
+# The store takes an Apple-silicon-only build from macOS 12 on; electron-builder
+# reads LSMinimumSystemVersion from the mac options only (the DMG keeps 11).
+npx electron-builder --mac mas "--$ARCH" -c.mac.identity=null -c.mac.minimumSystemVersion=12.0 \
   -c.mas.identity="${MAS_IDENTITY:-Harish Palaniappan (C52W73GC5T)}" \
   -c.mas.provisioningProfile="$MAS_PROFILE" \
   -c.extraMetadata.version="${MAS_VERSION:?set MAS_VERSION, e.g. 3.0.0}" -c.buildVersion="${MAS_BUILD:?set MAS_BUILD}" "$@"
