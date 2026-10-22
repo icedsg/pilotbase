@@ -4,6 +4,7 @@ import http from 'http'
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { join } from 'path'
 
+import { chooseDatabaseFile, restoreFileAccess } from './fileaccess'
 import { buildMenu } from './menu'
 import { installDefaultSessionPolicy } from './netpolicy'
 import { loadOrCreateSecrets } from './secrets'
@@ -21,6 +22,7 @@ let mainWindow: BrowserWindow | null = null
 let splashWindow: BrowserWindow | null = null
 let sidecar: Sidecar | null = null
 let currentPort = 0
+let sidecarToken = ''
 
 app.on('second-instance', () => {
   if (mainWindow) {
@@ -178,6 +180,7 @@ async function createWindow(dataDir: string, port: number): Promise<void> {
       additionalArguments: [
         `--pilotbase-version=${app.getVersion()}`,
         `--pilotbase-data-dir=${dataDir}`,
+        `--pilotbase-store=${process.mas ? 1 : 0}`,
       ],
     },
   })
@@ -204,6 +207,15 @@ async function createWindow(dataDir: string, port: number): Promise<void> {
     if (/^https?:\/\//.test(url) || url.startsWith(`file://${dataDir}`)) {
       shell.openExternal(url)
     }
+  })
+  ipcMain.handle('desktop:choose-file', async (_event, mode: 'open' | 'new', dbType: string) => {
+    if (!mainWindow) return null
+    const path = await chooseDatabaseFile(mainWindow, dataDir, mode, dbType)
+    if (path && process.mas && sidecar) {
+      await sidecar.restart()
+      await waitForHealth(currentPort, sidecarToken, 15_000).catch(() => { /* the form's Test will show it */ })
+    }
+    return path
   })
   ipcMain.on('desktop:open-settings', () => {
     mainWindow?.webContents.send('desktop:open-settings')
@@ -244,6 +256,8 @@ async function main(): Promise<void> {
   const dataDir = app.getPath('userData')
   const secrets = loadOrCreateSecrets(dataDir)
   const token = randomBytes(32).toString('hex')
+  sidecarToken = token
+  restoreFileAccess(dataDir)
 
   sidecar = new Sidecar({
     dataDir,
@@ -259,6 +273,7 @@ async function main(): Promise<void> {
       try {
         setSplashStatus('Waiting for backend…')
         await waitForHealth(port, token, 10_000)
+        const previousPort = currentPort
         currentPort = port
         writeMcpEndpoint(dataDir, port, token)
         await session.defaultSession.cookies.set({
@@ -270,7 +285,8 @@ async function main(): Promise<void> {
         })
         installDefaultSessionPolicy(session.defaultSession, port, isDev)
         if (mainWindow) {
-          await mainWindow.loadURL(`http://127.0.0.1:${port}/`)
+          // A restart on the same port (after a file pick) keeps the page as it is.
+          if (port !== previousPort) await mainWindow.loadURL(`http://127.0.0.1:${port}/`)
         } else {
           setSplashStatus('Loading interface…')
           await createWindow(dataDir, port)

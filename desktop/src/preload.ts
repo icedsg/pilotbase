@@ -14,6 +14,9 @@ contextBridge.exposeInMainWorld('desktop', {
   dataDir: getArg('pilotbase-data-dir'),
   openExternal: (url: string) => ipcRenderer.send('desktop:open-external', url),
   openSettings: () => ipcRenderer.send('desktop:open-settings'),
+  chooseFile: (mode: 'open' | 'new', dbType: string): Promise<string | null> =>
+    ipcRenderer.invoke('desktop:choose-file', mode, dbType),
+  storeBuild: getArg('pilotbase-store') === '1',
   onOpenSettings: (cb: () => void) => {
     const listener = () => cb()
     ipcRenderer.on('desktop:open-settings', listener)

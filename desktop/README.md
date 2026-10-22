@@ -115,6 +115,24 @@ cutting a release. If the signing secrets (`WIN_CSC_LINK`/`WIN_CSC_KEY_PASSWORD`
 configured in the repo, the build still succeeds but produces unsigned artifacts — see the
 gatekeeping notes above for what that means for anyone installing them.
 
+### Mac App Store build
+
+`scripts/build-mas.sh` builds the sandboxed store version as a signed `.pkg` for the Mac
+it runs on (the sidecar must already be in `api/dist/pilotbase-api`):
+
+```bash
+MAS_PROFILE=/path/to/Pilotbase_Mac_App_Store.provisionprofile MAS_VERSION=3.0.0 MAS_BUILD=1 \
+  sh scripts/build-mas.sh
+```
+
+It needs the Mac App Distribution and Mac Installer Distribution identities in a keychain
+(`MAS_KEYCHAIN`/`MAS_KEYCHAIN_PASSWORD` for one made just for them). Differences from the DMG:
+App Sandbox instead of the hardened runtime (`resources/entitlements.mas*.plist`), data in
+`~/Library/Containers/com.pilotbase.desktop`, SQLite/DuckDB files opened through **Choose…** /
+**New…** (security-scoped bookmarks, re-opened on every launch; the sidecar restarts on the same
+port after a pick so it can read the file), and no Claude MCP config (the sandboxed sidecar can
+only run inside the app). Upload the `.pkg` with Transporter or `xcrun altool --upload-package`.
+
 ## Using the app
 
 - **First launch**: the app opens straight to the connection list — no login, no setup wizard.

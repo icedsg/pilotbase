@@ -23,6 +23,8 @@ export class Sidecar {
   private restarts: number[] = []
   private stopping = false
   private stdoutBuffer = ''
+  private onReady: ((port: number) => void) | null = null
+  private onFatal: ((message: string) => void) | null = null
   private readonly logPath: string
 
   constructor(private opts: SidecarOptions) {
@@ -60,10 +62,10 @@ export class Sidecar {
     }
   }
 
-  private resolveCommand(): { cmd: string; args: string[]; cwd: string } {
+  private resolveCommand(port: number): { cmd: string; args: string[]; cwd: string } {
     const args = [
       '--host', '127.0.0.1',
-      '--port', '0',
+      '--port', String(port),
       '--token', this.opts.token,
       '--data-dir', this.opts.dataDir,
     ]
@@ -76,12 +78,16 @@ export class Sidecar {
     return { cmd: bin, args, cwd: sidecarDir }
   }
 
-  start(onReady: (port: number) => void, onFatal: (message: string) => void): void {
+  /** `port` 0 lets the OS pick one; restart() passes the old port back so the
+   * window's URL and cookie stay valid. */
+  start(onReady: (port: number) => void, onFatal: (message: string) => void, port = 0): void {
     this.stopping = false
     this.port = 0
     this.stdoutBuffer = ''
+    this.onReady = onReady
+    this.onFatal = onFatal
 
-    const { cmd, args, cwd } = this.resolveCommand()
+    const { cmd, args, cwd } = this.resolveCommand(port)
     const proc = spawn(cmd, args, { env: this.opts.env, cwd, stdio: ['ignore', 'pipe', 'pipe'] })
     this.proc = proc
 
@@ -113,6 +119,16 @@ export class Sidecar {
       }
       this.start(onReady, onFatal)
     })
+  }
+
+  /** Stops and starts the backend on the same port. In the Mac App Store build
+   * the sidecar gets a copy of the app's sandbox when it starts, so files the
+   * user picks afterwards only become readable to it after a restart. */
+  async restart(): Promise<void> {
+    if (!this.onReady || !this.onFatal) return
+    const port = this.port
+    await this.stop()
+    this.start(this.onReady, this.onFatal, port)
   }
 
   async stop(): Promise<void> {

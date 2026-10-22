@@ -8,6 +8,10 @@ export interface DesktopBridge {
   openExternal(url: string): void
   openSettings(): void
   onOpenSettings(cb: () => void): () => void
+  /** Native file dialog for SQLite/DuckDB files; null when cancelled. Missing in builds before CR-0297. */
+  chooseFile?(mode: 'open' | 'new', dbType: string): Promise<string | null>
+  /** Mac App Store build: sandboxed, so local files must come from chooseFile. */
+  storeBuild?: boolean
 }
 
 export const desktop: DesktopBridge | undefined = (window as any).desktop

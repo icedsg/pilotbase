@@ -15,5 +15,17 @@ mac:   { target: [dmg], category: public.app-category.developer-tools,
          hardenedRuntime: true, entitlements: resources/entitlements.plist,
          entitlementsInherit: resources/entitlements.plist, notarize: true,
          artifactName: "Pilotbase-${version}-mac-${arch}.dmg" }
+# Mac App Store build (scripts/build-mas.sh): sandboxed, no hardened runtime or
+# notarization; the PyInstaller sidecar runs inside the app's sandbox
+# (entitlementsInherit). Signed with the Mac App Distribution identity from the
+# keychain, packaged as a .pkg with the Mac Installer Distribution identity.
+mas:  { hardenedRuntime: false, entitlements: resources/entitlements.mas.plist,
+        entitlementsInherit: resources/entitlements.mas.inherit.plist,
+        entitlementsLoginHelper: resources/entitlements.mas.inherit.plist,
+        notarize: false, minimumSystemVersion: "12.0",
+        # Sign only the sidecar's Mach-O files (pilotbase-api, Python, .so,
+        # .dylib); its ~3,000 data files are sealed by the app signature.
+        signIgnore: ['/sidecar/(?!.*\.(so|dylib)$)(?!pilotbase-api$)(?!.*/Python$).+'],
+        artifactName: "Pilotbase-${version}-mas-${arch}.pkg" }
 linux: { target: [{ target: AppImage, arch: [x64] }], category: Development, artifactName: "Pilotbase-${version}-linux-x64.AppImage" }
 publish: null

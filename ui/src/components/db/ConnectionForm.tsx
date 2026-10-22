@@ -3,6 +3,7 @@ import { X, CheckCircle, XCircle, Loader2, ChevronDown } from 'lucide-react'
 import { apiCreateConnection, apiUpdateConnection, apiTestConnectionParams } from '../../api/client'
 import { useUserSession } from '../../hooks/useUserSession'
 import DbTypeIcon from './DbTypeIcon'
+import { desktop } from '../../lib/desktop'
 import type { DbConnection } from '../../types'
 
 const DB_TYPES = [
@@ -295,12 +296,32 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
           {isFileBased && (
             <div>
               <label className="block text-xs text-gray-400 mb-1">File Path</label>
-              <input
-                value={form.database}
-                onChange={e => setAndResetTest('database', e.target.value)}
-                placeholder={form.db_type === 'duckdb' ? '/path/to/analytics.duckdb  (or :memory:)' : '/path/to/database.db'}
-                className={INPUT_CLS}
-              />
+              <div className="flex gap-2">
+                <input
+                  value={form.database}
+                  onChange={e => setAndResetTest('database', e.target.value)}
+                  placeholder={form.db_type === 'duckdb' ? '/path/to/analytics.duckdb  (or :memory:)' : '/path/to/database.db'}
+                  className={INPUT_CLS}
+                />
+                {desktop?.chooseFile && (['open', 'new'] as const).map(mode => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={async () => {
+                      const path = await desktop!.chooseFile!(mode, form.db_type)
+                      if (path) setAndResetTest('database', path)
+                    }}
+                    className="btn-ghost whitespace-nowrap"
+                  >
+                    {mode === 'open' ? 'Choose…' : 'New…'}
+                  </button>
+                ))}
+              </div>
+              {desktop?.storeBuild && (
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Pick the file with Choose… or New… so Pilotbase is allowed to open it.
+                </p>
+              )}
               {form.db_type === 'duckdb' && (
                 <p className="text-[11px] text-gray-500 mt-1">
                   Path is resolved on the Pilotbase server. A missing file is created; <code>:memory:</code> lives only while the server runs.

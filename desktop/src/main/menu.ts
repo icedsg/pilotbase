@@ -54,7 +54,11 @@ export function buildMenu(
       submenu: [
         { label: 'Open logs folder', click: () => shell.openPath(logsDir) },
         { label: 'Open data folder', click: () => shell.openPath(dataDir) },
-        { label: 'Copy Claude MCP config', click: () => clipboard.writeText(mcpConfigSnippet(dataDir)) },
+        // The store build's sidecar can only run inside the app's sandbox, so
+        // Claude Desktop can't launch it as an MCP bridge.
+        ...(process.mas ? [] : [
+          { label: 'Copy Claude MCP config', click: () => clipboard.writeText(mcpConfigSnippet(dataDir)) },
+        ]),
         { label: 'Pilotbase on GitHub', click: () => shell.openExternal('https://github.com/icedsg/pilotbase') },
       ],
     },

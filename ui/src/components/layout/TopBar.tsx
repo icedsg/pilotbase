@@ -3,6 +3,7 @@ import Logo from '../common/Logo'
 import { useStore } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
 import { apiHealth, apiGetLlmStatus, HealthInfo } from '../../api/client'
+import { desktop } from '../../lib/desktop'
 
 type Status = 'checking' | 'up' | 'down'
 
@@ -73,8 +74,9 @@ export default function TopBar() {
           onConfigure={aiStatus === 'down' ? () => setSettingsModalOpen(true) : undefined}
         />
         {/* MCP server (/mcp) — only on desktop, where Claude Desktop / Cowork
-            connect through the stdio bridge (Help → Copy Claude MCP config). */}
-        {isDesktop && mcp && (
+            connect through the stdio bridge (Help → Copy Claude MCP config).
+            Not in the Mac App Store build: its sandboxed bridge can't be launched by Claude. */}
+        {isDesktop && !desktop?.storeBuild && mcp && (
           <StatusPill
             label="MCP"
             status={mcp.enabled ? 'up' : 'down'}
