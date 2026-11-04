@@ -17,30 +17,18 @@ import { CSS } from '@dnd-kit/utilities'
 import {
   Download, AlertCircle, CheckCircle, CheckCircle2,
   Pencil, X, Check, Play, Copy, Loader2, Trash2, Plus,
-  ArrowUp, ArrowDown,
+  ArrowUp, ArrowDown, Search,
 } from 'lucide-react'
 import { useStore, type QueryTab } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
 import { apiExecuteQuery } from '../../api/client'
 import type { QueryResult } from '../../types'
 import TypeSelector from './TypeSelector'
-import { downloadBlob } from '../../utils/download'
+import { downloadCsv, downloadJson, rowsToCsv } from '../../utils/download'
 import { sortByDirection, type SortDirection } from '../../utils/sort'
 import SortContextMenu, { type SortMenuTarget } from './SortContextMenu'
 
 // ── CSV export ────────────────────────────────────────────────────────────────
-
-function downloadCsv(columns: string[], rows: Record<string, unknown>[]) {
-  const header = columns.join(',')
-  const body = rows.map((r) =>
-    columns.map((c) => {
-      const val = r[c]
-      const s = val === null ? '' : String(val)
-      return s.includes(',') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s
-    }).join(',')
-  ).join('\n')
-  downloadBlob(new Blob([header + '\n' + body], { type: 'text/csv' }), 'pilotbase_result.csv')
-}
 
 function rewriteQueryColumns(query: string, newColumns: string[], dbType: string): string {
   if (!/SELECT\s+\*/i.test(query)) return query
@@ -283,6 +271,9 @@ export default function ResultsTable({ tab }: { tab: QueryTab }) {
   const [sortColumn, setSortColumn]         = useState<string | null>(null)
   const [sortDirection, setSortDirection]   = useState<SortDirection>(null)
   const [sortMenuTarget, setSortMenuTarget] = useState<(SortMenuTarget & { column: string }) | null>(null)
+  const [filterText, setFilterText]         = useState('')
+  const [selectionStart, setSelectionStart] = useState<[number, number] | null>(null)
+  const [selectionEnd, setSelectionEnd]     = useState<[number, number] | null>(null)
   const scriptEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -295,6 +286,9 @@ export default function ResultsTable({ tab }: { tab: QueryTab }) {
     setActiveResultTab(0)
     setSortColumn(null)
     setSortDirection(null)
+    setFilterText('')
+    setSelectionStart(null)
+    setSelectionEnd(null)
   }, [queryResult])
 
   useEffect(() => {
@@ -827,16 +821,43 @@ export default function ResultsTable({ tab }: { tab: QueryTab }) {
   // ── Normal query results ──────────────────────────────────────────────────────
 
   const displayColumns = columnOrder.length === active.columns.length ? columnOrder : active.columns
-  const displayRows = sortColumn
-    ? sortByDirection(active.rows, (r) => r[sortColumn], sortDirection)
+  const filteredRows = filterText.trim()
+    ? active.rows.filter(row => displayColumns.some(column => {
+        const value = row[column]
+        return value !== null && String(value).toLocaleLowerCase().includes(filterText.trim().toLocaleLowerCase())
+      }))
     : active.rows
+  const displayRows = sortColumn
+    ? sortByDirection(filteredRows, (r) => r[sortColumn], sortDirection)
+    : filteredRows
+
+  const selectionBounds = selectionStart && selectionEnd ? {
+    rowFrom: Math.min(selectionStart[0], selectionEnd[0]),
+    rowTo: Math.max(selectionStart[0], selectionEnd[0]),
+    colFrom: Math.min(selectionStart[1], selectionEnd[1]),
+    colTo: Math.max(selectionStart[1], selectionEnd[1]),
+  } : null
+  const isSelected = (row: number, col: number) => !!selectionBounds &&
+    row >= selectionBounds.rowFrom && row <= selectionBounds.rowTo &&
+    col >= selectionBounds.colFrom && col <= selectionBounds.colTo
+  const copySelection = async () => {
+    if (!selectionBounds) return
+    const columns = displayColumns.slice(selectionBounds.colFrom, selectionBounds.colTo + 1)
+    const rows = displayRows.slice(selectionBounds.rowFrom, selectionBounds.rowTo + 1)
+    if (rows.length === 1 && columns.length === 1) {
+      const value = rows[0][columns[0]]
+      await navigator.clipboard.writeText(value === null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value))
+    } else {
+      await navigator.clipboard.writeText(rowsToCsv(columns, rows))
+    }
+  }
 
   return (
     <div className="h-full flex flex-col bg-surface-200">
       {resultTabs}
-      <div className="flex items-center justify-between px-3 py-1 bg-surface-300 border-b border-surface-50 flex-shrink-0">
+      <div className="flex items-center justify-between gap-3 px-3 py-1 bg-surface-300 border-b border-surface-50 flex-shrink-0">
         <span className="text-xs text-gray-500">
-          {active.row_count} row{active.row_count !== 1 ? 's' : ''}
+          {filterText ? `${displayRows.length} of ` : ''}{active.row_count} row{active.row_count !== 1 ? 's' : ''}
           {queryResult.duration_ms != null && <span className="ml-2">· {queryResult.duration_ms < 1000 ? `${Math.round(queryResult.duration_ms)} ms` : `${(queryResult.duration_ms / 1000).toFixed(2)} s`}</span>}
           {active.truncated && <span className="text-yellow-500 ml-2">(truncated to 1000)</span>}
           {sortColumn && (
@@ -845,13 +866,28 @@ export default function ResultsTable({ tab }: { tab: QueryTab }) {
             </span>
           )}
         </span>
-        <button
-          onClick={() => downloadCsv(displayColumns, displayRows)}
-          className="btn-ghost flex items-center gap-1 text-xs"
-        >
-          <Download size={16} />
-          CSV
-        </button>
+        <div className="flex items-center gap-1.5">
+          <label className="flex items-center gap-1.5 rounded border border-surface-50 bg-surface-200 px-2 py-1">
+            <Search size={13} className="text-gray-500" />
+            <input
+              value={filterText}
+              onChange={event => { setFilterText(event.target.value); setSelectionStart(null); setSelectionEnd(null) }}
+              placeholder="Filter loaded rows"
+              className="w-36 bg-transparent text-xs text-gray-300 outline-none placeholder:text-gray-600"
+            />
+          </label>
+          {selectionBounds && (
+            <button onClick={copySelection} className="btn-ghost flex items-center gap-1 text-xs" title="Copy one cell as text or selected cells as CSV">
+              <Copy size={14} /> Copy selection
+            </button>
+          )}
+          <button onClick={() => downloadCsv(displayColumns, displayRows)} className="btn-ghost flex items-center gap-1 text-xs">
+            <Download size={14} /> CSV
+          </button>
+          <button onClick={() => downloadJson(displayRows)} className="btn-ghost flex items-center gap-1 text-xs">
+            <Download size={14} /> JSON
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto min-h-0">
@@ -860,6 +896,7 @@ export default function ResultsTable({ tab }: { tab: QueryTab }) {
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={displayColumns} strategy={horizontalListSortingStrategy}>
                 <tr>
+                  <th className="sticky left-0 w-7 border-b border-r border-surface-50 bg-surface-300" aria-label="Row actions" />
                   {displayColumns.map((col) => (
                     <SortableHeader
                       key={col}
@@ -879,18 +916,30 @@ export default function ResultsTable({ tab }: { tab: QueryTab }) {
           <tbody>
             {displayRows.map((row, i) => (
               <tr key={i} className="hover:bg-surface-50 transition-colors">
-                {displayColumns.map((col) => {
+                <td className="sticky left-0 bg-surface-200 px-1.5 py-1 border-b border-r border-surface-50">
+                  <button
+                    onClick={() => navigator.clipboard.writeText(JSON.stringify(row, null, 2))}
+                    className="btn-ghost p-0.5 text-gray-500 hover:text-accent"
+                    title="Copy row as JSON"
+                  ><Copy size={12} /></button>
+                </td>
+                {displayColumns.map((col, colIndex) => {
                   const val = row[col]
                   const isNull = val === null
+                  const selected = isSelected(i, colIndex)
                   return (
                     <td
                       key={col}
-                      className={`px-3 py-1 border-b border-r border-surface-50 max-w-xs truncate ${
-                        isNull ? 'text-gray-500 italic' : 'text-gray-700 dark:text-gray-300'
+                      onMouseDown={(event) => { if (event.button === 0) { setSelectionStart([i, colIndex]); setSelectionEnd([i, colIndex]) } }}
+                      onMouseEnter={(event) => { if (event.buttons === 1 && selectionStart) setSelectionEnd([i, colIndex]) }}
+                      className={`px-3 py-1 border-b border-r border-surface-50 max-w-xs truncate select-none ${
+                        selected ? 'bg-accent/20 ring-1 ring-inset ring-accent/50' : ''
+                      } ${
+                        isNull ? 'text-purple-400 italic' : val === '' ? 'text-gray-500' : 'text-gray-700 dark:text-gray-300'
                       }`}
-                      title={isNull ? 'NULL' : String(val)}
+                      title={isNull ? 'Database NULL' : val === '' ? 'Empty string' : String(val)}
                     >
-                      {isNull ? 'NULL' : String(val)}
+                      {isNull ? <span className="rounded bg-purple-500/10 px-1">NULL</span> : val === '' ? <span className="italic">empty</span> : String(val)}
                     </td>
                   )
                 })}
