@@ -1005,7 +1005,7 @@ class QdrantAdapter(BaseAdapter):
                 response["next_offset"] = str(next_cursor)
             return response
         else:
-            hits = self._client.search(collection_name=col, query_vector=q.get("vector", []), limit=n)
+            hits = self._client.query_points(collection_name=col, query=q.get("vector", []), limit=n, with_payload=True).points
             rows = [{"id": str(h.id), "score": h.score, "payload": json.dumps(h.payload)} for h in hits]
             return {"rows": rows, "columns": ["id", "score", "payload"], "row_count": len(rows), "truncated": False}
 
