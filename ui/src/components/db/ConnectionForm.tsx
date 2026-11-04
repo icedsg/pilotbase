@@ -267,7 +267,7 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-surface-100 border border-surface-50 rounded-xl w-full max-w-md shadow-2xl">
+      <div className="bg-surface-100 border border-surface-50 rounded-xl w-full max-w-md shadow-2xl max-h-[calc(100vh-2rem)] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-surface-50">
           <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
             {isEdit ? 'Edit Connection' : 'Add Connection'}
