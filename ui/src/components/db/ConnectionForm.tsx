@@ -4,6 +4,7 @@ import { apiCreateConnection, apiUpdateConnection, apiTestConnectionParams } fro
 import { useUserSession } from '../../hooks/useUserSession'
 import DbTypeIcon from './DbTypeIcon'
 import { desktop } from '../../lib/desktop'
+import { parseConnectionString } from '../../utils/connectionString'
 import type { DbConnection } from '../../types'
 
 const DB_TYPES = [
@@ -69,6 +70,16 @@ const NO_HOST_TYPES  = new Set(['pinecone'])
 const AWS_TYPES      = new Set(['dynamodb'])
 const SNOWFLAKE_TYPES = new Set(['snowflake'])
 
+// Engines whose driver takes the encryption setting from the SSL field. The other HTTP
+// engines take it from the https:// in Host.
+const SSL_TYPES = new Set(['postgresql', 'cockroachdb', 'mysql', 'mariadb', 'qdrant'])
+const SSL_OPTIONS = [
+  { value: '',            label: 'Default' },
+  { value: 'require',     label: 'Require (encrypted)' },
+  { value: 'verify-full', label: 'Verify certificate and host' },
+  { value: 'disable',     label: 'Off' },
+]
+
 type TestStatus = 'idle' | 'testing' | 'ok' | 'error'
 
 const INPUT_CLS = 'w-full bg-surface-300 border border-surface-50 rounded px-3 py-1.5 text-gray-800 dark:text-gray-200 focus:outline-none focus:border-accent'
@@ -122,6 +133,36 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
     setTestStatus('idle')
     setTestMessage(null)
     setDatabases([])
+  }
+
+  const [connString, setConnString] = useState('')
+  const [connStringError, setConnStringError] = useState<string | null>(null)
+
+  const applyConnString = (text: string) => {
+    setConnString(text)
+    if (!text.trim()) { setConnStringError(null); return }
+    const parsed = parseConnectionString(text, form.db_type)
+    if ('error' in parsed) { setConnStringError(parsed.error); return }
+    setConnStringError(null)
+    const bareHost = parsed.host.replace(/^https?:\/\//, '')
+    setForm(f => ({
+      ...f,
+      // An edit can't change the engine; a new connection follows the address.
+      db_type:  isEdit ? f.db_type : parsed.db_type ?? f.db_type,
+      name:     f.name || (parsed.database ? `${parsed.database} on ${bareHost}` : bareHost),
+      host:     parsed.host,
+      port:     parsed.port ?? '',
+      database: parsed.database ?? '',
+      username: parsed.username ?? '',
+      password: parsed.password ?? '',
+      api_key:  parsed.api_key ?? f.api_key,
+      ssl_mode: parsed.ssl_mode ?? '',
+    }))
+    setTestStatus('idle')
+    setTestMessage(null)
+    setDatabases([])
+    // The password now sits in its own hidden field; don't leave it readable here.
+    setConnString('')
   }
 
   const handleDbTypeChange = (newType: string) => {
@@ -185,7 +226,7 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
           database:   form.database || undefined,
           username:   form.username || undefined,
           password:   form.password || undefined,
-          ssl_mode:   form.ssl_mode || undefined,
+          ssl_mode:   form.ssl_mode,
           extra_params,
         } as any)
         onSaved({ ...connection!, name: form.name, host: form.host as any, port: form.port as any, database: form.database as any, username: form.username as any, ssl_mode: form.ssl_mode as any })
@@ -235,6 +276,23 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
         </div>
 
         <div className="p-5 space-y-3 text-sm">
+          {/* Paste a connection string */}
+          <div>
+            <label className="block text-xs text-gray-400 mb-1">
+              Connection string <span className="text-gray-600">(optional, fills in the fields below)</span>
+            </label>
+            <input
+              value={connString}
+              onChange={e => applyConnString(e.target.value)}
+              className={INPUT_CLS + ' font-mono text-xs'}
+              placeholder="postgresql://user:password@host:5432/db?sslmode=require"
+              spellCheck={false}
+              autoComplete="off"
+              aria-label="Connection string"
+            />
+            {connStringError && <p className="text-[11px] text-red-400 mt-1">{connStringError}</p>}
+          </div>
+
           {/* Name */}
           <div>
             <label className="block text-xs text-gray-400 mb-1">Name *</label>
@@ -357,6 +415,24 @@ export default function ConnectionForm({ onClose, onSaved, connection }: Props) 
                   />
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Encryption */}
+          {SSL_TYPES.has(form.db_type) && (
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">SSL</label>
+              <select
+                value={form.ssl_mode}
+                onChange={e => setAndResetTest('ssl_mode', e.target.value)}
+                className={INPUT_CLS}
+                aria-label="SSL"
+              >
+                {SSL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                {form.ssl_mode && !SSL_OPTIONS.some(o => o.value === form.ssl_mode) && (
+                  <option value={form.ssl_mode}>{form.ssl_mode}</option>
+                )}
+              </select>
             </div>
           )}
 

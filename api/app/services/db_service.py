@@ -11,7 +11,7 @@ import re
 import time
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from cryptography.fernet import Fernet
 
@@ -111,12 +111,25 @@ class BaseAdapter(ABC):
 
 # ── SQL (SQLAlchemy) ──────────────────────────────────────────────────────────
 
+# ssl_mode values that mean "this connection must be encrypted".
+_SSL_ENCRYPTED_MODES = ("require", "verify-ca", "verify-full", "true", "on")
+_LIBPQ_SSL_MODES = ("disable", "allow", "prefer", "require", "verify-ca", "verify-full")
+
+
 class SQLAdapter(BaseAdapter):
     @staticmethod
-    def _connect_args(db_type: str, timeout: float) -> Dict[str, Any]:
+    def _connect_args(db_type: str, timeout: float, ssl_mode: Optional[str] = None) -> Dict[str, Any]:
         """Every DBAPI driver names its own connect-timeout kwarg differently —
         this is the one place that maps db_type -> the right one."""
         t = int(timeout)
+        if db_type in ("mysql", "mariadb") and ssl_mode == "disable":
+            return {"connect_timeout": t, "ssl_disabled": True}
+        if db_type in ("mysql", "mariadb") and ssl_mode in _SSL_ENCRYPTED_MODES:
+            # PyMySQL only starts TLS when `ssl` is a non-empty dict.
+            if ssl_mode == "verify-full":
+                import certifi
+                return {"connect_timeout": t, "ssl": {"ca": certifi.where(), "check_hostname": True}}
+            return {"connect_timeout": t, "ssl": {"check_hostname": False}}
         if db_type in ("postgresql", "cockroachdb"):   # psycopg2
             return {"connect_timeout": t}
         if db_type in ("mysql", "mariadb"):             # pymysql
@@ -147,7 +160,7 @@ class SQLAdapter(BaseAdapter):
         from sqlalchemy import create_engine
         extra = extra or {}
         self._db_creds = db_creds or {}
-        connect_args = self._connect_args(conn.db_type, self.CONNECT_TIMEOUT_SECONDS)
+        connect_args = self._connect_args(conn.db_type, self.CONNECT_TIMEOUT_SECONDS, conn.ssl_mode)
         if conn.db_type == "snowflake" and extra.get("auth_token"):
             # OAuth access token instead of a password — the connector takes
             # it as authenticator=oauth + token (see docs/supported-databases.md).
@@ -191,7 +204,11 @@ class SQLAdapter(BaseAdapter):
             with self._engine.connect() as c:
                 c.execute(text("SELECT 1"))
             return True
-        except Exception:
+        except Exception as e:
+            # The driver's own words (refused, SSL required, bad password), for the Test button.
+            message = str(getattr(e, "orig", None) or e).strip()
+            password = self._engine.url.password
+            self.last_error = message.replace(password, "***") if password else message
             return False
 
     def create_database(self, db_name: str) -> None:
@@ -933,7 +950,7 @@ class QdrantAdapter(BaseAdapter):
     """
     def __init__(self, conn: DbConnection, extra: Dict):
         from qdrant_client import QdrantClient
-        https = conn.ssl_mode in ("require", "verify-full", "true", "on")
+        https = conn.ssl_mode in _SSL_ENCRYPTED_MODES
         kwargs: Dict[str, Any] = {
             "host": conn.host or "localhost",
             "port": conn.port or 6333,
@@ -1594,21 +1611,30 @@ class DatabaseService:
     def _build_sql_url(self, conn: DbConnection) -> str:
         password = self.decrypt_password(conn.password_encrypted) if conn.password_encrypted else ""
         driver = _SQL_DRIVERS.get(conn.db_type, conn.db_type)
+        # Credentials go into a URL: "@", "/", ":" or "%" in a password would otherwise break it.
+        username = quote(conn.username or "", safe="")
+        password = quote(password, safe="")
         if conn.db_type in ("sqlite", "duckdb"):
             return f"{driver}:///{conn.database}"
         if conn.db_type == "oracle":
             host_port = f"{conn.host}:{conn.port or 1521}"
-            return f"oracle+oracledb://{conn.username}:{password}@{host_port}/?service_name={conn.database}"
+            return f"oracle+oracledb://{username}:{password}@{host_port}/?service_name={conn.database}"
         if conn.db_type == "snowflake":
             extra = self._load_extra(conn)
             account = conn.host or ""
             db_part = f"/{conn.database}" if conn.database else ""
             params = "&".join(f"{k}={v}" for k in ("warehouse", "role") if (v := extra.get(k)))
             query = f"?{params}" if params else ""
-            return f"snowflake://{conn.username}:{password}@{account}{db_part}{query}"
+            return f"snowflake://{username}:{password}@{account}{db_part}{query}"
         host_port = f"{conn.host}:{conn.port}" if conn.port else conn.host
         db_part = f"/{conn.database}" if conn.database else ""
-        return f"{driver}://{conn.username}:{password}@{host_port}{db_part}"
+        query = ""
+        if conn.db_type in ("postgresql", "cockroachdb") and conn.ssl_mode:
+            # libpq's own names; true/on (older saved values) mean require.
+            mode = "require" if conn.ssl_mode in ("true", "on") else conn.ssl_mode
+            if mode in _LIBPQ_SSL_MODES:
+                query = f"?sslmode={mode}"
+        return f"{driver}://{username}:{password}@{host_port}{db_part}{query}"
 
     def _load_db_creds(self, conn: DbConnection) -> Dict[str, Tuple[str, str]]:
         """Per-database logins ({database: (username, password)}) saved on a
@@ -1706,7 +1732,7 @@ class DatabaseService:
         try:
             adapter = self.get_adapter(conn)
             ok = adapter.test_connection()
-            return ok, ("" if ok else "Connection test failed. Check your credentials.")
+            return ok, ("" if ok else getattr(adapter, "last_error", None) or "Connection test failed. Check your credentials.")
         except Exception as e:
             return False, str(e)
 
@@ -1747,7 +1773,7 @@ class DatabaseService:
             adapter = self._make_adapter(tmp)
             ok = adapter.test_connection()
             if not ok:
-                return False, "Connection test failed. Check your credentials.", []
+                return False, getattr(adapter, "last_error", None) or "Connection test failed. Check your credentials.", []
             dbs = adapter.list_databases()
             return True, "", dbs
         except Exception as e:
