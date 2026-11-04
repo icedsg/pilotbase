@@ -1,6 +1,6 @@
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
-import { Play, Loader2, Copy } from 'lucide-react'
+import { Play, Loader2, Copy, WandSparkles, Save } from 'lucide-react'
 import QueryEditor, { type QueryEditorHandle } from '../db/QueryEditor'
 import ResultsTable from '../db/ResultsTable'
 import VectorChunksView from '../db/VectorChunksView'
@@ -11,6 +11,8 @@ import MainTabBar from './MainTabBar'
 import { useStore } from '../../store'
 import { LogoIcon } from '../common/Logo'
 import { isNoSqlJsonDbType } from '../../utils/dbTypes'
+import { apiCreateSavedQuery } from '../../api/client'
+import { useUserSession } from '../../hooks/useUserSession'
 
 export default function MainArea() {
   const {
@@ -19,6 +21,9 @@ export default function MainArea() {
   const activeConn = connections.find((c) => c.id === activeConnectionId)
   const activeTab = mainTabs.find((t) => t.id === activeMainTabId)
   const queryEditorRef = useRef<QueryEditorHandle>(null)
+  const { userId } = useUserSession()
+  const [saveName, setSaveName] = useState('')
+  const [saving, setSaving] = useState(false)
   const isNoSqlJsonConn = isNoSqlJsonDbType(activeConn?.db_type)
 
   if (!activeConnectionId) {
@@ -65,6 +70,30 @@ export default function MainArea() {
               <span>Run</span>
               <span className="text-[10px] opacity-60 ml-0.5">Ctrl+↵</span>
             </button>
+
+            {!isNoSqlJsonConn && (
+              <button onClick={() => queryEditorRef.current?.format()} className="btn-ghost flex items-center gap-1 text-xs" title="Format SQL (Shift+Alt+F)">
+                <WandSparkles size={14} /> Format
+              </button>
+            )}
+
+            <form className="flex items-center gap-1" onSubmit={async (e) => {
+              e.preventDefault()
+              const name = saveName.trim()
+              if (!name || !activeTab.query.trim() || saving) return
+              setSaving(true)
+              try {
+                await apiCreateSavedQuery(userId, activeTab.connectionId, name, activeTab.query)
+                setSaveName('')
+                window.dispatchEvent(new CustomEvent('pilotbase:saved-query-changed'))
+              } finally { setSaving(false) }
+            }}>
+              <input value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder="Query name" maxLength={120}
+                className="w-28 bg-surface-200 border border-surface-50 rounded px-1.5 py-0.5 text-xs outline-none focus:border-accent" />
+              <button type="submit" disabled={!saveName.trim() || !activeTab.query.trim() || saving} className="btn-ghost p-1 disabled:opacity-40" title="Save query">
+                <Save size={14} />
+              </button>
+            </form>
 
             <button
               onClick={() => navigator.clipboard.writeText(activeTab.query)}

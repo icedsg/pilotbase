@@ -65,6 +65,16 @@ export interface QueryResult {
   /** Set when the edited SQL contained multiple statements; `results` holds one entry per statement. */
   multi?: boolean
   results?: QueryResult[]
+  duration_ms?: number
+}
+
+export interface SavedQuery {
+  id: string
+  connection_id: string
+  name: string
+  query_text: string
+  created_at: string
+  updated_at: string
 }
 
 export interface ChatMessage {

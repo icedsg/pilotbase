@@ -1,5 +1,7 @@
 import { useRef, useEffect, forwardRef, useImperativeHandle } from 'react'
 import Editor, { useMonaco } from '@monaco-editor/react'
+import { format as formatSql } from 'sql-formatter'
+import type { SqlLanguage } from 'sql-formatter'
 import { useStore, type QueryTab } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
 import { apiExecuteQuery, apiListObjects, apiDescribeTable } from '../../api/client'
@@ -7,6 +9,13 @@ import { isNoSqlJsonDbType } from '../../utils/dbTypes'
 
 export interface QueryEditorHandle {
   run: () => void
+  format: () => void
+}
+
+const DIALECTS: Record<string, SqlLanguage> = {
+  postgresql: 'postgresql', cockroachdb: 'postgresql', mysql: 'mysql', mariadb: 'mariadb',
+  sqlite: 'sqlite', duckdb: 'sql', mssql: 'transactsql', oracle: 'plsql', snowflake: 'snowflake',
+  bigquery: 'bigquery', redshift: 'redshift', clickhouse: 'sql', cassandra: 'sql',
 }
 
 const QueryEditor = forwardRef<QueryEditorHandle, { tab: QueryTab }>(({ tab }, ref) => {
@@ -24,13 +33,18 @@ const QueryEditor = forwardRef<QueryEditorHandle, { tab: QueryTab }>(({ tab }, r
   const isNoSqlJsonConn = isNoSqlJsonDbType(activeConn?.db_type)
 
   const runQuery = async () => {
-    const query = editorRef.current?.getValue()?.trim() || activeQuery.trim()
+    const selection = editorRef.current?.getSelection()
+    const selected = selection && !selection.isEmpty()
+      ? editorRef.current?.getModel()?.getValueInRange(selection)
+      : ''
+    const query = selected?.trim() || editorRef.current?.getValue()?.trim() || activeQuery.trim()
     if (!query || !activeConnectionId || queryLoading) return
 
     updateQueryTab(tab.id, { columnViewContext: null, loading: true, result: null })
     try {
+      const started = performance.now()
       const result = await apiExecuteQuery(userId, activeConnectionId, query, activeDatabase || undefined)
-      updateQueryTab(tab.id, { result })
+      updateQueryTab(tab.id, { result: { ...result, duration_ms: performance.now() - started } })
     } catch (err: any) {
       updateQueryTab(tab.id, {
         result: {
@@ -45,7 +59,19 @@ const QueryEditor = forwardRef<QueryEditorHandle, { tab: QueryTab }>(({ tab }, r
     }
   }
 
-  useImperativeHandle(ref, () => ({ run: runQuery }))
+  const formatQuery = () => {
+    if (isNoSqlJsonConn || !activeConn) return
+    const editor = editorRef.current
+    const source = editor?.getValue() || activeQuery
+    if (!source.trim()) return
+    try {
+      const formatted = formatSql(source, { language: DIALECTS[activeConn.db_type] || 'sql' })
+      editor?.setValue(formatted)
+      updateQueryTab(tab.id, { query: formatted })
+    } catch {}
+  }
+
+  useImperativeHandle(ref, () => ({ run: runQuery, format: formatQuery }))
 
   useEffect(() => {
     if (!monaco || !activeConnectionId) return
@@ -137,6 +163,9 @@ const QueryEditor = forwardRef<QueryEditorHandle, { tab: QueryTab }>(({ tab }, r
     if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
       e.preventDefault()
       runQuery()
+    } else if (e.shiftKey && e.altKey && e.key.toLowerCase() === 'f' && !isNoSqlJsonConn) {
+      e.preventDefault()
+      formatQuery()
     }
   }
 
@@ -149,7 +178,13 @@ const QueryEditor = forwardRef<QueryEditorHandle, { tab: QueryTab }>(({ tab }, r
           theme={theme === 'dark' ? 'vs-dark' : 'light'}
           value={activeQuery}
           onChange={(val) => updateQueryTab(tab.id, { query: val || '' })}
-          onMount={(editor) => { editorRef.current = editor }}
+          onMount={(editor, editorMonaco) => {
+            editorRef.current = editor
+            editor.addCommand(editorMonaco.KeyMod.CtrlCmd | editorMonaco.KeyCode.Enter, runQuery)
+            if (!isNoSqlJsonConn) {
+              editor.addCommand(editorMonaco.KeyMod.Shift | editorMonaco.KeyMod.Alt | editorMonaco.KeyCode.KeyF, formatQuery)
+            }
+          }}
           options={{
             fontSize: 13,
             fontFamily: '"JetBrains Mono", "Fira Code", monospace',

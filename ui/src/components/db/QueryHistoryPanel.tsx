@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
-import { X, History, CheckCircle2, XCircle, Bot, User, Loader2 } from 'lucide-react'
-import { apiGetQueryHistory } from '../../api/client'
+import { X, History, CheckCircle2, XCircle, Bot, User, Loader2, Bookmark, Trash2 } from 'lucide-react'
+import { apiDeleteSavedQuery, apiGetQueryHistory, apiListSavedQueries } from '../../api/client'
 import { useStore } from '../../store'
-import type { QueryHistoryEntry } from '../../types'
+import { useUserSession } from '../../hooks/useUserSession'
+import type { QueryHistoryEntry, SavedQuery } from '../../types'
+import type { QueryTab } from '../../store'
 
 interface Props {
   onClose: () => void
@@ -21,7 +23,16 @@ function mergeById(a: QueryHistoryEntry[], b: QueryHistoryEntry[]): QueryHistory
 
 export default function QueryHistoryPanel({ onClose }: Props) {
   const { queryHistory, setQueryHistory, connections } = useStore()
+  const { userId } = useUserSession()
   const [loading, setLoading] = useState(true)
+  const [savedQueries, setSavedQueries] = useState<SavedQuery[]>([])
+  const activeTab = useStore((s) => s.mainTabs.find((tab) => tab.id === s.activeMainTabId && tab.kind === 'query') as QueryTab | undefined)
+  const connectionId = activeTab?.connectionId
+
+  const loadSaved = () => {
+    if (!connectionId) return setSavedQueries([])
+    apiListSavedQueries(userId, connectionId).then((r) => setSavedQueries(r.queries)).catch(() => {})
+  }
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -38,11 +49,20 @@ export default function QueryHistoryPanel({ onClose }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useEffect(() => {
+    loadSaved()
+    const handler = () => loadSaved()
+    window.addEventListener('pilotbase:saved-query-changed', handler)
+    return () => window.removeEventListener('pilotbase:saved-query-changed', handler)
+    // Reload when the panel's active connection changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connectionId, userId])
+
   const connectionName = (id: string) => connections.find((c) => c.id === id)?.name ?? id
 
   return (
     <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="bg-surface-100 border border-surface-50 rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+      <div className="bg-surface-100 border border-surface-50 rounded-xl shadow-2xl w-full max-w-5xl max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-surface-50 flex-shrink-0">
           <div className="flex items-center gap-2">
             <History size={18} className="text-gray-500" />
@@ -52,7 +72,8 @@ export default function QueryHistoryPanel({ onClose }: Props) {
           <button onClick={onClose} className="btn-ghost p-1"><X size={20} /></button>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="overflow-y-auto border-r border-surface-50">
           {loading && queryHistory.length === 0 && (
             <div className="flex items-center justify-center gap-2 text-xs text-gray-500 py-10">
               <Loader2 size={16} className="animate-spin" /> Loading…
@@ -113,6 +134,32 @@ export default function QueryHistoryPanel({ onClose }: Props) {
               </div>
             </div>
           ))}
+          </div>
+
+          <aside className="overflow-y-auto bg-surface-200/30">
+            <div className="sticky top-0 flex items-center gap-2 px-4 py-3 bg-surface-100 border-b border-surface-50">
+              <Bookmark size={15} className="text-accent" />
+              <h3 className="text-xs font-semibold text-gray-700 dark:text-gray-300">Saved for this connection</h3>
+              <span className="text-[11px] text-gray-500">({savedQueries.length})</span>
+            </div>
+            {!connectionId && <p className="p-4 text-xs text-gray-500">Open a query tab to see saved queries.</p>}
+            {connectionId && savedQueries.length === 0 && <p className="p-4 text-xs text-gray-500">No saved queries yet.</p>}
+            {savedQueries.map((item) => (
+              <div key={item.id} className="group px-4 py-3 border-b border-surface-50 hover:bg-surface-200/60">
+                <div className="flex items-center gap-2">
+                  <button className="flex-1 text-left text-xs font-medium text-gray-700 dark:text-gray-200 truncate" title="Load in editor"
+                    onClick={() => { if (activeTab) useStore.getState().updateQueryTab(activeTab.id, { query: item.query_text, sqlPanelOpen: true }); onClose() }}>
+                    {item.name}
+                  </button>
+                  <button className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400" title="Delete saved query"
+                    onClick={async () => { await apiDeleteSavedQuery(userId, item.id); loadSaved() }}>
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+                <code className="block mt-1 text-[11px] text-gray-500 truncate" title={item.query_text}>{item.query_text}</code>
+              </div>
+            ))}
+          </aside>
         </div>
       </div>
     </div>

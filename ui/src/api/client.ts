@@ -10,6 +10,7 @@ import type {
   MigrationObjectPick,
   MigrationPlanObject,
   PapiConfig,
+  SavedQuery,
 } from '../types'
 
 // Only honor VITE_API_URL under the Vite dev server. A production build (the
@@ -125,6 +126,17 @@ export const apiRunDdl = (userId: string, connId: string, action: string, object
 
 export const apiGetQueryHistory = (limit = 200): Promise<{ entries: QueryHistoryEntry[] }> =>
   http.get('/query/history', { params: { limit } }).then(r => r.data)
+
+export const apiListSavedQueries = (userId: string, connectionId: string): Promise<{ queries: SavedQuery[] }> =>
+  http.get('/saved-queries', { params: { user_anon_id: userId, connection_id: connectionId } }).then(r => r.data)
+
+export const apiCreateSavedQuery = (
+  userId: string, connectionId: string, name: string, queryText: string,
+): Promise<SavedQuery> =>
+  http.post('/saved-queries', { user_anon_id: userId, connection_id: connectionId, name, query_text: queryText }).then(r => r.data)
+
+export const apiDeleteSavedQuery = (userId: string, queryId: string): Promise<void> =>
+  http.delete(`/saved-queries/${queryId}`, { params: { user_anon_id: userId } }).then(() => undefined)
 
 // ── Backup ────────────────────────────────────────────────────────────────────
 

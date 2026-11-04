@@ -617,6 +617,7 @@ export default function ResultsTable({ tab }: { tab: QueryTab }) {
           <CheckCircle size={18} />
           <span>
             Query executed.{active.affected !== undefined ? ` ${active.affected} row(s) affected.` : ''}
+            {queryResult.duration_ms != null && ` · ${queryResult.duration_ms < 1000 ? `${Math.round(queryResult.duration_ms)} ms` : `${(queryResult.duration_ms / 1000).toFixed(2)} s`}`}
           </span>
         </div>
         {sqlLogPanel}
@@ -836,6 +837,7 @@ export default function ResultsTable({ tab }: { tab: QueryTab }) {
       <div className="flex items-center justify-between px-3 py-1 bg-surface-300 border-b border-surface-50 flex-shrink-0">
         <span className="text-xs text-gray-500">
           {active.row_count} row{active.row_count !== 1 ? 's' : ''}
+          {queryResult.duration_ms != null && <span className="ml-2">· {queryResult.duration_ms < 1000 ? `${Math.round(queryResult.duration_ms)} ms` : `${(queryResult.duration_ms / 1000).toFixed(2)} s`}</span>}
           {active.truncated && <span className="text-yellow-500 ml-2">(truncated to 1000)</span>}
           {sortColumn && (
             <span className="text-accent ml-2">
