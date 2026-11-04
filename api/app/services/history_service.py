@@ -23,7 +23,12 @@ log = logging.getLogger("pilotbase.history")
 # of the app's async metadata-DB engine — record_execution() is called from
 # both the request event loop and worker threads (LangGraph tool calls), and
 # a plain sync session is the simplest thing that's safe in both.
-_engine = create_engine(settings.database_url, pool_pre_ping=True, pool_size=5, max_overflow=5)
+def _sync_url(url: str) -> str:
+    """The desktop app's metadata URL names the async SQLite driver, which a sync engine can't use."""
+    return url.replace("sqlite+aiosqlite://", "sqlite://")
+
+
+_engine = create_engine(_sync_url(settings.database_url), pool_pre_ping=True, pool_size=5, max_overflow=5)
 _Session = sessionmaker(bind=_engine)
 
 

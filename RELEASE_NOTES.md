@@ -1,3 +1,34 @@
+# Pilotbase v3.0.0-beta12
+
+**Connections**
+
+- Paste a connection string at the top of the connection form and it fills in the fields. The password moves to its masked field and the string is cleared.
+- New SSL setting for PostgreSQL, CockroachDB, MySQL, MariaDB and Qdrant. It now reaches the SQL drivers; before, it was stored and ignored.
+- Passwords and user names containing `@ / : %` work.
+- Test Connection shows the driver's own error for SQL engines, with the password masked.
+
+**Query editor**
+
+- Format SQL with the Format button or Shift+Alt+F, using the connection's dialect.
+- Ctrl/Cmd+Enter runs only the selected text when there is a selection.
+- Time taken and row count appear with the results.
+- Save named queries per connection and load them from the panel beside Query History.
+
+**Results grid**
+
+- Filter box over the loaded rows.
+- Copy a cell, a row as JSON, or a dragged rectangle as CSV.
+- Export JSON beside CSV, and CSV now opens properly in Excel.
+- Database NULL looks different from the text `NULL` and from an empty string.
+
+**Fixes**
+
+- Qdrant vector search works with current client versions.
+- Desktop: copy buttons work. The app was refusing clipboard writes.
+- Desktop: Query History loads and records queries. It failed with a server error before.
+
+---
+
 # Pilotbase Beta 1.2
 
 **Desktop app**

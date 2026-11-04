@@ -33,6 +33,9 @@ npm install
 npm run dev
 ```
 
+Put `api/venv/Scripts` (macOS/Linux: `api/venv/bin`) first on `PATH` before `npm run dev`: dev mode
+runs whichever `python` it finds there, and without the API's packages the app quits at once.
+
 `npm run dev` compiles the Electron TypeScript and launches the app. In dev mode it spawns
 `python api/main.py` directly (not a packaged sidecar binary), on `127.0.0.1` with a random
 port and a per-launch token — the same as a packaged build.

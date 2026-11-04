@@ -18,7 +18,8 @@ export function installDefaultSessionPolicy(defaultSession: Session, port: numbe
   defaultSession.webRequest.onBeforeRequest({ urls: ['<all_urls>'] }, (details, callback) => {
     callback({ cancel: !matchesAny(details.url, allowed) })
   })
-  defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
+  // The copy buttons need clipboard writes; everything else stays refused.
+  defaultSession.setPermissionRequestHandler((_wc, permission, callback) => callback(permission === 'clipboard-sanitized-write'))
 }
 
 /** The ad partition may only load the bundled placeholder page plus whatever

@@ -73,6 +73,13 @@ const QueryEditor = forwardRef<QueryEditorHandle, { tab: QueryTab }>(({ tab }, r
 
   useImperativeHandle(ref, () => ({ run: runQuery, format: formatQuery }))
 
+  // Monaco keeps the commands from onMount for the editor's whole life, so they go through
+  // refs: a first render's runQuery would stay "loading" if the editor opened during a query.
+  const runQueryRef = useRef(runQuery)
+  runQueryRef.current = runQuery
+  const formatQueryRef = useRef(formatQuery)
+  formatQueryRef.current = formatQuery
+
   useEffect(() => {
     if (!monaco || !activeConnectionId) return
 
@@ -180,9 +187,9 @@ const QueryEditor = forwardRef<QueryEditorHandle, { tab: QueryTab }>(({ tab }, r
           onChange={(val) => updateQueryTab(tab.id, { query: val || '' })}
           onMount={(editor, editorMonaco) => {
             editorRef.current = editor
-            editor.addCommand(editorMonaco.KeyMod.CtrlCmd | editorMonaco.KeyCode.Enter, runQuery)
+            editor.addCommand(editorMonaco.KeyMod.CtrlCmd | editorMonaco.KeyCode.Enter, () => runQueryRef.current())
             if (!isNoSqlJsonConn) {
-              editor.addCommand(editorMonaco.KeyMod.Shift | editorMonaco.KeyMod.Alt | editorMonaco.KeyCode.KeyF, formatQuery)
+              editor.addCommand(editorMonaco.KeyMod.Shift | editorMonaco.KeyMod.Alt | editorMonaco.KeyCode.KeyF, () => formatQueryRef.current())
             }
           }}
           options={{
