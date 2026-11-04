@@ -15,6 +15,8 @@ mac:   { target: [dmg], category: public.app-category.developer-tools,
          hardenedRuntime: true, entitlements: resources/entitlements.plist,
          entitlementsInherit: resources/entitlements.plist, notarize: true,
          artifactName: "Pilotbase-${version}-mac-${arch}.dmg" }
+# Sign the disk image too; the workflow then notarizes and staples it.
+dmg:   { sign: true }
 # Mac App Store build (scripts/build-mas.sh): sandboxed, no hardened runtime or
 # notarization; the PyInstaller sidecar runs inside the app's sandbox
 # (entitlementsInherit). Signed with the Mac App Distribution identity from the

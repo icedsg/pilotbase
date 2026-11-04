@@ -157,6 +157,32 @@ jobs:
           if [ -z "$CSC_LINK" ]; then export CSC_IDENTITY_AUTO_DISCOVERY=false; fi
           npm run build -- ${{ matrix.arch }}
 
+      # electron-builder notarizes and staples the app, not the disk image. A
+      # notarized image opens without a network check and passes `spctl -t open`.
+      - name: Notarize macOS disk images
+        if: startsWith(matrix.platform, 'mac') && env.MAC_SIGNED == 'true'
+        shell: bash
+        working-directory: desktop/release
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          set -e
+          if [ -n "$APPLE_API_KEY_P8" ] && [ -n "$APPLE_API_KEY_ID" ] && [ -n "$APPLE_API_ISSUER" ]; then
+            echo "$APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8"
+            AUTH=(--key "$RUNNER_TEMP/AuthKey.p8" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER")
+          else
+            AUTH=(--apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --team-id "$APPLE_TEAM_ID")
+          fi
+          for dmg in *.dmg; do
+            xcrun notarytool submit "$dmg" "${AUTH[@]}" --wait --timeout 90m
+            xcrun stapler staple "$dmg"
+          done
+
       # Never publish a DMG that won't open: check the image checksum, then
       # mount it and check the app's code signature (ad-hoc or Developer ID).
       # A Developer ID build must also be notarized with the ticket stapled and
@@ -170,6 +196,12 @@ jobs:
           set -e
           for dmg in *.dmg; do
             hdiutil verify "$dmg"
+            if [ "$MAC_SIGNED" = "true" ]; then
+              codesign -dv --verbose=2 "$dmg" 2>&1 | grep "Authority=Developer ID Application"
+              xcrun stapler validate "$dmg"
+              spctl --assess --type open --context context:primary-signature --verbose=2 "$dmg" 2>&1 | tee "$RUNNER_TEMP/spctl-dmg.log"
+              grep -q "Notarized Developer ID" "$RUNNER_TEMP/spctl-dmg.log"
+            fi
             MNT=$(mktemp -d)
             hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "$dmg"
             codesign --verify --deep --strict --verbose=2 "$MNT/Pilotbase.app"
