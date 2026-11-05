@@ -1,12 +1,14 @@
 import { useRef, useState } from 'react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels'
-import { Play, Loader2, Copy, WandSparkles, Save } from 'lucide-react'
+import { Activity, Play, Loader2, Copy, WandSparkles, Save } from 'lucide-react'
 import QueryEditor, { type QueryEditorHandle } from '../db/QueryEditor'
 import ResultsTable from '../db/ResultsTable'
 import VectorChunksView from '../db/VectorChunksView'
 import NoSQLDocumentView from '../db/NoSQLDocumentView'
 import NoSQLQueryResultsView from '../db/NoSQLQueryResultsView'
 import MigrationFlow from '../migration/MigrationFlow'
+import HealthView from '../health/HealthView'
+import { hasHealthView } from '../../lib/health/view'
 import MainTabBar from './MainTabBar'
 import { useStore } from '../../store'
 import { LogoIcon } from '../common/Logo'
@@ -16,7 +18,7 @@ import { useUserSession } from '../../hooks/useUserSession'
 
 export default function MainArea() {
   const {
-    activeConnectionId, connections, mainTabs, activeMainTabId, focusConnectionQueryTab,
+    activeConnectionId, connections, mainTabs, activeMainTabId, focusConnectionQueryTab, openHealthTab,
   } = useStore()
   const activeConn = connections.find((c) => c.id === activeConnectionId)
   const activeTab = mainTabs.find((t) => t.id === activeMainTabId)
@@ -51,8 +53,19 @@ export default function MainArea() {
             <LogoIcon size={16} />
           </button>
           <span className="text-gray-700 dark:text-gray-300 font-medium truncate">{activeConn?.name}</span>
-          <span className="text-gray-500">·</span>
-          <span className="text-gray-500">{activeConn?.db_type}</span>
+          <span className="text-gray-500 flex-shrink-0">·</span>
+          <span className="text-gray-500 flex-shrink-0">{activeConn?.db_type}</span>
+          {hasHealthView(activeConn?.db_type) && (
+            <button
+              onClick={() => openHealthTab(activeConnectionId)}
+              className={`btn-ghost flex items-center gap-1 text-xs ml-2 flex-shrink-0 ${activeTab?.kind === 'health' ? 'text-accent' : ''}`}
+              title="Slow statements, locks and migration checks"
+              aria-label="Health"
+            >
+              <Activity size={13} className="flex-shrink-0" />
+              {!(activeTab?.kind === 'query' && activeTab.sqlPanelOpen) && 'Health'}
+            </button>
+          )}
         </div>
 
         {/* Right: SQL controls only when the active tab is a query tab with the panel open */}
@@ -125,6 +138,8 @@ export default function MainArea() {
         <div className="flex-1 min-h-0"><NoSQLDocumentView tab={activeTab} /></div>
       ) : activeTab.kind === 'migration' ? (
         <div className="flex-1 min-h-0"><MigrationFlow tab={activeTab} /></div>
+      ) : activeTab.kind === 'health' ? (
+        <div className="flex-1 min-h-0"><HealthView key={activeTab.id} tab={activeTab} /></div>
       ) : activeTab.sqlPanelOpen ? (
         <PanelGroup direction="vertical" className="flex-1">
           <Panel defaultSize={40} minSize={20}>

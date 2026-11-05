@@ -12,6 +12,7 @@ import type {
   PapiConfig,
   SavedQuery,
 } from '../types'
+import type { HealthSnapshot } from '../lib/health/view'
 
 // Only honor VITE_API_URL under the Vite dev server. A production build (the
 // one served by the desktop sidecar on its random port, or by any web
@@ -126,6 +127,17 @@ export const apiRunDdl = (userId: string, connId: string, action: string, object
 
 export const apiGetQueryHistory = (limit = 200): Promise<{ entries: QueryHistoryEntry[] }> =>
   http.get('/query/history', { params: { limit } }).then(r => r.data)
+
+export const apiHealthSnapshot = (userId: string, connectionId: string, database: string | null): Promise<HealthSnapshot> =>
+  http.post('/db-health/snapshot', { user_anon_id: userId, connection_id: connectionId, database }).then(r => r.data)
+
+export interface LastMigrationCheck { sql_text: string; checked_at: string }
+
+export const apiGetLastMigration = (userId: string, connectionId: string): Promise<{ check: LastMigrationCheck | null }> =>
+  http.get('/db-health/last-migration', { params: { user_anon_id: userId, connection_id: connectionId } }).then(r => r.data)
+
+export const apiSaveLastMigration = (userId: string, connectionId: string, sqlText: string): Promise<{ check: LastMigrationCheck | null }> =>
+  http.put('/db-health/last-migration', { user_anon_id: userId, connection_id: connectionId, sql_text: sqlText }).then(r => r.data)
 
 export const apiListSavedQueries = (userId: string, connectionId: string): Promise<{ queries: SavedQuery[] }> =>
   http.get('/saved-queries', { params: { user_anon_id: userId, connection_id: connectionId } }).then(r => r.data)

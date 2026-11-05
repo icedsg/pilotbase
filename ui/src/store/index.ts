@@ -64,7 +64,7 @@ export interface ChatTab {
 // Query/vector/nosql/migration views all live as tabs so switching connections
 // or between views never destroys in-progress work (see MainTabBar/MainArea).
 
-export type MainTabKind = 'query' | 'vector' | 'nosql' | 'migration'
+export type MainTabKind = 'query' | 'vector' | 'nosql' | 'migration' | 'health'
 
 interface MainTabBase {
   id: string
@@ -106,7 +106,13 @@ export interface MigrationTab extends MainTabBase {
   checking: boolean
 }
 
-export type MainTab = QueryTab | VectorTab | NoSQLTab | MigrationTab
+export interface HealthTab extends MainTabBase {
+  kind: 'health'
+  connectionId: string
+  database: string | null
+}
+
+export type MainTab = QueryTab | VectorTab | NoSQLTab | MigrationTab | HealthTab
 
 interface PilotbaseStore {
   // ── User session ─────────────────────────────────────────────────
@@ -131,6 +137,8 @@ interface PilotbaseStore {
   openVectorTab: (ctx: VectorViewContext) => string
   openNoSQLTab: (ctx: NoSQLViewContext) => string
   openMigrationTab: (args: { sourceConnId: string; sourceDb: string | null; targetConnId: string; targetDb: string | null }) => string
+  openHealthTab: (connectionId: string) => string
+  updateHealthTab: (tabId: string, patch: Partial<HealthTab>) => void
   updateMigrationTab: (tabId: string, patch: Partial<MigrationTab>) => void
   setMigrationTabJob: (tabId: string, job: MigrationJobState | null) => void
   patchMigrationTabJobStep: (tabId: string, jobId: string, stepKey: string, patch: Partial<MigrationJobStep>) => void
@@ -273,6 +281,19 @@ export const useStore = create<PilotbaseStore>((set, get) => ({
     set((s) => ({ mainTabs: [...s.mainTabs, tab], activeMainTabId: tab.id }))
     return tab.id
   },
+  openHealthTab: (connectionId) => {
+    const existing = get().mainTabs.find((t): t is HealthTab => t.kind === 'health' && t.connectionId === connectionId)
+    if (existing) {
+      set({ activeMainTabId: existing.id })
+      return existing.id
+    }
+    const tab: HealthTab = { id: crypto.randomUUID(), kind: 'health', connectionId, database: null }
+    set((s) => ({ mainTabs: [...s.mainTabs, tab], activeMainTabId: tab.id }))
+    return tab.id
+  },
+  updateHealthTab: (tabId, patch) => set((s) => ({
+    mainTabs: s.mainTabs.map((t) => (t.id === tabId && t.kind === 'health') ? { ...t, ...patch } : t),
+  })),
   updateMigrationTab: (tabId, patch) => set((s) => ({
     mainTabs: s.mainTabs.map((t) => (t.id === tabId && t.kind === 'migration') ? { ...t, ...patch } : t),
   })),

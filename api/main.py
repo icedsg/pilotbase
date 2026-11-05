@@ -63,7 +63,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.database import init_db
 from app.middleware.local_token import LocalTokenMiddleware
-from app.routers import auth, connections, query, query_history, saved_queries, backup, migration, ai, chat_sessions, vector, papi, export, settings as settings_router
+from app.routers import auth, connections, query, query_history, saved_queries, backup, migration, ai, chat_sessions, vector, papi, export, db_health, settings as settings_router
 from app.websocket.manager import ws_router, manager
 from app.mcp.server import mcp as mcp_server, mcp_http_app
 
@@ -113,6 +113,7 @@ app.include_router(connections.router, prefix="/api/v1/connections",  tags=["con
 app.include_router(query.router,       prefix="/api/v1/query",        tags=["query"])
 app.include_router(query_history.router, prefix="/api/v1/query/history", tags=["query"])
 app.include_router(saved_queries.router, prefix="/api/v1/saved-queries", tags=["query"])
+app.include_router(db_health.router,  prefix="/api/v1/db-health",     tags=["health"])
 app.include_router(backup.router,      prefix="/api/v1/backup",       tags=["backup"])
 app.include_router(migration.router,   prefix="/api/v1/migration",    tags=["migration"])
 app.include_router(ai.router,          prefix="/api/v1/ai",           tags=["ai"])

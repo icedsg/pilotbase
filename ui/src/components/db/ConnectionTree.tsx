@@ -7,6 +7,7 @@ import {
 import DbTypeIcon from './DbTypeIcon'
 import { useStore } from '../../store'
 import { useUserSession } from '../../hooks/useUserSession'
+import { opensHealthFirst } from '../../lib/health/view'
 import { apiListDatabases, apiListSchemas, apiListObjects, apiDeleteConnection, apiExecuteQuery, apiDescribeTable, apiRunDdl, apiGetDbVersion } from '../../api/client'
 import AdminActionsPanel from './AdminActionsPanel'
 import ConnectionForm from './ConnectionForm'
@@ -116,7 +117,7 @@ interface DbCtxMenu {
 export default function ConnectionTree({ refreshKey }: Props) {
   const {
     connections, activeConnectionId, setActiveConnection, removeConnection, updateConnection,
-    ensureQueryTab, focusConnectionQueryTab, updateQueryTab, setActiveMainTab,
+    ensureQueryTab, focusConnectionQueryTab, updateQueryTab, setActiveMainTab, mainTabs, openHealthTab,
     openVectorTab, openNoSQLTab, appendAlterScript,
   } = useStore()
   const { userId } = useUserSession()
@@ -273,7 +274,9 @@ export default function ConnectionTree({ refreshKey }: Props) {
 
   const toggleConn = (conn: DbConnection) => {
     setActiveConnection(conn.id)
-    focusConnectionQueryTab(conn.id)
+    const hasTab = mainTabs.some((t) => (t.kind === 'query' || t.kind === 'health') && t.connectionId === conn.id)
+    if (opensHealthFirst(conn.db_type, hasTab)) openHealthTab(conn.id)
+    else focusConnectionQueryTab(conn.id)
     const isOpen = openConns.has(conn.id)
     if (isOpen) {
       setOpenConns((s) => { const n = new Set(s); n.delete(conn.id); return n })

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Database, Box, FileText, GitMerge, X, Check } from 'lucide-react'
+import { Activity, Database, Box, FileText, GitMerge, X, Check } from 'lucide-react'
 import { useStore, type MainTab } from '../../store'
 import CloseTabConfirm from '../common/CloseTabConfirm'
 
@@ -10,6 +10,10 @@ function tabLabel(tab: MainTab, connections: { id: string; name: string }[]): st
     const conn = connections.find((c) => c.id === tab.connectionId)
     return conn ? (tab.database ? `${conn.name} · ${tab.database}` : conn.name) : 'Query'
   }
+  if (tab.kind === 'health') {
+    const conn = connections.find((c) => c.id === tab.connectionId)
+    return conn ? `Health · ${conn.name}` : 'Health'
+  }
   if (tab.kind === 'vector' || tab.kind === 'nosql') return tab.context.collection
   const source = connections.find((c) => c.id === tab.sourceConnId)?.name ?? tab.sourceConnId
   const target = connections.find((c) => c.id === tab.targetConnId)?.name ?? tab.targetConnId
@@ -18,11 +22,13 @@ function tabLabel(tab: MainTab, connections: { id: string; name: string }[]): st
 
 function tabHasContent(tab: MainTab): boolean {
   if (tab.kind === 'query') return tab.query.trim() !== '' || tab.result !== null
+  if (tab.kind === 'health') return false
   return true
 }
 
 function TabIcon({ kind }: { kind: MainTab['kind'] }) {
   if (kind === 'query') return <Database size={12} className="flex-shrink-0" />
+  if (kind === 'health') return <Activity size={12} className="flex-shrink-0" />
   if (kind === 'vector') return <Box size={12} className="flex-shrink-0" />
   if (kind === 'nosql') return <FileText size={12} className="flex-shrink-0" />
   return <GitMerge size={12} className="flex-shrink-0" />
@@ -54,8 +60,8 @@ export default function MainTabBar() {
 
   const focusTab = (tab: MainTab) => {
     setActiveMainTab(tab.id)
-    if (tab.kind === 'query' || tab.kind === 'vector' || tab.kind === 'nosql') {
-      const connId = tab.kind === 'query' ? tab.connectionId : tab.context.connId
+    if (tab.kind === 'query' || tab.kind === 'health' || tab.kind === 'vector' || tab.kind === 'nosql') {
+      const connId = tab.kind === 'query' || tab.kind === 'health' ? tab.connectionId : tab.context.connId
       setActiveConnection(connId)
     }
   }

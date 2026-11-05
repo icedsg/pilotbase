@@ -4,8 +4,9 @@ from app.models.chat_session import ChatSession, ChatMessageRecord
 from app.models.papi_table_config import PapiTableConfig
 from app.models.app_setting import AppSetting
 from app.models.saved_query import SavedQuery
+from app.models.health_check import HealthMigrationCheck
 
 __all__ = [
     "User", "UserRole", "DbConnection", "ConnectionAccess", "InviteToken",
-    "ChatSession", "ChatMessageRecord", "PapiTableConfig", "AppSetting", "SavedQuery",
+    "ChatSession", "ChatMessageRecord", "PapiTableConfig", "AppSetting", "SavedQuery", "HealthMigrationCheck",
 ]
