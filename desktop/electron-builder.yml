@@ -11,7 +11,9 @@ asar: true
 afterPack: scripts/after-pack.js
 win:   { target: [{ target: nsis, arch: [x64] }], artifactName: "Pilotbase-Setup-${version}-win-x64.exe" }
 nsis:  { oneClick: true, perMachine: false }
+# macOS 14 Sonoma and later only: we build for the last few macOS versions.
 mac:   { target: [dmg], category: public.app-category.developer-tools,
+         minimumSystemVersion: "14.0",
          hardenedRuntime: true, entitlements: resources/entitlements.plist,
          entitlementsInherit: resources/entitlements.plist, notarize: true,
          artifactName: "Pilotbase-${version}-mac-${arch}.dmg" }
